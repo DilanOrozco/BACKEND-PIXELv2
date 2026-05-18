@@ -1,0 +1,102 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Rol {
+  idRol       Int       @id @default(autoincrement()) @map("id_rol")
+  nombre     String    @unique @db.VarChar(50)
+  descripcion String?  @db.VarChar(255)
+  estado     Boolean   @default(true)
+
+  usuarios   Usuario[]
+
+  @@map("roles")
+}
+
+model Usuario {
+  idUsuario          Int       @id @default(autoincrement()) @map("id_usuario")
+  idRol              Int       @map("id_rol")
+
+  nombre             String    @db.VarChar(100)
+  documento          String?   @unique @db.VarChar(30)
+  telefono           String?   @db.VarChar(20)
+  direccion          String?   @db.VarChar(150)
+  correo             String    @unique @db.VarChar(100)
+  contrasenaHash     String    @map("contrasena_hash") @db.VarChar(255)
+
+  estado             Boolean   @default(true)
+  fechaCreacion      DateTime  @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime  @updatedAt @map("fecha_actualizacion")
+
+  rol                Rol       @relation(fields: [idRol], references: [idRol])
+
+  cotizacionesCliente Cotizacion[] @relation("CotizacionCliente")
+  cotizacionesCreadas  Cotizacion[] @relation("CotizacionCreador")
+
+  @@map("usuarios")
+}
+
+model Tecnica {
+  idTecnica          Int      @id @default(autoincrement()) @map("id_tecnica")
+  nombre             String   @unique @db.VarChar(80)
+  descripcion        String?  @db.VarChar(255)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  detallesCotizacion DetalleCotizacion[]
+
+  @@map("tecnicas")
+}
+
+model Cotizacion {
+  idCotizacion       Int      @id @default(autoincrement()) @map("id_cotizacion")
+  idCliente          Int      @map("id_cliente")
+  creadoPorId        Int      @map("creado_por_id")
+
+  tipoCotizacion     String   @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
+  estado             String   @default("PENDIENTE") @db.VarChar(20)
+
+  subtotal           Decimal  @default(0) @db.Decimal(10, 2)
+  costoDiseno        Decimal  @default(0) @map("costo_diseno") @db.Decimal(10, 2)
+  costosAdicionales  Decimal  @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
+  total              Decimal  @default(0) @db.Decimal(10, 2)
+
+  observaciones      String?  @db.VarChar(255)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  cliente            Usuario  @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario])
+  creadoPor          Usuario  @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario])
+  detalles           DetalleCotizacion[]
+
+  @@map("cotizaciones")
+}
+
+model DetalleCotizacion {
+  idDetalleCotizacion Int     @id @default(autoincrement()) @map("id_detalle_cotizacion")
+  idCotizacion        Int     @map("id_cotizacion")
+  idTecnica           Int     @map("id_tecnica")
+
+  descripcion         String  @db.VarChar(255)
+  cantidad            Int
+  precioUnitario      Decimal @map("precio_unitario") @db.Decimal(10, 2)
+  costoDiseno         Decimal @default(0) @map("costo_diseno") @db.Decimal(10, 2)
+  subtotal            Decimal @db.Decimal(10, 2)
+  observaciones       String? @db.VarChar(255)
+
+  cotizacion          Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion])
+  tecnica             Tecnica    @relation(fields: [idTecnica], references: [idTecnica])
+
+  @@map("detalle_cotizacion")
+}
