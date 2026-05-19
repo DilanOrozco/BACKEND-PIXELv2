@@ -66,12 +66,22 @@ export class TecnicaRepository {
   }
 
   async desactivarTecnica(idTecnica: number) {
+    // 1. Buscamos la técnica usando la variable 'prisma' directa (sin 'this.')
+    const tecnica = await prisma.tecnica.findUnique({
+      where: { idTecnica },
+    });
+
+    if (!tecnica) {
+      throw new Error("Técnica no encontrada");
+    }
+
+    // 2. Hacemos el switch/toggle: invertimos el valor actual del booleano
     return await prisma.tecnica.update({
       where: { idTecnica },
       data: {
-        estado: false,
+        estado: !tecnica.estado, // Si está true pone false, si está false pone true ⚡
       },
-      select: tecnicaSelect,
+      select: tecnicaSelect, // Mantenemos tu objeto de selección para el retorno
     });
   }
 }
