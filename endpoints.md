@@ -1,4 +1,4 @@
-# Documentación de Endpoints - Backend PIXEL
+# Documentacion de Endpoints - Backend PIXEL
 
 Base URL sugerida:
 
@@ -6,7 +6,7 @@ Base URL sugerida:
 http://localhost:3000/api
 ```
 
-Para las rutas protegidas se debe enviar el token JWT en los headers:
+Para rutas protegidas se debe enviar el token JWT:
 
 ```txt
 Authorization: Bearer TU_TOKEN
@@ -18,8 +18,6 @@ Content-Type: application/json
 # 1. Auth
 
 ## Registrar cliente
-
-Registra un cliente con rol `Cliente` automáticamente.
 
 ```http
 POST /api/auth/register
@@ -36,30 +34,7 @@ POST /api/auth/register
 }
 ```
 
-### Respuesta esperada
-
-```json
-{
-  "message": "Cliente registrado correctamente.",
-  "data": {
-    "idUsuario": 5,
-    "nombre": "Juan Cliente",
-    "telefono": "3001234567",
-    "correo": "juan.cliente@gmail.com",
-    "estado": true,
-    "rol": {
-      "idRol": 4,
-      "nombre": "Cliente"
-    }
-  }
-}
-```
-
----
-
-## Iniciar sesión
-
-Permite iniciar sesión y obtener el token JWT.
+## Iniciar sesion
 
 ```http
 POST /api/auth/login
@@ -74,20 +49,18 @@ POST /api/auth/login
 }
 ```
 
-### Respuesta esperada
+### Respuesta
 
 ```json
 {
-  "message": "Inicio de sesión exitoso.",
+  "message": "Inicio de sesion exitoso.",
   "data": {
     "token": "TOKEN_JWT",
     "usuario": {
       "idUsuario": 1,
       "nombre": "Admin Principal",
       "correo": "admin@pixel.com",
-      "estado": true,
       "rol": {
-        "idRol": 1,
         "nombre": "Admin"
       }
     }
@@ -99,490 +72,335 @@ POST /api/auth/login
 
 # 2. Roles
 
-## Crear rol
-
-Crea un nuevo rol.
-
-> Actualmente está sin protección inicial si aún no se aplicó middleware.  
-> Cuando se proteja, debe ser solo para `Admin`.
-
 ```http
 POST /api/roles
-```
-
-### Body
-
-```json
-{
-  "nombre": "Admin",
-  "descripcion": "Administrador general del sistema"
-}
-```
-
-### Reglas
-
-- El nombre no puede estar vacío.
-- El nombre no puede repetirse.
-- La descripción debe tener mínimo 5 caracteres.
-- El estado se registra automáticamente como activo.
-
----
-
-## Listar roles
-
-```http
 GET /api/roles
-```
-
-### Respuesta esperada
-
-```json
-{
-  "data": [
-    {
-      "idRol": 1,
-      "nombre": "Admin",
-      "descripcion": "Administrador general del sistema",
-      "estado": true
-    }
-  ]
-}
-```
-
----
-
-## Buscar roles por nombre
-
-Permite búsqueda parcial.
-
-```http
 GET /api/roles/buscar?nombre=admin
-```
-
-### Si no hay resultados
-
-```json
-{
-  "message": "No se encontraron resultados."
-}
-```
-
----
-
-## Actualizar rol
-
-Permite actualización parcial.
-
-```http
 PATCH /api/roles/:id
-```
-
-### Body
-
-```json
-{
-  "descripcion": "Administrador con acceso completo al sistema"
-}
-```
-
-### Cambiar estado
-
-```json
-{
-  "estado": false
-}
-```
-
-### Reglas
-
-- El nombre no puede estar vacío.
-- El nombre no puede repetirse.
-- La descripción debe tener mínimo 5 caracteres.
-- El estado debe ser booleano: `true` o `false`.
-
----
-
-## Desactivar rol
-
-No elimina físicamente el rol, solo cambia su estado a inactivo.
-
-```http
 DELETE /api/roles/:id
 ```
 
-### Respuesta esperada
+Reglas principales:
 
-```json
-{
-  "message": "Rol desactivado correctamente."
-}
-```
+- El nombre no puede estar vacio.
+- El nombre no puede repetirse.
+- La descripcion debe tener minimo 5 caracteres.
+- `DELETE` no elimina fisicamente; cambia el estado.
 
 ---
 
 # 3. Usuarios
 
-## Crear usuario
-
-Crea usuarios internos como Admin, Secretaria o Diseñador.
-
 ```http
 POST /api/usuarios
-```
-
-### Body
-
-```json
-{
-  "nombre": "Ana Gómez",
-  "documento": "1002003002",
-  "telefono": "3019876543",
-  "direccion": "Carrera 15 # 8-40",
-  "correo": "ana.gomez@gmail.com",
-  "contrasena": "secret123",
-  "idRol": 2
-}
-```
-
-### Reglas
-
-- El correo debe tener formato válido.
-- El correo debe ser único.
-- El documento debe ser único.
-- La contraseña debe tener mínimo 6 caracteres.
-- El rol debe existir.
-- No se permiten campos obligatorios vacíos.
-- La contraseña se guarda encriptada con bcrypt.
-- La API no debe devolver `contrasenaHash`.
-
----
-
-## Listar usuarios
-
-```http
 GET /api/usuarios
-```
-
-### Respuesta esperada
-
-```json
-{
-  "data": [
-    {
-      "idUsuario": 1,
-      "nombre": "Admin Principal",
-      "documento": "1002003004",
-      "telefono": "3105557788",
-      "direccion": "Oficina Principal",
-      "correo": "admin@pixel.com",
-      "estado": true,
-      "rol": {
-        "idRol": 1,
-        "nombre": "Admin"
-      }
-    }
-  ]
-}
-```
-
----
-
-## Buscar usuario por ID
-
-```http
-GET /api/usuarios/:id
-```
-
----
-
-## Buscar usuarios parcialmente
-
-Busca por nombre, correo o documento.
-
-```http
 GET /api/usuarios/buscar?termino=juan
-```
-
-### Si no hay resultados
-
-```json
-{
-  "message": "No se encontraron resultados."
-}
-```
-
----
-
-## Actualizar usuario
-
-Permite actualización parcial.
-
-```http
+GET /api/usuarios/:id
 PATCH /api/usuarios/:id
-```
-
-### Cambiar teléfono
-
-```json
-{
-  "telefono": "3112223344"
-}
-```
-
-### Cambiar contraseña
-
-```json
-{
-  "contrasena": "nueva123"
-}
-```
-
-### Cambiar rol
-
-> Recomendado solo para Admin cuando las rutas estén protegidas.
-
-```json
-{
-  "idRol": 2
-}
-```
-
-### Cambiar estado
-
-```json
-{
-  "estado": false
-}
-```
-
----
-
-## Desactivar usuario
-
-No elimina físicamente el usuario, solo cambia `estado` a `false`.
-
-```http
 DELETE /api/usuarios/:id
 ```
 
----
+Reglas principales:
 
-# 4. Técnicas
-
-Las técnicas representan los métodos de personalización usados en las cotizaciones.
-
-Ejemplos:
-
-- Sublimación
-- Bordado
-- DTF
-- Vinilo textil
-
-Todas las rutas de técnicas están protegidas con JWT.
+- El correo debe ser valido y unico.
+- El documento debe ser unico.
+- La contrasena debe tener minimo 6 caracteres.
+- El rol debe existir.
+- La API no devuelve `contrasenaHash`.
+- `DELETE` no elimina fisicamente; cambia `estado` a `false`.
 
 ---
 
-## Crear técnica
+# 4. Tecnicas
 
-Roles permitidos:
-
-```txt
-Admin, Secretaria
-```
+Todas las rutas de tecnicas usan JWT.
 
 ```http
 POST /api/tecnicas
-```
-
-### Headers
-
-```txt
-Authorization: Bearer TU_TOKEN
-```
-
-### Body
-
-```json
-{
-  "nombre": "Sublimación",
-  "descripcion": "Técnica de impresión por calor"
-}
-```
-
-### Reglas
-
-- El nombre no puede estar vacío.
-- El nombre no puede repetirse.
-- La descripción debe tener mínimo 5 caracteres.
-- El estado se registra automáticamente como activo.
-
----
-
-## Listar técnicas
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria, Cliente
-```
-
-```http
 GET /api/tecnicas
-```
-
----
-
-## Buscar técnica por ID
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria, Cliente
-```
-
-```http
-GET /api/tecnicas/:id
-```
-
----
-
-## Buscar técnicas parcialmente
-
-Busca por nombre o descripción.
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria, Cliente
-```
-
-```http
 GET /api/tecnicas/buscar?termino=sub
-```
-
-### Si no hay resultados
-
-```json
-{
-  "message": "No se encontraron resultados."
-}
-```
-
----
-
-## Actualizar técnica
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria
-```
-
-```http
+GET /api/tecnicas/:id
 PATCH /api/tecnicas/:id
-```
-
-### Body
-
-```json
-{
-  "descripcion": "Técnica actualizada para personalización textil"
-}
-```
-
-### Cambiar estado
-
-```json
-{
-  "estado": true
-}
-```
-
----
-
-## Desactivar técnica
-
-No elimina físicamente la técnica, solo cambia su estado a inactivo.
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria
-```
-
-```http
 DELETE /api/tecnicas/:id
 ```
+
+Roles:
+
+- Crear, actualizar y desactivar: `Admin`, `Secretaria`.
+- Listar y consultar: `Admin`, `Secretaria`, `Cliente`.
 
 ---
 
 # 5. Cotizaciones
 
-La cotización es el inicio obligatorio del flujo comercial de PIXEL.
+La cotizacion inicia el flujo comercial de PIXEL. Todas las rutas usan JWT y devuelven el `cotizacionSelect`, incluyendo `cliente`, `creadoPor` y `detalles.tecnica`.
 
-Reglas principales:
+Estados validos:
 
-- Sin cotización aprobada no existe pedido.
-- Una cotización normal inicia como `PENDIENTE`.
-- Una cotización rápida inicia como `APROBADA`.
-- La cotización rápida se usa cuando un cliente llega presencialmente y quiere hacer el pedido de una vez.
-- Una cotización aprobada o rechazada no debe modificarse.
-- El total lo calcula el backend, no el frontend.
+```txt
+SOLICITADA, COTIZADA, APROBADA, RECHAZADA, ANULADA
+```
 
-Todas las rutas están protegidas con JWT.
+Calculos del backend:
+
+```txt
+subtotalDetalle = cantidad * precioUnitario + costoDiseno
+subtotalCotizacion = subtotal del unico detalle
+totalCotizacion = subtotalCotizacion + costosAdicionales
+```
+
+Reglas generales:
+
+- Una cotizacion representa una sola solicitud comercial concreta.
+- Cada cotizacion debe tener un unico detalle: la prenda, mug o producto solicitado.
+- Si el cliente quiere otra prenda o producto, debe crear otra cotizacion.
+- Cliente solo ve y modifica sus propias cotizaciones.
+- Cliente no puede enviar ni modificar precios, costos de diseno, subtotales, costos adicionales ni totales.
+- Admin y Secretaria pueden consultar todas las cotizaciones.
+- No se eliminan cotizaciones; se cambia el estado.
+- Una cotizacion `APROBADA`, `RECHAZADA` o `ANULADA` no se edita.
 
 ---
 
-## Crear cotización normal
+## Crear solicitud como cliente
 
 Roles permitidos:
 
 ```txt
-Admin, Secretaria, Cliente
+Cliente
+```
+
+```http
+POST /api/cotizaciones/cliente
+```
+
+El `idCliente` sale del token. Estado inicial: `SOLICITADA`.
+
+### Body
+
+```json
+{
+  "detalles": [
+    {
+      "idTecnica": 1,
+      "descripcion": "Camiseta blanca sublimada talla M",
+      "cantidad": 10,
+      "imagenReferencia": "https://example.com/referencia.png",
+      "observaciones": "Diseno frontal"
+    }
+  ]
+}
+```
+
+### Validaciones
+
+- `idTecnica` obligatorio.
+- `descripcion` no puede estar vacia.
+- `cantidad` debe ser mayor a 0.
+- `detalles` debe tener exactamente un elemento.
+- No se aceptan `idDetalleCotizacion`, `precioUnitario`, `costoDiseno`, `subtotal`, `costosAdicionales` ni `total`.
+
+---
+
+## Editar solicitud como cliente
+
+Roles permitidos:
+
+```txt
+Cliente
+```
+
+```http
+PATCH /api/cotizaciones/:id/cliente
+```
+
+Solo permitido si:
+
+- La cotizacion pertenece al cliente autenticado.
+- El estado actual es `SOLICITADA`.
+
+### Body
+
+```json
+{
+  "detalles": [
+    {
+      "idDetalleCotizacion": 12,
+      "idTecnica": 1,
+      "descripcion": "Camiseta blanca sublimada talla L",
+      "cantidad": 12,
+      "imagenReferencia": "https://example.com/nueva-referencia.png",
+      "observaciones": "Cambiar talla y cantidad"
+    }
+  ]
+}
+```
+
+Notas:
+
+- Debe enviarse el `idDetalleCotizacion` del detalle existente.
+- Solo se actualiza ese detalle existente.
+- No se pueden agregar nuevos detalles desde este endpoint.
+- Para otra prenda, mug o producto, se debe crear una nueva cotizacion.
+
+---
+
+## Anular solicitud
+
+Roles permitidos:
+
+```txt
+Cliente
+```
+
+```http
+PATCH /api/cotizaciones/:id/anular
+```
+
+Solo permitido si:
+
+- La cotizacion pertenece al cliente autenticado.
+- El estado actual es `SOLICITADA`.
+
+Resultado:
+
+```txt
+estado = ANULADA
+```
+
+---
+
+## Aprobar cotizacion
+
+Roles permitidos:
+
+```txt
+Cliente
+```
+
+```http
+PATCH /api/cotizaciones/:id/aprobar
+```
+
+Solo permitido si:
+
+- La cotizacion pertenece al cliente autenticado.
+- El estado actual es `COTIZADA`.
+
+Resultado:
+
+```txt
+estado = APROBADA
+```
+
+---
+
+## Rechazar cotizacion
+
+Roles permitidos:
+
+```txt
+Cliente
+```
+
+```http
+PATCH /api/cotizaciones/:id/rechazar
+```
+
+Solo permitido si:
+
+- La cotizacion pertenece al cliente autenticado.
+- El estado actual es `COTIZADA`.
+
+Resultado:
+
+```txt
+estado = RECHAZADA
+```
+
+---
+
+## Crear solicitud presencial
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
 ```
 
 ```http
 POST /api/cotizaciones
 ```
 
-### Headers
-
-```txt
-Authorization: Bearer TU_TOKEN
-```
+Admin o Secretaria selecciona el cliente. Estado inicial: `SOLICITADA`.
 
 ### Body
 
 ```json
 {
   "idCliente": 4,
-  "costosAdicionales": 10000,
-  "observaciones": "Cliente solicita camisetas personalizadas",
+  "observaciones": "Cliente presencial solicita cotizacion formal",
   "detalles": [
     {
       "idTecnica": 1,
       "descripcion": "Camiseta blanca sublimada talla M",
       "cantidad": 10,
-      "precioUnitario": 25000,
-      "costoDiseno": 30000,
-      "observaciones": "Diseño frontal"
+      "imagenReferencia": "https://example.com/referencia.png",
+      "observaciones": "Diseno frontal"
     }
   ]
 }
 ```
 
-### Cálculo del backend
-
-```txt
-subtotal detalle = cantidad * precioUnitario + costoDiseno
-total cotización = suma de subtotales + costosAdicionales
-```
+Este endpoint no recibe precios. Para asignar precios se usa `PATCH /api/cotizaciones/:id/cotizar`.
+La solicitud presencial tambien debe tener un unico detalle; otro producto se registra como otra cotizacion.
 
 ---
 
-## Crear cotización rápida
+## Cotizar solicitud
 
-Usada para cliente presencial que quiere hacer pedido inmediato.
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+PATCH /api/cotizaciones/:id/cotizar
+```
+
+Asigna precios, costos de diseno, costos adicionales y observaciones de empresa. Cambia el estado a `COTIZADA`.
+
+Solo permitido si el estado actual es `SOLICITADA`.
+
+### Body
+
+```json
+{
+  "costosAdicionales": 10000,
+  "observaciones": "Incluye entrega local",
+  "detalles": [
+    {
+      "idDetalleCotizacion": 12,
+      "precioUnitario": 25000,
+      "costoDiseno": 30000,
+      "observaciones": "Precio validado por produccion"
+    }
+  ]
+}
+```
+
+### Validaciones
+
+- `detalles` debe tener exactamente un elemento.
+- El detalle debe incluir `idDetalleCotizacion`.
+- `precioUnitario` debe ser mayor o igual a 0.
+- `costoDiseno` debe ser mayor o igual a 0.
+- `costosAdicionales`, si se envia, debe ser mayor o igual a 0.
+
+---
+
+## Crear cotizacion rapida
 
 Roles permitidos:
 
@@ -593,6 +411,9 @@ Admin, Secretaria
 ```http
 POST /api/cotizaciones/rapida
 ```
+
+Cotizacion presencial con precios ya asignados. Nace `APROBADA` y devuelve un `pedidoSimulado` mientras no exista el modulo de pedidos.
+Debe tener un unico detalle con precios completos.
 
 ### Body
 
@@ -608,19 +429,62 @@ POST /api/cotizaciones/rapida
       "cantidad": 5,
       "precioUnitario": 35000,
       "costoDiseno": 20000,
-      "observaciones": "Logo pequeño frontal"
+      "imagenReferencia": null,
+      "observaciones": "Logo pequeno frontal"
     }
   ]
 }
 ```
 
-### Flujo interno
+### Respuesta parcial
+
+```json
+{
+  "message": "Cotizacion rapida creada, aprobada y con pedido simulado.",
+  "data": {
+    "idCotizacion": 20,
+    "estado": "APROBADA",
+    "tipoCotizacion": "RAPIDA",
+    "subtotal": "195000",
+    "costosAdicionales": "0",
+    "total": "195000",
+    "pedidoSimulado": {
+      "generado": true,
+      "mensaje": "Pedido simulado. El modulo de pedidos aun no esta implementado."
+    }
+  }
+}
+```
+
+---
+
+## Actualizar observaciones o costos adicionales
+
+Roles permitidos:
 
 ```txt
-1. Crear cotización
-2. Marcarla como APROBADA
-3. Generar pedido automáticamente cuando exista el módulo de pedidos
+Admin, Secretaria
 ```
+
+```http
+PATCH /api/cotizaciones/:id
+```
+
+Solo permitido si la cotizacion esta en `SOLICITADA` o `COTIZADA`.
+
+### Body
+
+```json
+{
+  "observaciones": "Cliente pidio ajustar condiciones de entrega",
+  "costosAdicionales": 15000
+}
+```
+
+Reglas:
+
+- Solo se aceptan `observaciones` y `costosAdicionales`.
+- Si cambia `costosAdicionales`, el backend recalcula `total`.
 
 ---
 
@@ -636,14 +500,14 @@ Admin, Secretaria, Cliente
 GET /api/cotizaciones
 ```
 
-### Comportamiento
+Comportamiento:
 
-- Admin y Secretaria ven todas las cotizaciones.
+- Admin y Secretaria ven todas.
 - Cliente solo ve sus propias cotizaciones.
 
 ---
 
-## Buscar cotización por ID
+## Buscar cotizacion por ID
 
 Roles permitidos:
 
@@ -655,107 +519,30 @@ Admin, Secretaria, Cliente
 GET /api/cotizaciones/:id
 ```
 
-### Comportamiento
+Comportamiento:
 
-- Admin y Secretaria pueden ver cualquier cotización.
+- Admin y Secretaria pueden ver cualquier cotizacion.
 - Cliente solo puede ver cotizaciones propias.
 
 ---
 
 ## Buscar cotizaciones parcialmente
 
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+GET /api/cotizaciones/buscar?termino=solicitada
+```
+
 Busca por:
 
-- estado
-- tipo de cotización
-- nombre del cliente
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria, Cliente
-```
-
-```http
-GET /api/cotizaciones/buscar?termino=pendiente
-```
-
-### Si no hay resultados
-
-```json
-{
-  "message": "No se encontraron resultados."
-}
-```
-
----
-
-## Actualizar cotización
-
-Solo permite actualizar cotizaciones en estado `PENDIENTE`.
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria
-```
-
-```http
-PATCH /api/cotizaciones/:id
-```
-
-### Body
-
-```json
-{
-  "observaciones": "Cliente pidió ajustar las medidas",
-  "costosAdicionales": 15000
-}
-```
-
-### Reglas
-
-- Solo se puede modificar si está `PENDIENTE`.
-- No se deben modificar cotizaciones `APROBADAS` o `RECHAZADAS`.
-- Si cambia `costosAdicionales`, el backend recalcula el total.
-
----
-
-## Aprobar cotización
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria, Cliente
-```
-
-```http
-PATCH /api/cotizaciones/:id/aprobar
-```
-
-### Reglas
-
-- Solo se pueden aprobar cotizaciones pendientes.
-- En el futuro, al aprobar debe generarse el pedido.
-
----
-
-## Rechazar cotización
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria, Cliente
-```
-
-```http
-PATCH /api/cotizaciones/:id/rechazar
-```
-
-### Reglas
-
-- Solo se pueden rechazar cotizaciones pendientes.
-- Una cotización rechazada no genera pedido.
+- Estado.
+- Tipo de cotizacion.
+- Nombre del cliente.
 
 ---
 
@@ -779,7 +566,7 @@ PATCH /api/cotizaciones/:id/rechazar
 }
 ```
 
-## Diseñador
+## Disenador
 
 ```json
 {
@@ -809,11 +596,11 @@ PATCH /api/cotizaciones/:id/rechazar
 }
 ```
 
-## Token inválido
+## Token invalido
 
 ```json
 {
-  "message": "Token inválido o expirado."
+  "message": "Token invalido o expirado."
 }
 ```
 
@@ -821,7 +608,7 @@ PATCH /api/cotizaciones/:id/rechazar
 
 ```json
 {
-  "message": "No tienes permisos para realizar esta acción."
+  "message": "No tienes permisos para realizar esta accion."
 }
 ```
 
@@ -833,19 +620,11 @@ PATCH /api/cotizaciones/:id/rechazar
 }
 ```
 
-## Rol inexistente
+## Tecnica inexistente
 
 ```json
 {
-  "message": "El rol debe existir."
-}
-```
-
-## Técnica inexistente
-
-```json
-{
-  "message": "La técnica con ID 99 no existe."
+  "message": "La tecnica con ID 99 no existe."
 }
 ```
 
@@ -858,8 +637,9 @@ PATCH /api/cotizaciones/:id/rechazar
 2. Crear usuarios internos
 3. Hacer login
 4. Copiar token
-5. Crear técnicas
-6. Crear cotización normal
-7. Aprobar o rechazar cotización
-8. Crear cotización rápida
+5. Crear tecnicas
+6. Crear solicitud como cliente o solicitud presencial
+7. Cotizar solicitud como Admin/Secretaria
+8. Aprobar, rechazar o anular como cliente
+9. Crear cotizacion rapida
 ```

@@ -5,15 +5,54 @@ import type { AuthRequest } from "../middlewares/auth.middleware";
 const cotizacionService = new CotizacionService();
 
 export class CotizacionController {
+  async crearSolicitudCliente(req: AuthRequest, res: Response) {
+    try {
+      const cotizacion = await cotizacionService.crearSolicitudCliente(
+        req.body,
+        req.user,
+      );
+
+      return res.status(201).json({
+        message: "Solicitud de cotizacion creada correctamente.",
+        data: cotizacion,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
+  async editarSolicitudCliente(req: AuthRequest, res: Response) {
+    try {
+      const idCotizacion = Number(req.params.id);
+
+      const cotizacion = await cotizacionService.editarSolicitudCliente(
+        idCotizacion,
+        req.body,
+        req.user,
+      );
+
+      return res.status(200).json({
+        message: "Solicitud de cotizacion actualizada correctamente.",
+        data: cotizacion,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
   async crearCotizacionNormal(req: AuthRequest, res: Response) {
     try {
       const cotizacion = await cotizacionService.crearCotizacionNormal(
         req.body,
-        req.user
+        req.user,
       );
 
       return res.status(201).json({
-        message: "Cotización creada correctamente.",
+        message: "Cotizacion presencial creada correctamente.",
         data: cotizacion,
       });
     } catch (error: any) {
@@ -27,11 +66,11 @@ export class CotizacionController {
     try {
       const cotizacion = await cotizacionService.crearCotizacionRapida(
         req.body,
-        req.user
+        req.user,
       );
 
       return res.status(201).json({
-        message: "Cotización rápida creada y aprobada correctamente.",
+        message: "Cotizacion rapida creada, aprobada y con pedido simulado.",
         data: cotizacion,
       });
     } catch (error: any) {
@@ -61,7 +100,7 @@ export class CotizacionController {
 
       const cotizacion = await cotizacionService.buscarPorId(
         idCotizacion,
-        req.user
+        req.user,
       );
 
       return res.status(200).json({
@@ -80,7 +119,7 @@ export class CotizacionController {
 
       const cotizaciones = await cotizacionService.buscarParcial(
         String(termino || ""),
-        req.user
+        req.user,
       );
 
       return res.status(200).json({
@@ -99,11 +138,51 @@ export class CotizacionController {
 
       const cotizacion = await cotizacionService.actualizarCotizacion(
         idCotizacion,
-        req.body
+        req.body,
       );
 
       return res.status(200).json({
-        message: "Cotización actualizada correctamente.",
+        message: "Cotizacion actualizada correctamente.",
+        data: cotizacion,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
+  async cotizarCotizacion(req: AuthRequest, res: Response) {
+    try {
+      const idCotizacion = Number(req.params.id);
+
+      const cotizacion = await cotizacionService.cotizarCotizacion(
+        idCotizacion,
+        req.body,
+      );
+
+      return res.status(200).json({
+        message: "Cotizacion enviada al cliente con precios asignados.",
+        data: cotizacion,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
+  async anularCotizacion(req: AuthRequest, res: Response) {
+    try {
+      const idCotizacion = Number(req.params.id);
+
+      const cotizacion = await cotizacionService.anularCotizacion(
+        idCotizacion,
+        req.user,
+      );
+
+      return res.status(200).json({
+        message: "Cotizacion anulada correctamente.",
         data: cotizacion,
       });
     } catch (error: any) {
@@ -117,10 +196,13 @@ export class CotizacionController {
     try {
       const idCotizacion = Number(req.params.id);
 
-      const cotizacion = await cotizacionService.aprobarCotizacion(idCotizacion);
+      const cotizacion = await cotizacionService.aprobarCotizacion(
+        idCotizacion,
+        req.user,
+      );
 
       return res.status(200).json({
-        message: "Cotización aprobada correctamente.",
+        message: "Cotizacion aprobada correctamente.",
         data: cotizacion,
       });
     } catch (error: any) {
@@ -134,10 +216,13 @@ export class CotizacionController {
     try {
       const idCotizacion = Number(req.params.id);
 
-      const cotizacion = await cotizacionService.rechazarCotizacion(idCotizacion);
+      const cotizacion = await cotizacionService.rechazarCotizacion(
+        idCotizacion,
+        req.user,
+      );
 
       return res.status(200).json({
-        message: "Cotización rechazada correctamente.",
+        message: "Cotizacion rechazada correctamente.",
         data: cotizacion,
       });
     } catch (error: any) {

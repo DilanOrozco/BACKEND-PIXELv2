@@ -59,19 +59,23 @@ model Tecnica {
   @@map("tecnicas")
 }
 
+enum EstadoCotizacion {
+  SOLICITADA
+  COTIZADA
+  APROBADA
+  RECHAZADA
+  ANULADA
+}
+
 model Cotizacion {
   idCotizacion       Int      @id @default(autoincrement()) @map("id_cotizacion")
   idCliente          Int      @map("id_cliente")
   creadoPorId        Int      @map("creado_por_id")
-
   tipoCotizacion     String   @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
-  estado             String   @default("PENDIENTE") @db.VarChar(20)
-
+  estado             EstadoCotizacion @default(SOLICITADA)
   subtotal           Decimal  @default(0) @db.Decimal(10, 2)
-  costoDiseno        Decimal  @default(0) @map("costo_diseno") @db.Decimal(10, 2)
   costosAdicionales  Decimal  @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
   total              Decimal  @default(0) @db.Decimal(10, 2)
-
   observaciones      String?  @db.VarChar(255)
   fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
@@ -87,13 +91,13 @@ model DetalleCotizacion {
   idDetalleCotizacion Int     @id @default(autoincrement()) @map("id_detalle_cotizacion")
   idCotizacion        Int     @map("id_cotizacion")
   idTecnica           Int     @map("id_tecnica")
-
   descripcion         String  @db.VarChar(255)
   cantidad            Int
-  precioUnitario      Decimal @map("precio_unitario") @db.Decimal(10, 2)
-  costoDiseno         Decimal @default(0) @map("costo_diseno") @db.Decimal(10, 2)
-  subtotal            Decimal @db.Decimal(10, 2)
-  observaciones       String? @db.VarChar(255)
+  precioUnitario      Decimal? @map("precio_unitario") @db.Decimal(10,2)
+  costoDiseno         Decimal? @default(0) @map("costo_diseno") @db.Decimal(10,2)
+  subtotal            Decimal? @db.Decimal(10,2)
+  imagenReferencia    String?  @map("imagen_referencia") @db.VarChar(255)
+  observaciones       String?  @db.VarChar(255)
 
   cotizacion          Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion])
   tecnica             Tecnica    @relation(fields: [idTecnica], references: [idTecnica])

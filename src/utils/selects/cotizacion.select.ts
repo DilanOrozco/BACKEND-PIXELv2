@@ -5,13 +5,11 @@ export const cotizacionSelect = {
   tipoCotizacion: true,
   estado: true,
   subtotal: true,
-  costoDiseno: true,
   costosAdicionales: true,
   total: true,
   observaciones: true,
   fechaCreacion: true,
   fechaActualizacion: true,
-
   cliente: {
     select: {
       idUsuario: true,
@@ -20,21 +18,14 @@ export const cotizacionSelect = {
       correo: true,
     },
   },
-
   creadoPor: {
     select: {
       idUsuario: true,
       nombre: true,
       correo: true,
-      rol: {
-        select: {
-          idRol: true,
-          nombre: true,
-        },
-      },
+      rol: { select: { idRol: true, nombre: true } },
     },
   },
-
   detalles: {
     select: {
       idDetalleCotizacion: true,
@@ -44,13 +35,9 @@ export const cotizacionSelect = {
       precioUnitario: true,
       costoDiseno: true,
       subtotal: true,
+      imagenReferencia: true,
       observaciones: true,
-      tecnica: {
-        select: {
-          idTecnica: true,
-          nombre: true,
-        },
-      },
+      tecnica: { select: { idTecnica: true, nombre: true } },
     },
   },
 };
