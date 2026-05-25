@@ -11,7 +11,7 @@ router.use(verificarAuth);
 // Cliente: solicita, edita, anula, aprueba o rechaza solo sus cotizaciones.
 router.post(
   "/cliente",
-  autorizarRoles("Cliente"),
+  autorizarRoles("Admin", "Secretaria", "Cliente"),
   cotizacionController.crearSolicitudCliente,
 );
 
@@ -23,19 +23,19 @@ router.patch(
 
 router.patch(
   "/:id/anular",
-  autorizarRoles("Cliente"),
+  autorizarRoles("Admin", "Secretaria", "Cliente"),
   cotizacionController.anularCotizacion,
 );
 
 router.patch(
   "/:id/aprobar",
-  autorizarRoles("Cliente"),
+  autorizarRoles("Admin", "Secretaria", "Cliente"),
   cotizacionController.aprobarCotizacion,
 );
 
 router.patch(
   "/:id/rechazar",
-  autorizarRoles("Cliente"),
+  autorizarRoles("Admin", "Secretaria", "Cliente"),
   cotizacionController.rechazarCotizacion,
 );
 
