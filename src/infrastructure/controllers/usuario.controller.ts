@@ -1,3 +1,4 @@
+// backend/src/presentation/controllers/usuario.controller.ts
 import type { Request, Response } from "express";
 import { UsuarioService } from "../../applications/services/usuario.service";
 
@@ -21,7 +22,10 @@ export class UsuarioController {
 
   async listarUsuarios(req: Request, res: Response) {
     try {
-      const usuarios = await usuarioService.listarUsuarios();
+      const { idRol } = req.query;
+      const filtros = idRol ? { idRol: Number(idRol) } : undefined;
+
+      const usuarios = await usuarioService.listarUsuarios(filtros);
 
       return res.status(200).json({
         data: usuarios,
@@ -51,10 +55,12 @@ export class UsuarioController {
 
   async buscarUsuarios(req: Request, res: Response) {
     try {
-      const { termino } = req.query;
+      const { termino, idRol } = req.query;
+      const parsedIdRol = idRol ? Number(idRol) : undefined;
 
       const usuarios = await usuarioService.buscarParcial(
         String(termino || ""),
+        parsedIdRol
       );
 
       return res.status(200).json({
@@ -98,7 +104,7 @@ export class UsuarioController {
         data: usuario,
       });
     } catch (error: any) {
-      return res.status(404).json({
+      return res.status(400).json({
         message: error.message,
       });
     }
