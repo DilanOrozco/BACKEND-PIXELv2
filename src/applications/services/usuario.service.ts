@@ -1,3 +1,4 @@
+// backend/src/applications/services/usuario.service.ts
 import { encriptarContrasena } from "../../utils/password.util";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
 import { RolRepository } from "../../infrastructure/repositories/rol.repository";
@@ -43,71 +44,56 @@ export class UsuarioService {
 
     const contrasenaHash = await encriptarContrasena(data.contrasena);
 
-    return await usuarioRepository.crearUsuario({
+    const dataCrear = {
       nombre: data.nombre.trim(),
-      documento: data.documento?.trim(),
-      telefono: data.telefono?.trim(),
-      direccion: data.direccion?.trim(),
+      documento: data.documento ? data.documento.trim() : null,
+      telefono: data.telefono ? data.telefono.trim() : null,
+      direccion: data.direccion ? data.direccion.trim() : null,
       correo: data.correo.trim().toLowerCase(),
       contrasenaHash,
       idRol: Number(data.idRol),
-      estado: true,
-    });
+    };
+
+    return await usuarioRepository.crearUsuario(dataCrear);
   }
 
-  async listarUsuarios() {
-    const usuarios = await usuarioRepository.listarUsuarios();
-
-    if (usuarios.length === 0) {
-      throw new Error("No se encontraron resultados.");
-    }
-
-    return usuarios;
+  // 🎯 Modificado para recibir y delegar los filtros de rol al repositorio
+  async listarUsuarios(filtros?: { idRol?: number }) {
+    return await usuarioRepository.listarUsuarios(filtros);
   }
 
   async buscarPorId(idUsuario: number) {
     if (isNaN(idUsuario) || idUsuario <= 0) {
-      throw new Error("El ID del usuario no es válido.");
+      throw new Error("El id del usuario no es válido.");
     }
 
     const usuario = await usuarioRepository.buscarPorId(idUsuario);
 
     if (!usuario) {
-      throw new Error("No se encontraron resultados.");
+      throw new Error("El usuario solicitado no existe.");
     }
 
     return usuario;
   }
 
-  async buscarParcial(termino: string) {
-    if (!termino || termino.trim() === "") {
-      throw new Error("Debe ingresar un término de búsqueda.");
-    }
-
-    const usuarios = await usuarioRepository.buscarParcial(termino.trim());
-
-    if (usuarios.length === 0) {
-      throw new Error("No se encontraron resultados.");
-    }
-
-    return usuarios;
+  // 🎯 Modificado para recibir el idRol opcional y pasarlo a la búsqueda parcial
+  async buscarParcial(termino: string, idRol?: number) {
+    return await usuarioRepository.buscarParcial(termino, idRol);
   }
 
   async actualizarUsuario(idUsuario: number, data: any) {
     if (isNaN(idUsuario) || idUsuario <= 0) {
-      throw new Error("El ID del usuario no es válido.");
+      throw new Error("El id del usuario no es válido.");
     }
 
     const error = validarActualizarUsuario(data);
-
     if (error) {
       throw new Error(error);
     }
 
-    const usuario = await usuarioRepository.buscarPorId(idUsuario);
-
-    if (!usuario) {
-      throw new Error("No se encontraron resultados.");
+    const usuarioExistente = await usuarioRepository.buscarPorId(idUsuario);
+    if (!usuarioExistente) {
+      throw new Error("El usuario a actualizar no existe.");
     }
 
     const dataActualizar: any = {};
@@ -117,24 +103,19 @@ export class UsuarioService {
     }
 
     if (data.documento !== undefined) {
-      const documentoLimpio = data.documento.trim();
+      const docLimpio = data.documento ? data.documento.trim() : null;
 
-      const documentoExistente =
-        await usuarioRepository.buscarPorDocumento(documentoLimpio);
-
-      if (
-        documentoExistente &&
-        documentoExistente.idUsuario !== idUsuario
-      ) {
-        throw new Error("El documento debe ser único.");
+      if (docLimpio) {
+        const docExistente = await usuarioRepository.buscarPorDocumento(docLimpio);
+        if (docExistente && docExistente.idUsuario !== idUsuario) {
+          throw new Error("El documento debe ser único.");
+        }
       }
-
-      dataActualizar.documento = documentoLimpio;
+      dataActualizar.documento = docLimpio;
     }
 
     if (data.correo !== undefined) {
       const correoLimpio = data.correo.trim().toLowerCase();
-
       const correoExistente = await usuarioRepository.buscarPorCorreo(correoLimpio);
 
       if (correoExistente && correoExistente.idUsuario !== idUsuario) {
@@ -167,7 +148,6 @@ export class UsuarioService {
         throw new Error("El rol debe existir.");
       }
 
-      // Más adelante esto solo lo debe hacer el Admin con JWT.
       dataActualizar.idRol = Number(data.idRol);
     }
 
@@ -176,13 +156,12 @@ export class UsuarioService {
 
   async desactivarUsuario(idUsuario: number) {
     if (isNaN(idUsuario) || idUsuario <= 0) {
-      throw new Error("El ID del usuario no es válido.");
+      throw new Error("El id del usuario no es válido.");
     }
 
-    const usuario = await usuarioRepository.buscarPorId(idUsuario);
-
-    if (!usuario) {
-      throw new Error("No se encontraron resultados.");
+    const usuarioExistente = await usuarioRepository.buscarPorId(idUsuario);
+    if (!usuarioExistente) {
+      throw new Error("El usuario a desactivar no existe.");
     }
 
     return await usuarioRepository.desactivarUsuario(idUsuario);

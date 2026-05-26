@@ -1,6 +1,6 @@
+// backend/src/infrastructure/repositories/usuario.repository.ts
 import { prisma } from "../../config/prisma";
-import { usuarioSelect } from "../../utils/selects/usuario.select";
-import { usuarioAuthSelect } from "../../utils/selects/usuario.select";
+import { usuarioSelect, usuarioAuthSelect } from "../../utils/selects/usuario.select";
 
 export class UsuarioRepository {
   async crearUsuario(data: any) {
@@ -10,8 +10,15 @@ export class UsuarioRepository {
     });
   }
 
-  async listarUsuarios() {
+  async listarUsuarios(filtros?: { idRol?: number }) {
+    const where: any = {};
+
+    if (filtros?.idRol) {
+      where.idRol = filtros.idRol;
+    }
+
     return await prisma.usuario.findMany({
+      where,
       select: usuarioSelect,
       orderBy: {
         idUsuario: "asc",
@@ -45,30 +52,36 @@ export class UsuarioRepository {
     });
   }
 
-  async buscarParcial(termino: string) {
+  async buscarParcial(termino: string, idRol?: number) {
+    const where: any = {
+      OR: [
+        {
+          nombre: {
+            contains: termino,
+            mode: "insensitive",
+          },
+        },
+        {
+          correo: {
+            contains: termino,
+            mode: "insensitive",
+          },
+        },
+        {
+          documento: {
+            contains: termino,
+            mode: "insensitive",
+          },
+        },
+      ],
+    };
+
+    if (idRol) {
+      where.idRol = idRol;
+    }
+
     return await prisma.usuario.findMany({
-      where: {
-        OR: [
-          {
-            nombre: {
-              contains: termino,
-              mode: "insensitive",
-            },
-          },
-          {
-            correo: {
-              contains: termino,
-              mode: "insensitive",
-            },
-          },
-          {
-            documento: {
-              contains: termino,
-              mode: "insensitive",
-            },
-          },
-        ],
-      },
+      where,
       select: usuarioSelect,
       orderBy: {
         idUsuario: "asc",
@@ -87,9 +100,7 @@ export class UsuarioRepository {
   async desactivarUsuario(idUsuario: number) {
     return await prisma.usuario.update({
       where: { idUsuario },
-      data: {
-        estado: false,
-      },
+      data: { estado: false },
       select: usuarioSelect,
     });
   }
