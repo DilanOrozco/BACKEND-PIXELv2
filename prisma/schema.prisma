@@ -38,7 +38,7 @@ model Usuario {
   fechaCreacion      DateTime  @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime  @updatedAt @map("fecha_actualizacion")
 
-  rol                Rol       @relation(fields: [idRol], references: [idRol])
+  rol                Rol       @relation(fields: [idRol], references: [idRol], onDelete: Cascade)
 
   cotizacionesCliente Cotizacion[] @relation("CotizacionCliente")
   cotizacionesCreadas  Cotizacion[] @relation("CotizacionCreador")
@@ -78,8 +78,8 @@ model Cotizacion {
   fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
 
-  cliente            Usuario  @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario])
-  creadoPor          Usuario  @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario])
+  cliente            Usuario  @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
+  creadoPor          Usuario  @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: Cascade)
   detalles           DetalleCotizacion[]
 
   @@map("cotizaciones")
@@ -97,8 +97,8 @@ model DetalleCotizacion {
   imagenReferencia    String?  @map("imagen_referencia") @db.VarChar(255)
   observaciones       String?  @db.VarChar(255)
 
-  cotizacion          Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion])
-  tecnica             Tecnica    @relation(fields: [idTecnica], references: [idTecnica])
+  cotizacion          Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
+  tecnica             Tecnica    @relation(fields: [idTecnica], references: [idTecnica], onDelete: Cascade)
 
   @@map("detalle_cotizacion")
 }

@@ -140,15 +140,6 @@ export class TecnicaService {
       throw new Error("No se encontraron resultados.");
     }
 
-    const detallesAsociados =
-      await tecnicaRepository.contarDetallesAsociados(idTecnica);
-
-    if (detallesAsociados > 0) {
-      throw new Error(
-        "No se puede eliminar la tecnica porque tiene cotizaciones asociadas. Desactivala en su lugar.",
-      );
-    }
-
     return await tecnicaRepository.eliminarTecnica(idTecnica);
   }
 }

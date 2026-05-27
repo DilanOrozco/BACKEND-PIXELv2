@@ -178,15 +178,8 @@ export class UsuarioService {
       throw new Error("El usuario a eliminar no existe.");
     }
 
-    const cotizacionesAsociadas =
-      await usuarioRepository.contarCotizacionesAsociadas(idUsuario);
+    await usuarioRepository.eliminarUsuario(idUsuario);
 
-    if (cotizacionesAsociadas > 0) {
-      throw new Error(
-        "No se puede eliminar el usuario porque tiene cotizaciones asociadas. Desactivalo en su lugar.",
-      );
-    }
-
-    return await usuarioRepository.eliminarUsuario(idUsuario);
+    return usuarioExistente;
   }
 }

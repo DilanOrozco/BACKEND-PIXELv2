@@ -191,14 +191,9 @@ export class CotizacionRepository {
   }
 
   async eliminarCotizacion(idCotizacion: number) {
-    return await prisma.$transaction(async (tx: any) => {
-      await tx.detalleCotizacion.deleteMany({
-        where: { idCotizacion },
-      });
-
-      await tx.cotizacion.delete({
-        where: { idCotizacion },
-      });
+    return await prisma.cotizacion.delete({
+      where: { idCotizacion },
+      select: { idCotizacion: true },
     });
   }
 }

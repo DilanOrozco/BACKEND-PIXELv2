@@ -87,7 +87,7 @@ Reglas principales:
 - El nombre no puede repetirse.
 - La descripcion debe tener minimo 5 caracteres.
 - `DELETE` no elimina fisicamente; cambia el estado.
-- `DELETE /api/roles/:id/eliminar` elimina fisicamente el rol solo si no tiene usuarios asociados.
+- `DELETE /api/roles/:id/eliminar` elimina fisicamente el rol y, por cascada, sus usuarios relacionados con sus cotizaciones y detalles.
 
 ---
 
@@ -111,7 +111,7 @@ Reglas principales:
 - El rol debe existir.
 - La API no devuelve `contrasenaHash`.
 - `DELETE` no elimina fisicamente; cambia `estado` a `false`.
-- `DELETE /api/usuarios/:id/eliminar` elimina fisicamente el usuario solo si no tiene cotizaciones asociadas.
+- `DELETE /api/usuarios/:id/eliminar` elimina fisicamente el usuario y, por cascada, sus cotizaciones con sus detalles.
 
 ---
 
@@ -137,7 +137,7 @@ Roles:
 Reglas principales:
 
 - `DELETE /api/tecnicas/:id` cambia el estado de la tecnica.
-- `DELETE /api/tecnicas/:id/eliminar` elimina fisicamente la tecnica solo si no tiene cotizaciones asociadas.
+- `DELETE /api/tecnicas/:id/eliminar` elimina fisicamente la tecnica y, por cascada, los detalles de cotizacion relacionados.
 
 ---
 
@@ -168,7 +168,7 @@ Reglas generales:
 - Cliente no puede enviar ni modificar precios, costos de diseno, subtotales, costos adicionales ni totales.
 - Admin y Secretaria pueden consultar todas las cotizaciones.
 - Anular conserva la cotizacion y cambia el estado a `ANULADA`.
-- Eliminar borra la cotizacion y sus detalles.
+- Eliminar borra la cotizacion y, por cascada, sus detalles.
 - Una cotizacion `APROBADA` o `ANULADA` no se edita.
 - Una cotizacion `PENDIENTE` con precios asignados ya no puede ser editada por el cliente.
 - `imagenReferencia` es opcional; puede enviarse como texto, `null` u omitirse.
@@ -434,7 +434,7 @@ DELETE /api/cotizaciones/:id
 DELETE /api/cotizaciones/:id/eliminar
 ```
 
-Elimina fisicamente la cotizacion y sus detalles. Ambos endpoints hacen la misma eliminacion; se mantiene `DELETE /api/cotizaciones/:id` por convencion REST y `DELETE /api/cotizaciones/:id/eliminar` para usar el mismo patron explicito de las demas APIs. Esto no reemplaza `PATCH /api/cotizaciones/:id/anular`; anular se mantiene para cerrar el flujo comercial conservando el registro.
+Elimina fisicamente la cotizacion y, por cascada, sus detalles. Ambos endpoints hacen la misma eliminacion; se mantiene `DELETE /api/cotizaciones/:id` por convencion REST y `DELETE /api/cotizaciones/:id/eliminar` para usar el mismo patron explicito de las demas APIs. Esto no reemplaza `PATCH /api/cotizaciones/:id/anular`; anular se mantiene para cerrar el flujo comercial conservando el registro.
 
 ---
 

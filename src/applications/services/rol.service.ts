@@ -109,14 +109,6 @@ export class RolService {
       throw new Error("No se encontraron resultados.");
     }
 
-    const usuariosAsociados = await rolRepository.contarUsuariosAsociados(idRol);
-
-    if (usuariosAsociados > 0) {
-      throw new Error(
-        "No se puede eliminar el rol porque tiene usuarios asociados. Desactivalo en su lugar.",
-      );
-    }
-
     return await rolRepository.eliminarRol(idRol);
   }
 }

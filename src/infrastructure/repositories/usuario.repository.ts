@@ -105,21 +105,10 @@ export class UsuarioRepository {
     });
   }
 
-  async contarCotizacionesAsociadas(idUsuario: number) {
-    return await prisma.cotizacion.count({
-      where: {
-        OR: [
-          { idCliente: idUsuario },
-          { creadoPorId: idUsuario },
-        ],
-      },
-    });
-  }
-
   async eliminarUsuario(idUsuario: number) {
     return await prisma.usuario.delete({
       where: { idUsuario },
-      select: usuarioSelect,
+      select: { idUsuario: true },
     });
   }
 }

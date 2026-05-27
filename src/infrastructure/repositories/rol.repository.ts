@@ -64,12 +64,6 @@ export class RolRepository {
     });
   }
 
-  async contarUsuariosAsociados(idRol: number) {
-    return await prisma.usuario.count({
-      where: { idRol },
-    });
-  }
-
   async eliminarRol(idRol: number) {
     return await prisma.rol.delete({
       where: { idRol },

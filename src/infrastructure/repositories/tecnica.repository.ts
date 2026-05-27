@@ -85,12 +85,6 @@ export class TecnicaRepository {
     });
   }
 
-  async contarDetallesAsociados(idTecnica: number) {
-    return await prisma.detalleCotizacion.count({
-      where: { idTecnica },
-    });
-  }
-
   async eliminarTecnica(idTecnica: number) {
     return await prisma.tecnica.delete({
       where: { idTecnica },
