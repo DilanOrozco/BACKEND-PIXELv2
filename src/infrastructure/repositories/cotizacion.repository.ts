@@ -1,5 +1,5 @@
 import { prisma } from "../../config/prisma";
-import type { EstadoCotizacion } from "../../../generated/prisma/enums";
+import { EstadoCotizacion } from "../../../generated/prisma/enums";
 import { cotizacionSelect } from "../../utils/selects/cotizacion.select";
 
 const estadosCotizacion = [
@@ -8,18 +8,25 @@ const estadosCotizacion = [
   "ANULADA",
 ];
 
+// Convierte un string al valor real del enum EstadoCotizacion en runtime
+const toEstado = (estado: string): EstadoCotizacion =>
+  EstadoCotizacion[estado as keyof typeof EstadoCotizacion];
+
 export class CotizacionRepository {
-  // Crea la cotizacion y sus detalles en una sola transaccion para evitar
-  // cabeceras sin detalle si algo falla a mitad del proceso.
+  // Crea la cotizacion y sus detalles en una sola transaccion
   async crearCotizacionConDetalles(data: any) {
-    const { detalles, ...cotizacionData } = data;
+    const { detalles, estado, ...cotizacionData } = data;
+
+    // Filtramos 'tecnica' de cada detalle por seguridad si viene del frontend
+    const detallesLimpios = detalles.map(({ tecnica, ...restoDetalle }: any) => restoDetalle);
 
     return await prisma.$transaction(async (tx: any) => {
       return await tx.cotizacion.create({
         data: {
           ...cotizacionData,
+          estado: toEstado(estado),
           detalles: {
-            create: detalles,
+            create: detallesLimpios,
           },
         },
         select: cotizacionSelect,
@@ -92,21 +99,25 @@ export class CotizacionRepository {
     });
   }
 
-  // Edicion de solicitud: solo actualiza el detalle existente. Si el cliente
-  // quiere otra prenda o producto, debe crear una nueva cotizacion.
+  // Edicion de solicitud: solo actualiza el detalle existente.
   async actualizarSolicitudCliente(
     idCotizacion: number,
     cotizacionData: any,
     detalles: any[],
   ) {
+    const { estado, ...restoCotizacionData } = cotizacionData;
+
     return await prisma.$transaction(async (tx: any) => {
       await tx.cotizacion.update({
         where: { idCotizacion },
-        data: cotizacionData,
+        data: {
+          ...restoCotizacionData,
+          ...(estado && { estado: toEstado(estado) }),
+        },
       });
 
       for (const detalle of detalles) {
-        const { idDetalleCotizacion, ...detalleData } = detalle;
+        const { idDetalleCotizacion, tecnica, ...detalleData } = detalle;
 
         if (!idDetalleCotizacion) {
           throw new Error(
@@ -136,16 +147,17 @@ export class CotizacionRepository {
     });
   }
 
-  // Cotizar tambien es transaccional: primero actualiza todos los detalles y
-  // luego recalcula los importes de la cabecera en el mismo commit.
+  // Cotizar tambien es transaccional
   async cotizarCotizacion(
     idCotizacion: number,
     cotizacionData: any,
     detalles: any[],
   ) {
+    const { estado, ...restoCotizacionData } = cotizacionData;
+
     return await prisma.$transaction(async (tx: any) => {
       for (const detalle of detalles) {
-        const { idDetalleCotizacion, ...detalleData } = detalle;
+        const { idDetalleCotizacion, tecnica, ...detalleData } = detalle;
 
         const resultado = await tx.detalleCotizacion.updateMany({
           where: {
@@ -164,7 +176,10 @@ export class CotizacionRepository {
 
       await tx.cotizacion.update({
         where: { idCotizacion },
-        data: cotizacionData,
+        data: {
+          ...restoCotizacionData,
+          ...(estado && { estado: toEstado(estado) }),
+        },
       });
 
       return await tx.cotizacion.findUnique({
@@ -175,9 +190,13 @@ export class CotizacionRepository {
   }
 
   async actualizarCotizacion(idCotizacion: number, data: any) {
+    const { estado, ...restoData } = data;
     return await prisma.cotizacion.update({
       where: { idCotizacion },
-      data,
+      data: {
+        ...restoData,
+        ...(estado && { estado: toEstado(estado) }),
+      },
       select: cotizacionSelect,
     });
   }
@@ -185,7 +204,7 @@ export class CotizacionRepository {
   async cambiarEstado(idCotizacion: number, estado: EstadoCotizacion) {
     return await prisma.cotizacion.update({
       where: { idCotizacion },
-      data: { estado },
+      data: { estado: toEstado(estado as unknown as string) },
       select: cotizacionSelect,
     });
   }
