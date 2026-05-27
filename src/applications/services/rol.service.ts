@@ -97,4 +97,18 @@ export class RolService {
 
     return await rolRepository.desactivarRol(idRol);
   }
+
+  async eliminarRol(idRol: number) {
+    if (isNaN(idRol) || idRol <= 0) {
+      throw new Error("El ID del rol no es valido.");
+    }
+
+    const rol = await rolRepository.buscarPorId(idRol);
+
+    if (!rol) {
+      throw new Error("No se encontraron resultados.");
+    }
+
+    return await rolRepository.eliminarRol(idRol);
+  }
 }

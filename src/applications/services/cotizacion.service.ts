@@ -4,7 +4,6 @@ import { UsuarioRepository } from "../../infrastructure/repositories/usuario.rep
 import {
   validarActualizarCotizacion,
   validarCotizar,
-  validarCrearCotizacion,
   validarSolicitudCliente,
 } from "../validators/cotizacion.validator";
 
@@ -12,14 +11,11 @@ const cotizacionRepository = new CotizacionRepository();
 const usuarioRepository = new UsuarioRepository();
 const tecnicaRepository = new TecnicaRepository();
 
-const ESTADO_SOLICITADA = "SOLICITADA";
-const ESTADO_COTIZADA = "COTIZADA";
+const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
-const ESTADO_RECHAZADA = "RECHAZADA";
 const ESTADO_ANULADA = "ANULADA";
 
 const TIPO_NORMAL = "NORMAL";
-const TIPO_RAPIDA = "RAPIDA";
 
 const esCliente = (usuarioAuth: any) => usuarioAuth?.rol === "Cliente";
 
@@ -45,6 +41,21 @@ const calcularSubtotalDetalle = (
   precioUnitario: number,
   costoDiseno: number,
 ) => cantidad * precioUnitario + costoDiseno;
+
+const detalleTienePrecios = (detalle: any) => {
+  return (
+    detalle.precioUnitario !== null &&
+    detalle.precioUnitario !== undefined &&
+    detalle.costoDiseno !== null &&
+    detalle.costoDiseno !== undefined &&
+    detalle.subtotal !== null &&
+    detalle.subtotal !== undefined
+  );
+};
+
+const cotizacionTienePrecios = (cotizacion: any) => {
+  return cotizacion.detalles.length > 0 && cotizacion.detalles.every(detalleTienePrecios);
+};
 
 export class CotizacionService {
   private async asegurarClienteExiste(idCliente: number) {
@@ -98,30 +109,6 @@ export class CotizacionService {
     });
   }
 
-  private prepararDetallesConPrecios(detalles: any[]) {
-    return detalles.map((detalle) => {
-      const cantidad = Number(detalle.cantidad);
-      const precioUnitario = Number(detalle.precioUnitario);
-      const costoDiseno = Number(detalle.costoDiseno || 0);
-      const subtotal = calcularSubtotalDetalle(
-        cantidad,
-        precioUnitario,
-        costoDiseno,
-      );
-
-      return {
-        idTecnica: Number(detalle.idTecnica),
-        descripcion: detalle.descripcion.trim(),
-        cantidad,
-        precioUnitario,
-        costoDiseno,
-        subtotal,
-        imagenReferencia: limpiarTextoOpcional(detalle.imagenReferencia),
-        observaciones: limpiarTextoOpcional(detalle.observaciones),
-      };
-    });
-  }
-
   // Cliente: crea una solicitud sin precios. El idCliente y creadoPorId salen
   // del token, por lo que el body no puede suplantar a otro cliente.
   async crearSolicitudCliente(data: any, usuarioAuth: any) {
@@ -140,7 +127,7 @@ export class CotizacionService {
       idCliente: Number(usuarioAuth.idUsuario),
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
-      estado: ESTADO_SOLICITADA,
+      estado: ESTADO_PENDIENTE,
       subtotal: 0,
       costosAdicionales: 0,
       total: 0,
@@ -171,54 +158,13 @@ export class CotizacionService {
       idCliente: Number(data.idCliente),
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
-      estado: ESTADO_SOLICITADA,
+      estado: ESTADO_PENDIENTE,
       subtotal: 0,
       costosAdicionales: 0,
       total: 0,
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
-  }
-
-  // Empleado: cotizacion presencial ya valorizada. Nace aprobada y deja un
-  // marcador de pedido simulado hasta que exista el modulo de pedidos real.
-  async crearCotizacionRapida(data: any, usuarioAuth: any) {
-    const error = validarCrearCotizacion(data);
-
-    if (error) {
-      throw new Error(error);
-    }
-
-    await this.asegurarClienteExiste(Number(data.idCliente));
-    await this.asegurarTecnicasExisten(data.detalles);
-
-    const detalles = this.prepararDetallesConPrecios(data.detalles);
-    const subtotal = detalles.reduce(
-      (acc: number, item: any) => acc + item.subtotal,
-      0,
-    );
-    const costosAdicionales = aNumero(data.costosAdicionales);
-    const total = subtotal + costosAdicionales;
-
-    const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente: Number(data.idCliente),
-      creadoPorId: Number(usuarioAuth.idUsuario),
-      tipoCotizacion: TIPO_RAPIDA,
-      estado: ESTADO_APROBADA,
-      subtotal,
-      costosAdicionales,
-      total,
-      observaciones: limpiarTextoOpcional(data.observaciones),
-      detalles,
-    });
-
-    return {
-      ...cotizacion,
-      pedidoSimulado: {
-        generado: true,
-        mensaje: "Pedido simulado. El modulo de pedidos aun no esta implementado.",
-      },
-    };
   }
 
   async listarCotizaciones(usuarioAuth: any) {
@@ -269,8 +215,8 @@ export class CotizacionService {
     return cotizaciones;
   }
 
-  // Cliente: puede editar su solicitud solo mientras siga SOLICITADA. Editar
-  // significa ajustar el detalle existente; otra prenda requiere otra cotizacion.
+  // Cliente: puede editar su solicitud mientras siga pendiente y aun no tenga
+  // precios asignados. Otra prenda requiere otra cotizacion.
   async editarSolicitudCliente(
     idCotizacion: number,
     data: any,
@@ -288,8 +234,14 @@ export class CotizacionService {
 
     const cotizacion = await this.buscarPorId(idCotizacion, usuarioAuth);
 
-    if (cotizacion.estado !== ESTADO_SOLICITADA) {
-      throw new Error("Solo se pueden editar solicitudes en estado SOLICITADA.");
+    if (cotizacion.estado !== ESTADO_PENDIENTE) {
+      throw new Error("Solo se pueden editar cotizaciones en estado PENDIENTE.");
+    }
+
+    if (cotizacionTienePrecios(cotizacion)) {
+      throw new Error(
+        "No se puede editar una cotizacion que ya tiene precios asignados.",
+      );
     }
 
     if (cotizacion.detalles.length !== 1) {
@@ -329,8 +281,8 @@ export class CotizacionService {
     );
   }
 
-  // Empleado: asigna precios al detalle existente y mueve la cotizacion de
-  // SOLICITADA a COTIZADA.
+  // Empleado: asigna precios al detalle existente. La cotizacion permanece
+  // PENDIENTE hasta que el cliente o la empresa la apruebe o la anule.
   async cotizarCotizacion(idCotizacion: number, data: any) {
     validarId(idCotizacion);
 
@@ -346,8 +298,8 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    if (cotizacion.estado !== ESTADO_SOLICITADA) {
-      throw new Error("Solo se pueden cotizar solicitudes en estado SOLICITADA.");
+    if (cotizacion.estado !== ESTADO_PENDIENTE) {
+      throw new Error("Solo se pueden cotizar solicitudes en estado PENDIENTE.");
     }
 
     if (cotizacion.detalles.length !== 1) {
@@ -414,7 +366,7 @@ export class CotizacionService {
     return await cotizacionRepository.cotizarCotizacion(
       idCotizacion,
       {
-        estado: ESTADO_COTIZADA,
+        estado: ESTADO_PENDIENTE,
         subtotal,
         costosAdicionales,
         total,
@@ -440,13 +392,8 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    if (
-      cotizacion.estado !== ESTADO_SOLICITADA &&
-      cotizacion.estado !== ESTADO_COTIZADA
-    ) {
-      throw new Error(
-        "Solo se pueden actualizar cotizaciones SOLICITADAS o COTIZADAS.",
-      );
+    if (cotizacion.estado !== ESTADO_PENDIENTE) {
+      throw new Error("Solo se pueden actualizar cotizaciones en estado PENDIENTE.");
     }
 
     const dataActualizar: any = {};
@@ -471,8 +418,8 @@ export class CotizacionService {
   async anularCotizacion(idCotizacion: number, usuarioAuth: any) {
     const cotizacion = await this.buscarPorId(idCotizacion, usuarioAuth);
 
-    if (cotizacion.estado !== ESTADO_SOLICITADA) {
-      throw new Error("Solo se pueden anular solicitudes en estado SOLICITADA.");
+    if (cotizacion.estado !== ESTADO_PENDIENTE) {
+      throw new Error("Solo se pueden anular cotizaciones en estado PENDIENTE.");
     }
 
     return await cotizacionRepository.cambiarEstado(
@@ -484,8 +431,14 @@ export class CotizacionService {
   async aprobarCotizacion(idCotizacion: number, usuarioAuth: any) {
     const cotizacion = await this.buscarPorId(idCotizacion, usuarioAuth);
 
-    if (cotizacion.estado !== ESTADO_COTIZADA) {
-      throw new Error("Solo se pueden aprobar cotizaciones en estado COTIZADA.");
+    if (cotizacion.estado !== ESTADO_PENDIENTE) {
+      throw new Error("Solo se pueden aprobar cotizaciones en estado PENDIENTE.");
+    }
+
+    if (!cotizacionTienePrecios(cotizacion)) {
+      throw new Error(
+        "Solo se pueden aprobar cotizaciones con precios asignados.",
+      );
     }
 
     return await cotizacionRepository.cambiarEstado(
@@ -494,16 +447,18 @@ export class CotizacionService {
     );
   }
 
-  async rechazarCotizacion(idCotizacion: number, usuarioAuth: any) {
-    const cotizacion = await this.buscarPorId(idCotizacion, usuarioAuth);
+  async eliminarCotizacion(idCotizacion: number) {
+    validarId(idCotizacion);
 
-    if (cotizacion.estado !== ESTADO_COTIZADA) {
-      throw new Error("Solo se pueden rechazar cotizaciones en estado COTIZADA.");
+    const cotizacion = await cotizacionRepository.buscarPorId(idCotizacion);
+
+    if (!cotizacion) {
+      throw new Error("No se encontraron resultados.");
     }
 
-    return await cotizacionRepository.cambiarEstado(
-      idCotizacion,
-      ESTADO_RECHAZADA,
-    );
+    await cotizacionRepository.eliminarCotizacion(idCotizacion);
+
+    return cotizacion;
   }
+
 }

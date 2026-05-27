@@ -78,6 +78,7 @@ GET /api/roles
 GET /api/roles/buscar?nombre=admin
 PATCH /api/roles/:id
 DELETE /api/roles/:id
+DELETE /api/roles/:id/eliminar
 ```
 
 Reglas principales:
@@ -86,6 +87,7 @@ Reglas principales:
 - El nombre no puede repetirse.
 - La descripcion debe tener minimo 5 caracteres.
 - `DELETE` no elimina fisicamente; cambia el estado.
+- `DELETE /api/roles/:id/eliminar` elimina fisicamente el rol y, por cascada, sus usuarios relacionados con sus cotizaciones y detalles.
 
 ---
 
@@ -98,6 +100,7 @@ GET /api/usuarios/buscar?termino=juan
 GET /api/usuarios/:id
 PATCH /api/usuarios/:id
 DELETE /api/usuarios/:id
+DELETE /api/usuarios/:id/eliminar
 ```
 
 Reglas principales:
@@ -108,6 +111,7 @@ Reglas principales:
 - El rol debe existir.
 - La API no devuelve `contrasenaHash`.
 - `DELETE` no elimina fisicamente; cambia `estado` a `false`.
+- `DELETE /api/usuarios/:id/eliminar` elimina fisicamente el usuario y, por cascada, sus cotizaciones con sus detalles.
 
 ---
 
@@ -122,12 +126,18 @@ GET /api/tecnicas/buscar?termino=sub
 GET /api/tecnicas/:id
 PATCH /api/tecnicas/:id
 DELETE /api/tecnicas/:id
+DELETE /api/tecnicas/:id/eliminar
 ```
 
 Roles:
 
-- Crear, actualizar y desactivar: `Admin`, `Secretaria`.
+- Crear, actualizar, desactivar y eliminar: `Admin`, `Secretaria`.
 - Listar y consultar: `Admin`, `Secretaria`, `Cliente`.
+
+Reglas principales:
+
+- `DELETE /api/tecnicas/:id` cambia el estado de la tecnica.
+- `DELETE /api/tecnicas/:id/eliminar` elimina fisicamente la tecnica y, por cascada, los detalles de cotizacion relacionados.
 
 ---
 
@@ -138,7 +148,7 @@ La cotizacion inicia el flujo comercial de PIXEL. Todas las rutas usan JWT y dev
 Estados validos:
 
 ```txt
-SOLICITADA, COTIZADA, APROBADA, RECHAZADA, ANULADA
+PENDIENTE, APROBADA, ANULADA
 ```
 
 Calculos del backend:
@@ -157,8 +167,11 @@ Reglas generales:
 - Cliente solo ve y modifica sus propias cotizaciones.
 - Cliente no puede enviar ni modificar precios, costos de diseno, subtotales, costos adicionales ni totales.
 - Admin y Secretaria pueden consultar todas las cotizaciones.
-- No se eliminan cotizaciones; se cambia el estado.
-- Una cotizacion `APROBADA`, `RECHAZADA` o `ANULADA` no se edita.
+- Anular conserva la cotizacion y cambia el estado a `ANULADA`.
+- Eliminar borra la cotizacion y, por cascada, sus detalles.
+- Una cotizacion `APROBADA` o `ANULADA` no se edita.
+- Una cotizacion `PENDIENTE` con precios asignados ya no puede ser editada por el cliente.
+- `imagenReferencia` es opcional; puede enviarse como texto, `null` u omitirse.
 
 ---
 
@@ -174,7 +187,7 @@ Cliente
 POST /api/cotizaciones/cliente
 ```
 
-El `idCliente` sale del token. Estado inicial: `SOLICITADA`.
+El `idCliente` sale del token. Estado inicial: `PENDIENTE`.
 
 ### Body
 
@@ -198,6 +211,7 @@ El `idCliente` sale del token. Estado inicial: `SOLICITADA`.
 - `descripcion` no puede estar vacia.
 - `cantidad` debe ser mayor a 0.
 - `detalles` debe tener exactamente un elemento.
+- `imagenReferencia` es opcional.
 - No se aceptan `idDetalleCotizacion`, `precioUnitario`, `costoDiseno`, `subtotal`, `costosAdicionales` ni `total`.
 
 ---
@@ -216,8 +230,9 @@ PATCH /api/cotizaciones/:id/cliente
 
 Solo permitido si:
 
-- La cotizacion pertenece al cliente autenticado.
-- El estado actual es `SOLICITADA`.
+- Si el usuario es Cliente, la cotizacion le pertenece.
+- El estado actual es `PENDIENTE`.
+- La cotizacion aun no tiene precios asignados.
 
 ### Body
 
@@ -250,7 +265,7 @@ Notas:
 Roles permitidos:
 
 ```txt
-Cliente
+Admin, Secretaria, Cliente
 ```
 
 ```http
@@ -259,8 +274,8 @@ PATCH /api/cotizaciones/:id/anular
 
 Solo permitido si:
 
-- La cotizacion pertenece al cliente autenticado.
-- El estado actual es `SOLICITADA`.
+- Si el usuario es Cliente, la cotizacion le pertenece.
+- El estado actual es `PENDIENTE`.
 
 Resultado:
 
@@ -275,7 +290,7 @@ estado = ANULADA
 Roles permitidos:
 
 ```txt
-Cliente
+Admin, Secretaria, Cliente
 ```
 
 ```http
@@ -284,38 +299,14 @@ PATCH /api/cotizaciones/:id/aprobar
 
 Solo permitido si:
 
-- La cotizacion pertenece al cliente autenticado.
-- El estado actual es `COTIZADA`.
+- Si el usuario es Cliente, la cotizacion le pertenece.
+- El estado actual es `PENDIENTE`.
+- La cotizacion tiene precios asignados.
 
 Resultado:
 
 ```txt
 estado = APROBADA
-```
-
----
-
-## Rechazar cotizacion
-
-Roles permitidos:
-
-```txt
-Cliente
-```
-
-```http
-PATCH /api/cotizaciones/:id/rechazar
-```
-
-Solo permitido si:
-
-- La cotizacion pertenece al cliente autenticado.
-- El estado actual es `COTIZADA`.
-
-Resultado:
-
-```txt
-estado = RECHAZADA
 ```
 
 ---
@@ -332,7 +323,7 @@ Admin, Secretaria
 POST /api/cotizaciones
 ```
 
-Admin o Secretaria selecciona el cliente. Estado inicial: `SOLICITADA`.
+Admin o Secretaria selecciona el cliente. Estado inicial: `PENDIENTE`.
 
 ### Body
 
@@ -369,9 +360,9 @@ Admin, Secretaria
 PATCH /api/cotizaciones/:id/cotizar
 ```
 
-Asigna precios, costos de diseno, costos adicionales y observaciones de empresa. Cambia el estado a `COTIZADA`.
+Asigna precios, costos de diseno, costos adicionales y observaciones de empresa. La cotizacion permanece en estado `PENDIENTE` hasta que sea aprobada o anulada.
 
-Solo permitido si el estado actual es `SOLICITADA`.
+Solo permitido si el estado actual es `PENDIENTE`.
 
 ### Body
 
@@ -400,64 +391,6 @@ Solo permitido si el estado actual es `SOLICITADA`.
 
 ---
 
-## Crear cotizacion rapida
-
-Roles permitidos:
-
-```txt
-Admin, Secretaria
-```
-
-```http
-POST /api/cotizaciones/rapida
-```
-
-Cotizacion presencial con precios ya asignados. Nace `APROBADA` y devuelve un `pedidoSimulado` mientras no exista el modulo de pedidos.
-Debe tener un unico detalle con precios completos.
-
-### Body
-
-```json
-{
-  "idCliente": 4,
-  "costosAdicionales": 0,
-  "observaciones": "Cliente presencial desea hacer pedido inmediato",
-  "detalles": [
-    {
-      "idTecnica": 1,
-      "descripcion": "Gorra bordada color negro",
-      "cantidad": 5,
-      "precioUnitario": 35000,
-      "costoDiseno": 20000,
-      "imagenReferencia": null,
-      "observaciones": "Logo pequeno frontal"
-    }
-  ]
-}
-```
-
-### Respuesta parcial
-
-```json
-{
-  "message": "Cotizacion rapida creada, aprobada y con pedido simulado.",
-  "data": {
-    "idCotizacion": 20,
-    "estado": "APROBADA",
-    "tipoCotizacion": "RAPIDA",
-    "subtotal": "195000",
-    "costosAdicionales": "0",
-    "total": "195000",
-    "pedidoSimulado": {
-      "generado": true,
-      "mensaje": "Pedido simulado. El modulo de pedidos aun no esta implementado."
-    }
-  }
-}
-```
-
----
-
 ## Actualizar observaciones o costos adicionales
 
 Roles permitidos:
@@ -470,7 +403,7 @@ Admin, Secretaria
 PATCH /api/cotizaciones/:id
 ```
 
-Solo permitido si la cotizacion esta en `SOLICITADA` o `COTIZADA`.
+Solo permitido si la cotizacion esta en `PENDIENTE`.
 
 ### Body
 
@@ -485,6 +418,23 @@ Reglas:
 
 - Solo se aceptan `observaciones` y `costosAdicionales`.
 - Si cambia `costosAdicionales`, el backend recalcula `total`.
+
+---
+
+## Eliminar cotizacion
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+DELETE /api/cotizaciones/:id
+DELETE /api/cotizaciones/:id/eliminar
+```
+
+Elimina fisicamente la cotizacion y, por cascada, sus detalles. Ambos endpoints hacen la misma eliminacion; se mantiene `DELETE /api/cotizaciones/:id` por convencion REST y `DELETE /api/cotizaciones/:id/eliminar` para usar el mismo patron explicito de las demas APIs. Esto no reemplaza `PATCH /api/cotizaciones/:id/anular`; anular se mantiene para cerrar el flujo comercial conservando el registro.
 
 ---
 
@@ -535,7 +485,7 @@ Admin, Secretaria, Cliente
 ```
 
 ```http
-GET /api/cotizaciones/buscar?termino=solicitada
+GET /api/cotizaciones/buscar?termino=pendiente
 ```
 
 Busca por:
@@ -640,6 +590,5 @@ Busca por:
 5. Crear tecnicas
 6. Crear solicitud como cliente o solicitud presencial
 7. Cotizar solicitud como Admin/Secretaria
-8. Aprobar, rechazar o anular como cliente
-9. Crear cotizacion rapida
+8. Aprobar, anular o eliminar la cotizacion
 ```

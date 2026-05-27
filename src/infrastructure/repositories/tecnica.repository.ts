@@ -84,4 +84,11 @@ export class TecnicaRepository {
       select: tecnicaSelect, // Mantenemos tu objeto de selección para el retorno
     });
   }
+
+  async eliminarTecnica(idTecnica: number) {
+    return await prisma.tecnica.delete({
+      where: { idTecnica },
+      select: tecnicaSelect,
+    });
+  }
 }

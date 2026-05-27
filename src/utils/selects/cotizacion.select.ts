@@ -35,7 +35,7 @@ export const cotizacionSelect = {
       precioUnitario: true,
       costoDiseno: true,
       subtotal: true,
-      //imagenReferencia: true,
+      imagenReferencia: true,
       observaciones: true,
       tecnica: { select: { idTecnica: true, nombre: true } },
     },

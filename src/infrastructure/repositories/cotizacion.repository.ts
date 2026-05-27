@@ -3,10 +3,8 @@ import type { EstadoCotizacion } from "../../../generated/prisma/enums";
 import { cotizacionSelect } from "../../utils/selects/cotizacion.select";
 
 const estadosCotizacion = [
-  "SOLICITADA",
-  "COTIZADA",
+  "PENDIENTE",
   "APROBADA",
-  "RECHAZADA",
   "ANULADA",
 ];
 
@@ -189,6 +187,13 @@ export class CotizacionRepository {
       where: { idCotizacion },
       data: { estado },
       select: cotizacionSelect,
+    });
+  }
+
+  async eliminarCotizacion(idCotizacion: number) {
+    return await prisma.cotizacion.delete({
+      where: { idCotizacion },
+      select: { idCotizacion: true },
     });
   }
 }

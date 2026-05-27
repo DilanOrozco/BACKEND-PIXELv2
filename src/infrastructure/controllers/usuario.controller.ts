@@ -109,4 +109,21 @@ export class UsuarioController {
       });
     }
   }
+
+  async eliminarUsuario(req: Request, res: Response) {
+    try {
+      const idUsuario = Number(req.params.id);
+
+      const usuario = await usuarioService.eliminarUsuario(idUsuario);
+
+      return res.status(200).json({
+        message: "Usuario eliminado correctamente.",
+        data: usuario,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
 }

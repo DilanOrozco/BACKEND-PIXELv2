@@ -166,4 +166,20 @@ export class UsuarioService {
 
     return await usuarioRepository.desactivarUsuario(idUsuario);
   }
+
+  async eliminarUsuario(idUsuario: number) {
+    if (isNaN(idUsuario) || idUsuario <= 0) {
+      throw new Error("El id del usuario no es valido.");
+    }
+
+    const usuarioExistente = await usuarioRepository.buscarPorId(idUsuario);
+
+    if (!usuarioExistente) {
+      throw new Error("El usuario a eliminar no existe.");
+    }
+
+    await usuarioRepository.eliminarUsuario(idUsuario);
+
+    return usuarioExistente;
+  }
 }

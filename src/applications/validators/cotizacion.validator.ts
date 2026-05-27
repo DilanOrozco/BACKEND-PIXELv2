@@ -16,6 +16,10 @@ const esTextoNoVacio = (valor: any) => {
   return typeof valor === "string" && valor.trim() !== "";
 };
 
+const esTextoOpcional = (valor: any) => {
+  return valor === undefined || valor === null || typeof valor === "string";
+};
+
 const clienteEnvioPrecios = (detalle: any) => {
   return (
     detalle.precioUnitario !== undefined ||
@@ -78,60 +82,12 @@ export const validarSolicitudCliente = (
       return "La cantidad debe ser mayor a 0.";
     }
 
+    if (!esTextoOpcional(detalle.imagenReferencia)) {
+      return "La imagen de referencia debe ser texto, null u omitirse.";
+    }
+
     if (clienteEnvioPrecios(detalle)) {
       return "El cliente no puede enviar precios, costos de diseno ni subtotales.";
-    }
-  }
-
-  return null;
-};
-
-// Regla general: se usa cuando la empresa crea una cotizacion con precios
-// completos, como la cotizacion rapida. El subtotal se recalcula en el service.
-export const validarCrearCotizacion = (data: any) => {
-  if (!esEnteroPositivo(data.idCliente)) {
-    return "El cliente es obligatorio.";
-  }
-
-  const errorDetalleUnico = validarUnicoDetalle(data);
-
-  if (errorDetalleUnico) {
-    return errorDetalleUnico;
-  }
-
-  if (
-    data.costosAdicionales !== undefined &&
-    !esMontoValido(data.costosAdicionales)
-  ) {
-    return "Los costos adicionales no pueden ser negativos.";
-  }
-
-  for (const detalle of data.detalles) {
-    if (detalle.idDetalleCotizacion !== undefined) {
-      return "No se debe enviar idDetalleCotizacion al crear una cotizacion.";
-    }
-
-    if (!esEnteroPositivo(detalle.idTecnica)) {
-      return "La tecnica es obligatoria en cada detalle.";
-    }
-
-    if (!esTextoNoVacio(detalle.descripcion)) {
-      return "La descripcion del detalle no puede estar vacia.";
-    }
-
-    if (!esEnteroPositivo(detalle.cantidad)) {
-      return "La cantidad debe ser mayor a 0.";
-    }
-
-    if (!esMontoValido(detalle.precioUnitario)) {
-      return "El precio unitario es obligatorio y no puede ser negativo.";
-    }
-
-    if (
-      detalle.costoDiseno !== undefined &&
-      !esMontoValido(detalle.costoDiseno)
-    ) {
-      return "El costo de diseno no puede ser negativo.";
     }
   }
 

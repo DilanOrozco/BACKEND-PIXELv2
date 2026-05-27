@@ -104,4 +104,11 @@ export class UsuarioRepository {
       select: usuarioSelect,
     });
   }
+
+  async eliminarUsuario(idUsuario: number) {
+    return await prisma.usuario.delete({
+      where: { idUsuario },
+      select: { idUsuario: true },
+    });
+  }
 }
