@@ -86,4 +86,21 @@ export class RolController {
       });
     }
   }
+
+  async eliminarRol(req: Request, res: Response) {
+    try {
+      const idRol = Number(req.params.id);
+
+      const rol = await rolService.eliminarRol(idRol);
+
+      return res.status(200).json({
+        message: "Rol eliminado correctamente.",
+        data: rol,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
 }

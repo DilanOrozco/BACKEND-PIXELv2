@@ -39,6 +39,12 @@ router.patch(
 );
 
 router.delete(
+  "/:id/eliminar",
+  autorizarRoles("Admin", "Secretaria"),
+  tecnicaController.eliminarTecnica,
+);
+
+router.delete(
   "/:id",
   autorizarRoles("Admin", "Secretaria"),
   tecnicaController.desactivarTecnica,

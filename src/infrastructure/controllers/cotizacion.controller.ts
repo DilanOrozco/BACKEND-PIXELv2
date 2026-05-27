@@ -62,24 +62,6 @@ export class CotizacionController {
     }
   }
 
-  async crearCotizacionRapida(req: AuthRequest, res: Response) {
-    try {
-      const cotizacion = await cotizacionService.crearCotizacionRapida(
-        req.body,
-        req.user,
-      );
-
-      return res.status(201).json({
-        message: "Cotizacion rapida creada, aprobada y con pedido simulado.",
-        data: cotizacion,
-      });
-    } catch (error: any) {
-      return res.status(400).json({
-        message: error.message,
-      });
-    }
-  }
-
   async listarCotizaciones(req: AuthRequest, res: Response) {
     try {
       const cotizaciones = await cotizacionService.listarCotizaciones(req.user);
@@ -212,17 +194,16 @@ export class CotizacionController {
     }
   }
 
-  async rechazarCotizacion(req: AuthRequest, res: Response) {
+  async eliminarCotizacion(req: AuthRequest, res: Response) {
     try {
       const idCotizacion = Number(req.params.id);
 
-      const cotizacion = await cotizacionService.rechazarCotizacion(
+      const cotizacion = await cotizacionService.eliminarCotizacion(
         idCotizacion,
-        req.user,
       );
 
       return res.status(200).json({
-        message: "Cotizacion rechazada correctamente.",
+        message: "Cotizacion eliminada correctamente.",
         data: cotizacion,
       });
     } catch (error: any) {
@@ -231,4 +212,5 @@ export class CotizacionController {
       });
     }
   }
+
 }

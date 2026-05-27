@@ -60,10 +60,8 @@ model Tecnica {
 }
 
 enum EstadoCotizacion {
-  SOLICITADA
-  COTIZADA
+  PENDIENTE
   APROBADA
-  RECHAZADA
   ANULADA
 }
 
@@ -72,7 +70,7 @@ model Cotizacion {
   idCliente          Int      @map("id_cliente")
   creadoPorId        Int      @map("creado_por_id")
   tipoCotizacion     String   @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
-  estado             EstadoCotizacion @default(SOLICITADA)
+  estado             EstadoCotizacion @default(PENDIENTE)
   subtotal           Decimal  @default(0) @db.Decimal(10, 2)
   costosAdicionales  Decimal  @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
   total              Decimal  @default(0) @db.Decimal(10, 2)

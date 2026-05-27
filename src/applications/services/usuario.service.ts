@@ -166,4 +166,27 @@ export class UsuarioService {
 
     return await usuarioRepository.desactivarUsuario(idUsuario);
   }
+
+  async eliminarUsuario(idUsuario: number) {
+    if (isNaN(idUsuario) || idUsuario <= 0) {
+      throw new Error("El id del usuario no es valido.");
+    }
+
+    const usuarioExistente = await usuarioRepository.buscarPorId(idUsuario);
+
+    if (!usuarioExistente) {
+      throw new Error("El usuario a eliminar no existe.");
+    }
+
+    const cotizacionesAsociadas =
+      await usuarioRepository.contarCotizacionesAsociadas(idUsuario);
+
+    if (cotizacionesAsociadas > 0) {
+      throw new Error(
+        "No se puede eliminar el usuario porque tiene cotizaciones asociadas. Desactivalo en su lugar.",
+      );
+    }
+
+    return await usuarioRepository.eliminarUsuario(idUsuario);
+  }
 }

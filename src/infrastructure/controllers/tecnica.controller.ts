@@ -101,4 +101,21 @@ export class TecnicaController {
       });
     }
   }
+
+  async eliminarTecnica(req: Request, res: Response) {
+    try {
+      const idTecnica = Number(req.params.id);
+
+      const tecnica = await tecnicaService.eliminarTecnica(idTecnica);
+
+      return res.status(200).json({
+        message: "Tecnica eliminada correctamente.",
+        data: tecnica,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
 }

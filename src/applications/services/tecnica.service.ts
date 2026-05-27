@@ -128,4 +128,27 @@ export class TecnicaService {
 
     return await tecnicaRepository.desactivarTecnica(idTecnica);
   }
+
+  async eliminarTecnica(idTecnica: number) {
+    if (isNaN(idTecnica) || idTecnica <= 0) {
+      throw new Error("El ID de la tecnica no es valido.");
+    }
+
+    const tecnica = await tecnicaRepository.buscarPorId(idTecnica);
+
+    if (!tecnica) {
+      throw new Error("No se encontraron resultados.");
+    }
+
+    const detallesAsociados =
+      await tecnicaRepository.contarDetallesAsociados(idTecnica);
+
+    if (detallesAsociados > 0) {
+      throw new Error(
+        "No se puede eliminar la tecnica porque tiene cotizaciones asociadas. Desactivala en su lugar.",
+      );
+    }
+
+    return await tecnicaRepository.eliminarTecnica(idTecnica);
+  }
 }

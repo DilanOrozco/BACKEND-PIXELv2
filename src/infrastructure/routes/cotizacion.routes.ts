@@ -8,10 +8,10 @@ const cotizacionController = new CotizacionController();
 
 router.use(verificarAuth);
 
-// Cliente: solicita, edita, anula, aprueba o rechaza solo sus cotizaciones.
+// Cliente: solicita, edita, anula o aprueba solo sus cotizaciones.
 router.post(
   "/cliente",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  autorizarRoles("Cliente"),
   cotizacionController.crearSolicitudCliente,
 );
 
@@ -33,23 +33,11 @@ router.patch(
   cotizacionController.aprobarCotizacion,
 );
 
-router.patch(
-  "/:id/rechazar",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
-  cotizacionController.rechazarCotizacion,
-);
-
 // Empleado: Admin y Secretaria gestionan cotizaciones presenciales y precios.
 router.post(
   "/",
   autorizarRoles("Admin", "Secretaria"),
   cotizacionController.crearCotizacionNormal,
-);
-
-router.post(
-  "/rapida",
-  autorizarRoles("Admin", "Secretaria"),
-  cotizacionController.crearCotizacionRapida,
 );
 
 router.patch(
@@ -62,6 +50,18 @@ router.patch(
   "/:id",
   autorizarRoles("Admin", "Secretaria"),
   cotizacionController.actualizarCotizacion,
+);
+
+router.delete(
+  "/:id/eliminar",
+  autorizarRoles("Admin", "Secretaria"),
+  cotizacionController.eliminarCotizacion,
+);
+
+router.delete(
+  "/:id",
+  autorizarRoles("Admin", "Secretaria"),
+  cotizacionController.eliminarCotizacion,
 );
 
 // Consulta compartida: el service restringe al cliente a sus propios registros.
