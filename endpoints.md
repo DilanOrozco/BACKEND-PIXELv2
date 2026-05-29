@@ -307,6 +307,23 @@ Resultado:
 
 ```txt
 estado = APROBADA
+pedido.estadoPedido = PENDIENTE
+pedido.estadoPago = PENDIENTE
+```
+
+Al aprobar, el backend crea automaticamente el pedido en la misma transaccion.
+Si el pedido no puede crearse, la cotizacion no queda aprobada.
+
+### Respuesta
+
+```json
+{
+  "message": "Cotizacion aprobada y pedido creado correctamente.",
+  "data": {
+    "cotizacion": {},
+    "pedido": {}
+  }
+}
 ```
 
 ---
@@ -514,6 +531,8 @@ PENDIENTE, PARCIAL, COMPLETO
 
 Reglas principales:
 
+- Al aprobar una cotizacion se crea automaticamente un pedido `PENDIENTE`.
+- `POST /api/pedidos` se conserva como endpoint administrativo para crear el pedido de una cotizacion que ya estuviera `APROBADA` y aun no tenga pedido.
 - Un pedido solo se crea desde una cotizacion `APROBADA`.
 - No se crea mas de un pedido por cotizacion.
 - El pedido inicia en `PENDIENTE`.

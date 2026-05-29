@@ -1,6 +1,7 @@
 import { prisma } from "../../config/prisma";
 import type { EstadoCotizacion } from "../../../generated/prisma/enums";
 import { cotizacionSelect } from "../../utils/selects/cotizacion.select";
+import { pedidoSelect } from "../../utils/selects/pedido.select";
 
 const estadosCotizacion = [
   "PENDIENTE",
@@ -187,6 +188,50 @@ export class CotizacionRepository {
       where: { idCotizacion },
       data: { estado },
       select: cotizacionSelect,
+    });
+  }
+
+  async aprobarYCrearPedido(
+    idCotizacion: number,
+    estado: EstadoCotizacion,
+    pedidoData: any,
+  ) {
+    const { detalles, ...pedidoCabecera } = pedidoData;
+
+    return await prisma.$transaction(async (tx: any) => {
+      const pedidoExistente = await tx.pedido.findFirst({
+        where: { idCotizacion },
+        select: { idPedido: true },
+      });
+
+      if (pedidoExistente) {
+        throw new Error("Ya existe un pedido creado para esta cotizacion.");
+      }
+
+      await tx.cotizacion.update({
+        where: { idCotizacion },
+        data: { estado },
+      });
+
+      const pedido = await tx.pedido.create({
+        data: {
+          ...pedidoCabecera,
+          detalles: {
+            create: detalles,
+          },
+        },
+        select: pedidoSelect,
+      });
+
+      const cotizacion = await tx.cotizacion.findUnique({
+        where: { idCotizacion },
+        select: cotizacionSelect,
+      });
+
+      return {
+        cotizacion,
+        pedido,
+      };
     });
   }
 

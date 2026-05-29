@@ -184,7 +184,7 @@ export class CotizacionController {
       );
 
       return res.status(200).json({
-        message: "Cotizacion aprobada correctamente.",
+        message: "Cotizacion aprobada y pedido creado correctamente.",
         data: cotizacion,
       });
     } catch (error: any) {

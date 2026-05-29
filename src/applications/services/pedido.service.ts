@@ -87,6 +87,47 @@ const prepararDetallePedido = (detalle: any) => {
 };
 
 export class PedidoService {
+  prepararPedidoDesdeCotizacion(
+    cotizacion: any,
+    data: any = {},
+    usuarioAuth: any,
+    accion = "Creacion de pedido",
+  ) {
+    const idCotizacion = Number(cotizacion.idCotizacion);
+
+    if (!cotizacion.detalles || cotizacion.detalles.length === 0) {
+      throw new Error("La cotizacion aprobada no tiene detalles para copiar al pedido.");
+    }
+
+    const total = aNumero(cotizacion.total);
+
+    if (!Number.isFinite(total) || total <= 0) {
+      throw new Error("La cotizacion aprobada debe tener un total mayor a 0.");
+    }
+
+    const detalles = cotizacion.detalles.map(prepararDetallePedido);
+    const observacionesIniciales = limpiarTextoOpcional(data?.observaciones)
+      ?? `Pedido creado desde cotizacion #${idCotizacion}.`;
+
+    return {
+      idCotizacion,
+      idCliente: Number(cotizacion.idCliente),
+      estadoPedido: ESTADO_PEDIDO_PENDIENTE,
+      estadoPago: ESTADO_PAGO_PENDIENTE,
+      total,
+      totalPagado: 0,
+      saldoPendiente: total,
+      fechaEntregaEstimada: prepararFechaOpcional(data?.fechaEntregaEstimada),
+      observaciones: agregarObservacionAuditoria(
+        null,
+        observacionesIniciales,
+        usuarioAuth,
+        accion,
+      ),
+      detalles,
+    };
+  }
+
   async crearPedido(data: any, usuarioAuth: any) {
     const error = validarCrearPedido(data);
 
@@ -113,37 +154,13 @@ export class PedidoService {
       throw new Error("Ya existe un pedido creado para esta cotizacion.");
     }
 
-    if (!cotizacion.detalles || cotizacion.detalles.length === 0) {
-      throw new Error("La cotizacion aprobada no tiene detalles para copiar al pedido.");
-    }
+    const pedidoData = this.prepararPedidoDesdeCotizacion(
+      cotizacion,
+      data,
+      usuarioAuth,
+    );
 
-    const total = aNumero(cotizacion.total);
-
-    if (!Number.isFinite(total) || total <= 0) {
-      throw new Error("La cotizacion aprobada debe tener un total mayor a 0.");
-    }
-
-    const detalles = cotizacion.detalles.map(prepararDetallePedido);
-    const observacionesIniciales = limpiarTextoOpcional(data.observaciones)
-      ?? `Pedido creado desde cotizacion #${idCotizacion}.`;
-
-    return await pedidoRepository.crearDesdeCotizacion({
-      idCotizacion,
-      idCliente: Number(cotizacion.idCliente),
-      estadoPedido: ESTADO_PEDIDO_PENDIENTE,
-      estadoPago: ESTADO_PAGO_PENDIENTE,
-      total,
-      totalPagado: 0,
-      saldoPendiente: total,
-      fechaEntregaEstimada: prepararFechaOpcional(data.fechaEntregaEstimada),
-      observaciones: agregarObservacionAuditoria(
-        null,
-        observacionesIniciales,
-        usuarioAuth,
-        "Creacion de pedido",
-      ),
-      detalles,
-    });
+    return await pedidoRepository.crearDesdeCotizacion(pedidoData);
   }
 
   async listarPedidos(usuarioAuth: any) {

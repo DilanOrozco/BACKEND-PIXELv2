@@ -1,6 +1,7 @@
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
+import { PedidoService } from "./pedido.service";
 import {
   validarActualizarCotizacion,
   validarCotizar,
@@ -10,6 +11,7 @@ import {
 const cotizacionRepository = new CotizacionRepository();
 const usuarioRepository = new UsuarioRepository();
 const tecnicaRepository = new TecnicaRepository();
+const pedidoService = new PedidoService();
 
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
@@ -441,9 +443,19 @@ export class CotizacionService {
       );
     }
 
-    return await cotizacionRepository.cambiarEstado(
+    const pedidoData = pedidoService.prepararPedidoDesdeCotizacion(
+      cotizacion,
+      {
+        observaciones: `Pedido creado automaticamente al aprobar la cotizacion #${idCotizacion}.`,
+      },
+      usuarioAuth,
+      "Creacion automatica de pedido",
+    );
+
+    return await cotizacionRepository.aprobarYCrearPedido(
       idCotizacion,
       ESTADO_APROBADA,
+      pedidoData,
     );
   }
 
