@@ -2,18 +2,20 @@
   Warnings:
 
   - SOLICITADA and COTIZADA are migrated to PENDIENTE.
-  - RECHAZADA is migrated to ANULADA because the state no longer exists.
+  - APROBADA is migrated to APROVADA to match the enum value used by this migration.
+  - ANULADA is migrated to RECHAZADA because the state no longer exists.
 
 */
 -- AlterEnum
 BEGIN;
-CREATE TYPE "EstadoCotizacion_new" AS ENUM ('PENDIENTE', 'APROBADA', 'ANULADA');
+CREATE TYPE "EstadoCotizacion_new" AS ENUM ('PENDIENTE', 'APROVADA', 'RECHAZADA');
 ALTER TABLE "public"."cotizaciones" ALTER COLUMN "estado" DROP DEFAULT;
 ALTER TABLE "cotizaciones" ALTER COLUMN "estado" TYPE "EstadoCotizacion_new" USING (
   CASE "estado"::text
     WHEN 'SOLICITADA' THEN 'PENDIENTE'
     WHEN 'COTIZADA' THEN 'PENDIENTE'
-    WHEN 'RECHAZADA' THEN 'ANULADA'
+    WHEN 'APROBADA' THEN 'APROVADA'
+    WHEN 'ANULADA' THEN 'RECHAZADA'
     ELSE "estado"::text
   END
 )::"EstadoCotizacion_new";
