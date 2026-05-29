@@ -67,17 +67,17 @@ export class PedidoController {
     }
   }
 
-  async actualizarObservacionesCliente(req: AuthRequest, res: Response) {
+  async actualizarPedido(req: AuthRequest, res: Response) {
     try {
       const idPedido = Number(req.params.id);
-      const pedido = await pedidoService.actualizarObservacionesCliente(
+      const pedido = await pedidoService.actualizarPedido(
         idPedido,
         req.body,
         req.user,
       );
 
       return res.status(200).json({
-        message: "Observaciones del pedido actualizadas correctamente.",
+        message: "Pedido actualizado correctamente.",
         data: pedido,
       });
     } catch (error: any) {

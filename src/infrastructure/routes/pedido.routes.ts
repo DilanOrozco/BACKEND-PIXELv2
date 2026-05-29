@@ -33,11 +33,11 @@ router.patch(
   pedidoController.anularPedido,
 );
 
-// Cliente: solo puede agregar observaciones mientras el pedido este pendiente.
+// Cliente actualiza observaciones; Admin/Secretaria tambien asignan fecha estimada.
 router.patch(
   "/:id",
-  autorizarRoles("Cliente"),
-  pedidoController.actualizarObservacionesCliente,
+  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  pedidoController.actualizarPedido,
 );
 
 // Consulta compartida: el service restringe al cliente a sus propios pedidos.

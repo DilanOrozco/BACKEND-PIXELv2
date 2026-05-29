@@ -29,6 +29,23 @@ const esFechaOpcionalValida = (valor: any) => {
   return !Number.isNaN(fecha.getTime());
 };
 
+const esFechaPasada = (valor: any) => {
+  const fecha = new Date(valor);
+  const hoy = new Date();
+  const diaFecha = Date.UTC(
+    fecha.getUTCFullYear(),
+    fecha.getUTCMonth(),
+    fecha.getUTCDate(),
+  );
+  const diaHoy = Date.UTC(
+    hoy.getUTCFullYear(),
+    hoy.getUTCMonth(),
+    hoy.getUTCDate(),
+  );
+
+  return diaFecha < diaHoy;
+};
+
 const validarCamposPermitidos = (data: any, camposPermitidos: string[]) => {
   const campos = Object.keys(data || {});
   const campoNoPermitido = campos.find(
@@ -37,6 +54,26 @@ const validarCamposPermitidos = (data: any, camposPermitidos: string[]) => {
 
   if (campoNoPermitido) {
     return `El campo ${campoNoPermitido} no se puede modificar en este endpoint.`;
+  }
+
+  return null;
+};
+
+const validarFechaEntregaEstimada = (valor: any) => {
+  if (valor === undefined) {
+    return null;
+  }
+
+  if (valor === null || valor === "") {
+    return "La fecha de entrega estimada no puede estar vacia.";
+  }
+
+  if (!esFechaOpcionalValida(valor)) {
+    return "La fecha de entrega estimada no es valida.";
+  }
+
+  if (esFechaPasada(valor)) {
+    return "La fecha de entrega estimada no puede ser una fecha pasada.";
   }
 
   return null;
@@ -57,8 +94,12 @@ export const validarCrearPedido = (data: any) => {
     return "La cotizacion es obligatoria y debe ser valida.";
   }
 
-  if (!esFechaOpcionalValida(data?.fechaEntregaEstimada)) {
-    return "La fecha de entrega estimada no es valida.";
+  const errorFechaEntrega = validarFechaEntregaEstimada(
+    data?.fechaEntregaEstimada,
+  );
+
+  if (errorFechaEntrega) {
+    return errorFechaEntrega;
   }
 
   if (!esTextoOpcional(data?.observaciones)) {
@@ -68,15 +109,46 @@ export const validarCrearPedido = (data: any) => {
   return null;
 };
 
-export const validarActualizarObservacionesPedido = (data: any) => {
-  const errorCampos = validarCamposPermitidos(data, ["observaciones"]);
+export const validarActualizarPedido = (
+  data: any,
+  opciones: { permiteFechaEntregaEstimada?: boolean } = {},
+) => {
+  const camposPermitidos = opciones.permiteFechaEntregaEstimada
+    ? ["observaciones", "fechaEntregaEstimada"]
+    : ["observaciones"];
+
+  const errorCampos = validarCamposPermitidos(data, camposPermitidos);
 
   if (errorCampos) {
     return errorCampos;
   }
 
-  if (!esTextoNoVacio(data?.observaciones)) {
-    return "Debe enviar observaciones en texto para actualizar el pedido.";
+  const campos = Object.keys(data || {});
+
+  if (campos.length === 0) {
+    return "Debe enviar al menos un campo para actualizar el pedido.";
+  }
+
+  if (
+    data?.observaciones !== undefined &&
+    !esTextoNoVacio(data.observaciones)
+  ) {
+    return "Las observaciones deben ser texto y no pueden estar vacias.";
+  }
+
+  if (
+    !opciones.permiteFechaEntregaEstimada &&
+    data?.fechaEntregaEstimada !== undefined
+  ) {
+    return "El cliente no puede actualizar la fecha de entrega estimada.";
+  }
+
+  const errorFechaEntrega = validarFechaEntregaEstimada(
+    data?.fechaEntregaEstimada,
+  );
+
+  if (errorFechaEntrega) {
+    return errorFechaEntrega;
   }
 
   return null;

@@ -532,11 +532,14 @@ PENDIENTE, PARCIAL, COMPLETO
 Reglas principales:
 
 - Al aprobar una cotizacion se crea automaticamente un pedido `PENDIENTE`.
-- `POST /api/pedidos` se conserva como endpoint administrativo para crear el pedido de una cotizacion que ya estuviera `APROBADA` y aun no tenga pedido.
+- `POST /api/pedidos` se conserva como endpoint administrativo de recuperacion para cotizaciones antiguas o casos excepcionales donde una cotizacion ya estuviera `APROBADA` y aun no tenga pedido. No es el flujo principal y puede marcarse como deprecado cuando no existan datos antiguos por corregir.
 - Un pedido solo se crea desde una cotizacion `APROBADA`.
 - No se crea mas de un pedido por cotizacion.
 - El pedido inicia en `PENDIENTE`.
 - El cliente solo ve sus pedidos y solo puede agregar observaciones mientras el pedido este `PENDIENTE`.
+- Admin y Secretaria pueden asignar `fechaEntregaEstimada` mientras el pedido este `PENDIENTE` o `EN_PROCESO`.
+- No se aceptan fechas estimadas de entrega pasadas.
+- Las fechas de pedidos se devuelven como texto legible, por ejemplo `15 de junio de 2026`; si el campo no tiene valor, se devuelve `null`.
 - El paso a `EN_PROCESO` exige confirmacion manual del primer abono y monto minimo del 50% del total. Esto queda como hook temporal hasta implementar la API de Abonos.
 - Un pedido solo puede finalizar si esta `EN_PROCESO`.
 - Un pedido solo puede anularse si sigue `PENDIENTE`.
@@ -561,10 +564,16 @@ POST /api/pedidos
 ```json
 {
   "idCotizacion": 12,
-  "fechaEntregaEstimada": "2026-06-15T00:00:00.000Z",
+  "fechaEntregaEstimada": "2026-06-15",
   "observaciones": "Cliente aprobo condiciones y tiempos."
 }
 ```
+
+Notas:
+
+- Este endpoint se mantiene para recuperacion/backfill. El flujo normal crea el pedido desde `PATCH /api/cotizaciones/:id/aprobar`.
+- Si se envia `fechaEntregaEstimada`, no puede ser una fecha pasada.
+- La respuesta devuelve las fechas de pedido en formato legible.
 
 ---
 
@@ -622,25 +631,39 @@ Busca por:
 
 ---
 
-## Actualizar observaciones como cliente
+## Actualizar pedido
 
 Roles permitidos:
 
 ```txt
-Cliente
+Admin, Secretaria, Cliente
 ```
 
 ```http
 PATCH /api/pedidos/:id
 ```
 
-Solo permitido si el pedido pertenece al cliente autenticado y esta `PENDIENTE`.
+Comportamiento por rol:
 
-### Body
+- Cliente: solo puede enviar `observaciones`, y solo si el pedido esta `PENDIENTE`.
+- Admin y Secretaria: pueden enviar `observaciones` y/o `fechaEntregaEstimada`.
+- `fechaEntregaEstimada` solo se puede asignar o actualizar si el pedido esta `PENDIENTE` o `EN_PROCESO`.
+- `fechaEntregaEstimada` no puede ser una fecha pasada.
+
+### Body cliente
 
 ```json
 {
   "observaciones": "Confirmo direccion de entrega."
+}
+```
+
+### Body Admin/Secretaria
+
+```json
+{
+  "fechaEntregaEstimada": "2026-06-15",
+  "observaciones": "Entrega estimada asignada por secretaria."
 }
 ```
 
@@ -690,7 +713,7 @@ Solo permitido si el pedido esta `EN_PROCESO`.
 
 ```json
 {
-  "fechaEntregado": "2026-06-20T00:00:00.000Z",
+  "fechaEntregado": "2026-06-20",
   "observaciones": "Produccion entregada al cliente."
 }
 ```

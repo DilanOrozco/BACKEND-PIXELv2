@@ -452,11 +452,16 @@ export class CotizacionService {
       "Creacion automatica de pedido",
     );
 
-    return await cotizacionRepository.aprobarYCrearPedido(
+    const resultado = await cotizacionRepository.aprobarYCrearPedido(
       idCotizacion,
       ESTADO_APROBADA,
       pedidoData,
     );
+
+    return {
+      ...resultado,
+      pedido: pedidoService.formatearPedido(resultado.pedido),
+    };
   }
 
   async eliminarCotizacion(idCotizacion: number) {

@@ -1,6 +1,6 @@
 import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
 import {
-  validarActualizarObservacionesPedido,
+  validarActualizarPedido,
   validarAnularPedido,
   validarCrearPedido,
   validarFinalizarPedido,
@@ -21,6 +21,8 @@ const ESTADO_PAGO_PARCIAL = "PARCIAL";
 const ESTADO_PAGO_COMPLETO = "COMPLETO";
 
 const esCliente = (usuarioAuth: any) => usuarioAuth?.rol === "Cliente";
+const puedeGestionarPedido = (usuarioAuth: any) =>
+  ["Admin", "Secretaria"].includes(usuarioAuth?.rol);
 
 const validarId = (idPedido: number) => {
   if (!Number.isInteger(idPedido) || idPedido <= 0) {
@@ -47,6 +49,25 @@ const prepararFechaOpcional = (valor: any) => {
   }
 
   return new Date(valor);
+};
+
+const formatearFechaLegible = (valor: any) => {
+  if (!valor) {
+    return null;
+  }
+
+  const fecha = new Date(valor);
+
+  if (Number.isNaN(fecha.getTime())) {
+    return null;
+  }
+
+  return new Intl.DateTimeFormat("es-CO", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(fecha);
 };
 
 const agregarObservacionAuditoria = (
@@ -87,6 +108,42 @@ const prepararDetallePedido = (detalle: any) => {
 };
 
 export class PedidoService {
+  formatearPedido(pedido: any) {
+    if (!pedido) {
+      return pedido;
+    }
+
+    return {
+      ...pedido,
+      fechaCreacion: formatearFechaLegible(pedido.fechaCreacion),
+      fechaEntregaEstimada: formatearFechaLegible(
+        pedido.fechaEntregaEstimada,
+      ),
+      fechaFinalizado: formatearFechaLegible(pedido.fechaFinalizado),
+      fechaEntregado: formatearFechaLegible(pedido.fechaEntregado),
+    };
+  }
+
+  formatearPedidos(pedidos: any[]) {
+    return pedidos.map((pedido) => this.formatearPedido(pedido));
+  }
+
+  private async buscarPorIdInterno(idPedido: number, usuarioAuth: any) {
+    validarId(idPedido);
+
+    const pedido = await pedidoRepository.buscarPorId(idPedido);
+
+    if (!pedido) {
+      throw new Error("No se encontraron resultados.");
+    }
+
+    if (esCliente(usuarioAuth) && pedido.idCliente !== Number(usuarioAuth.idUsuario)) {
+      throw new Error("No tienes permisos para ver este pedido.");
+    }
+
+    return pedido;
+  }
+
   prepararPedidoDesdeCotizacion(
     cotizacion: any,
     data: any = {},
@@ -160,7 +217,9 @@ export class PedidoService {
       usuarioAuth,
     );
 
-    return await pedidoRepository.crearDesdeCotizacion(pedidoData);
+    const pedido = await pedidoRepository.crearDesdeCotizacion(pedidoData);
+
+    return this.formatearPedido(pedido);
   }
 
   async listarPedidos(usuarioAuth: any) {
@@ -172,23 +231,13 @@ export class PedidoService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return pedidos;
+    return this.formatearPedidos(pedidos);
   }
 
   async buscarPorId(idPedido: number, usuarioAuth: any) {
-    validarId(idPedido);
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
-    const pedido = await pedidoRepository.buscarPorId(idPedido);
-
-    if (!pedido) {
-      throw new Error("No se encontraron resultados.");
-    }
-
-    if (esCliente(usuarioAuth) && pedido.idCliente !== Number(usuarioAuth.idUsuario)) {
-      throw new Error("No tienes permisos para ver este pedido.");
-    }
-
-    return pedido;
+    return this.formatearPedido(pedido);
   }
 
   async buscarParcial(termino: string, usuarioAuth: any) {
@@ -207,36 +256,77 @@ export class PedidoService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return pedidos;
+    return this.formatearPedidos(pedidos);
   }
 
-  async actualizarObservacionesCliente(
+  async actualizarPedido(
     idPedido: number,
     data: any,
     usuarioAuth: any,
   ) {
     validarId(idPedido);
 
-    const error = validarActualizarObservacionesPedido(data);
+    const esGestor = puedeGestionarPedido(usuarioAuth);
+    const error = validarActualizarPedido(data, {
+      permiteFechaEntregaEstimada: esGestor,
+    });
 
     if (error) {
       throw new Error(error);
     }
 
-    const pedido = await this.buscarPorId(idPedido, usuarioAuth);
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
-    if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
-      throw new Error("Solo se pueden actualizar observaciones de pedidos PENDIENTE.");
+    if (
+      data.fechaEntregaEstimada !== undefined &&
+      ![ESTADO_PEDIDO_PENDIENTE, ESTADO_PEDIDO_EN_PROCESO].includes(
+        pedido.estadoPedido,
+      )
+    ) {
+      throw new Error(
+        "La fecha de entrega estimada solo se puede asignar mientras el pedido este PENDIENTE o EN_PROCESO.",
+      );
     }
 
-    const observaciones = agregarObservacionAuditoria(
-      pedido.observaciones,
-      data.observaciones,
-      usuarioAuth,
-      "Actualizacion de observaciones",
+    if (
+      !esGestor &&
+      pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE
+    ) {
+      throw new Error("El cliente solo puede actualizar observaciones de pedidos PENDIENTE.");
+    }
+
+    const dataActualizar: any = {};
+
+    if (data.observaciones !== undefined) {
+      dataActualizar.observaciones = agregarObservacionAuditoria(
+        pedido.observaciones,
+        data.observaciones,
+        usuarioAuth,
+        "Actualizacion de observaciones",
+      );
+    }
+
+    if (data.fechaEntregaEstimada !== undefined) {
+      dataActualizar.fechaEntregaEstimada = prepararFechaOpcional(
+        data.fechaEntregaEstimada,
+      );
+
+      if (data.observaciones === undefined) {
+        dataActualizar.observaciones = agregarObservacionAuditoria(
+          pedido.observaciones,
+          `Fecha estimada de entrega asignada a ${formatearFechaLegible(dataActualizar.fechaEntregaEstimada)}.`,
+          usuarioAuth,
+          "Actualizacion de fecha estimada",
+        );
+      }
+    }
+
+    const pedidoActualizado = await pedidoRepository.actualizarPedido(
+      idPedido,
+      dataActualizar,
     );
 
-    return await pedidoRepository.actualizarPedido(idPedido, { observaciones });
+    return this.formatearPedido(pedidoActualizado);
   }
 
   // Hook temporal para la futura API de abonos: no crea registros en Abonos,
@@ -250,7 +340,7 @@ export class PedidoService {
       throw new Error(error);
     }
 
-    const pedido = await this.buscarPorId(idPedido, usuarioAuth);
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
     if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
       throw new Error("Solo un pedido PENDIENTE puede pasar a EN_PROCESO.");
@@ -274,7 +364,7 @@ export class PedidoService {
     const observacion = limpiarTextoOpcional(data.observaciones)
       ?? `Primer abono confirmado por ${montoPrimerAbono}.`;
 
-    return await pedidoRepository.actualizarPedido(idPedido, {
+    const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
       estadoPedido: ESTADO_PEDIDO_EN_PROCESO,
       estadoPago,
       totalPagado: montoPrimerAbono,
@@ -286,6 +376,8 @@ export class PedidoService {
         "Confirmacion de primer abono",
       ),
     });
+
+    return this.formatearPedido(pedidoActualizado);
   }
 
   async finalizarPedido(idPedido: number, data: any, usuarioAuth: any) {
@@ -297,7 +389,7 @@ export class PedidoService {
       throw new Error(error);
     }
 
-    const pedido = await this.buscarPorId(idPedido, usuarioAuth);
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
     if (pedido.estadoPedido !== ESTADO_PEDIDO_EN_PROCESO) {
       throw new Error("Solo un pedido EN_PROCESO puede finalizarse.");
@@ -306,7 +398,7 @@ export class PedidoService {
     const observacion = limpiarTextoOpcional(data?.observaciones)
       ?? "Produccion y entrega completadas.";
 
-    return await pedidoRepository.actualizarPedido(idPedido, {
+    const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
       estadoPedido: ESTADO_PEDIDO_FINALIZADO,
       fechaFinalizado: new Date(),
       fechaEntregado: prepararFechaOpcional(data?.fechaEntregado) ?? new Date(),
@@ -317,6 +409,8 @@ export class PedidoService {
         "Finalizacion de pedido",
       ),
     });
+
+    return this.formatearPedido(pedidoActualizado);
   }
 
   async anularPedido(idPedido: number, data: any, usuarioAuth: any) {
@@ -328,7 +422,7 @@ export class PedidoService {
       throw new Error(error);
     }
 
-    const pedido = await this.buscarPorId(idPedido, usuarioAuth);
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
     if (pedido.estadoPedido === ESTADO_PEDIDO_ANULADO) {
       throw new Error("El pedido ya esta ANULADO.");
@@ -341,7 +435,7 @@ export class PedidoService {
     const observacion = limpiarTextoOpcional(data?.observaciones)
       ?? "Pedido anulado antes de iniciar produccion.";
 
-    return await pedidoRepository.actualizarPedido(idPedido, {
+    const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
       estadoPedido: ESTADO_PEDIDO_ANULADO,
       observaciones: agregarObservacionAuditoria(
         pedido.observaciones,
@@ -350,5 +444,7 @@ export class PedidoService {
         "Anulacion de pedido",
       ),
     });
+
+    return this.formatearPedido(pedidoActualizado);
   }
 }
