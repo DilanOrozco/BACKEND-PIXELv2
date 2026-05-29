@@ -12,36 +12,73 @@ datasource db {
   provider = "postgresql"
 }
 
-model Rol {
-  idRol       Int       @id @default(autoincrement()) @map("id_rol")
-  nombre     String    @unique @db.VarChar(50)
-  descripcion String?  @db.VarChar(255)
-  estado     Boolean   @default(true)
+// ==========================
+// ENUMS
+// ==========================
+enum EstadoCotizacion {
+  PENDIENTE
+  APROBADA
+  ANULADA
+}
 
-  usuarios   Usuario[]
+enum EstadoPedido {
+  PENDIENTE
+  EN_PROCESO
+  FINALIZADO
+  ANULADO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  PARCIAL
+  COMPLETO
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TRANSFERENCIA
+  OTRO
+}
+
+enum EstadoAbono {
+  PENDIENTE
+  CONFIRMADO
+}
+
+// ==========================
+// MODELOS
+// ==========================
+
+model Rol {
+  idRol       Int     @id @default(autoincrement()) @map("id_rol")
+  nombre      String  @unique @db.VarChar(50)
+  descripcion String? @db.VarChar(255)
+  estado      Boolean @default(true)
+
+  usuarios Usuario[]
 
   @@map("roles")
 }
 
 model Usuario {
-  idUsuario          Int       @id @default(autoincrement()) @map("id_usuario")
-  idRol              Int       @map("id_rol")
+  idUsuario          Int      @id @default(autoincrement()) @map("id_usuario")
+  idRol              Int      @map("id_rol")
+  nombre             String   @db.VarChar(100)
+  documento          String?  @unique @db.VarChar(30)
+  telefono           String?  @db.VarChar(20)
+  direccion          String?  @db.VarChar(150)
+  correo             String   @unique @db.VarChar(100)
+  contrasenaHash     String   @map("contrasena_hash") @db.VarChar(255)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
 
-  nombre             String    @db.VarChar(100)
-  documento          String?   @unique @db.VarChar(30)
-  telefono           String?   @db.VarChar(20)
-  direccion          String?   @db.VarChar(150)
-  correo             String    @unique @db.VarChar(100)
-  contrasenaHash     String    @map("contrasena_hash") @db.VarChar(255)
-
-  estado             Boolean   @default(true)
-  fechaCreacion      DateTime  @default(now()) @map("fecha_creacion")
-  fechaActualizacion DateTime  @updatedAt @map("fecha_actualizacion")
-
-  rol                Rol       @relation(fields: [idRol], references: [idRol], onDelete: Cascade)
+  rol Rol @relation(fields: [idRol], references: [idRol], onDelete: Cascade)
 
   cotizacionesCliente Cotizacion[] @relation("CotizacionCliente")
-  cotizacionesCreadas  Cotizacion[] @relation("CotizacionCreador")
+  cotizacionesCreadas Cotizacion[] @relation("CotizacionCreador")
+  pedidosCliente      Pedido[]     @relation("PedidoCliente")
+  abonosConfirmados   Abonos[]     @relation("AbonosConfirmados")
 
   @@map("usuarios")
 }
@@ -55,50 +92,102 @@ model Tecnica {
   fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
 
   detallesCotizacion DetalleCotizacion[]
+  detallesPedido     DetallePedido[]
 
   @@map("tecnicas")
 }
 
-enum EstadoCotizacion {
-  PENDIENTE
-  APROBADA
-  ANULADA
-}
-
 model Cotizacion {
-  idCotizacion       Int      @id @default(autoincrement()) @map("id_cotizacion")
-  idCliente          Int      @map("id_cliente")
-  creadoPorId        Int      @map("creado_por_id")
-  tipoCotizacion     String   @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
+  idCotizacion       Int              @id @default(autoincrement()) @map("id_cotizacion")
+  idCliente          Int              @map("id_cliente")
+  creadoPorId        Int              @map("creado_por_id")
+  tipoCotizacion     String           @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
   estado             EstadoCotizacion @default(PENDIENTE)
-  subtotal           Decimal  @default(0) @db.Decimal(10, 2)
-  costosAdicionales  Decimal  @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
-  total              Decimal  @default(0) @db.Decimal(10, 2)
-  observaciones      String?  @db.VarChar(255)
-  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
-  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+  subtotal           Decimal          @default(0) @db.Decimal(10, 2)
+  costosAdicionales  Decimal          @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
+  total              Decimal          @default(0) @db.Decimal(10, 2)
+  observaciones      String?          @db.VarChar(255)
+  fechaCreacion      DateTime         @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime         @updatedAt @map("fecha_actualizacion")
 
-  cliente            Usuario  @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
-  creadoPor          Usuario  @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: Cascade)
-  detalles           DetalleCotizacion[]
+  cliente   Usuario              @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
+  creadoPor Usuario              @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: Cascade)
+  detalles  DetalleCotizacion[]
+  pedidos   Pedido[]             @relation("CotizacionPedidos")
 
   @@map("cotizaciones")
 }
 
 model DetalleCotizacion {
-  idDetalleCotizacion Int     @id @default(autoincrement()) @map("id_detalle_cotizacion")
-  idCotizacion        Int     @map("id_cotizacion")
-  idTecnica           Int     @map("id_tecnica")
-  descripcion         String  @db.VarChar(255)
+  idDetalleCotizacion Int      @id @default(autoincrement()) @map("id_detalle_cotizacion")
+  idCotizacion        Int      @map("id_cotizacion")
+  idTecnica           Int      @map("id_tecnica")
+  descripcion         String   @db.VarChar(255)
   cantidad            Int
-  precioUnitario      Decimal? @map("precio_unitario") @db.Decimal(10,2)
-  costoDiseno         Decimal? @default(0) @map("costo_diseno") @db.Decimal(10,2)
-  subtotal            Decimal? @db.Decimal(10,2)
+  precioUnitario      Decimal? @map("precio_unitario") @db.Decimal(10, 2)
+  costoDiseno         Decimal? @default(0) @map("costo_diseno") @db.Decimal(10, 2)
+  subtotal            Decimal? @db.Decimal(10, 2)
   imagenReferencia    String?  @map("imagen_referencia") @db.VarChar(255)
   observaciones       String?  @db.VarChar(255)
 
-  cotizacion          Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
-  tecnica             Tecnica    @relation(fields: [idTecnica], references: [idTecnica], onDelete: Cascade)
+  cotizacion Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
+  tecnica    Tecnica    @relation(fields: [idTecnica], references: [idTecnica], onDelete: Cascade)
 
   @@map("detalle_cotizacion")
+}
+
+model Pedido {
+  idPedido             Int          @id @default(autoincrement()) @map("id_pedido")
+  idCotizacion         Int          @map("id_cotizacion")
+  idCliente            Int          @map("id_cliente")
+  estadoPedido         EstadoPedido @default(PENDIENTE)
+  estadoPago           EstadoPago   @default(PENDIENTE)
+  total                Decimal      @default(0) @db.Decimal(10, 2)
+  totalPagado          Decimal      @default(0) @map("total_pagado") @db.Decimal(10, 2)
+  saldoPendiente       Decimal      @default(0) @map("saldo_pendiente") @db.Decimal(10, 2)
+  fechaCreacion        DateTime     @default(now()) @map("fecha_creacion")
+  fechaEntregaEstimada DateTime?    @map("fecha_entrega_estimada")
+  fechaFinalizado      DateTime?    @map("fecha_finalizado")
+  fechaEntregado       DateTime?    @map("fecha_entregado")
+  observaciones        String?
+
+  cliente    Usuario         @relation("PedidoCliente", fields: [idCliente], references: [idUsuario])
+  cotizacion Cotizacion      @relation("CotizacionPedidos", fields: [idCotizacion], references: [idCotizacion])
+  detalles   DetallePedido[]
+  abonos     Abonos[]
+
+  @@map("pedidos")
+}
+
+model DetallePedido {
+  idDetallePedido Int     @id @default(autoincrement()) @map("id_detalle_pedido")
+  idPedido        Int     @map("id_pedido")
+  idTecnica       Int     @map("id_tecnica")
+  descripcion     String
+  cantidad        Int
+  precioUnitario  Decimal @db.Decimal(10, 2)
+  subtotal        Decimal @db.Decimal(10, 2)
+  observaciones   String?
+
+  pedido  Pedido  @relation(fields: [idPedido], references: [idPedido])
+  tecnica Tecnica @relation(fields: [idTecnica], references: [idTecnica])
+
+  @@map("detalle_pedido")
+}
+
+model Abonos {
+  idAbono           Int         @id @default(autoincrement()) @map("id_abono")
+  idPedido          Int         @map("id_pedido")
+  monto             Decimal     @db.Decimal(10, 2)
+  metodoPago        MetodoPago
+  referencia        String?
+  estado            EstadoAbono @default(PENDIENTE)
+  fechaCreacion     DateTime    @default(now()) @map("fecha_creacion")
+  confirmadoPorId   Int?        @map("confirmado_por_id")
+  fechaConfirmacion DateTime?   @map("fecha_confirmacion")
+
+  pedido        Pedido   @relation(fields: [idPedido], references: [idPedido])
+  confirmadoPor Usuario? @relation("AbonosConfirmados", fields: [confirmadoPorId], references: [idUsuario])
+
+  @@map("abonos")
 }

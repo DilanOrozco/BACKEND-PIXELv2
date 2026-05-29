@@ -18,6 +18,7 @@ import rolRoutes from "../infrastructure/routes/rol.routes";
 import usuarioRoutes from "../infrastructure/routes/usuario.routes";
 import authRoutes from "../infrastructure/routes/auth.routes";
 import cotizacionRoutes from "../infrastructure/routes/cotizacion.routes";
+import pedidoRoutes from "../infrastructure/routes/pedido.routes";
 import tecnicaRoutes from "../infrastructure/routes/tecnica.routes";
 
 //endpoints
@@ -25,6 +26,7 @@ app.use("/api/roles", rolRoutes);
 app.use("/api/usuarios", usuarioRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/cotizaciones", cotizacionRoutes);
+app.use("/api/pedidos", pedidoRoutes);
 app.use("/api/tecnicas", tecnicaRoutes);
 
 export default app;

@@ -496,7 +496,213 @@ Busca por:
 
 ---
 
-# 6. Credenciales de prueba
+# 6. Pedidos
+
+La API de pedidos parte de cotizaciones `APROBADA`. Todas las rutas usan JWT y devuelven cliente, cotizacion, creador de la cotizacion, detalles del pedido y la relacion `abonos` preparada para la futura API de pagos.
+
+Estados de pedido:
+
+```txt
+PENDIENTE, EN_PROCESO, FINALIZADO, ANULADO
+```
+
+Estados de pago:
+
+```txt
+PENDIENTE, PARCIAL, COMPLETO
+```
+
+Reglas principales:
+
+- Un pedido solo se crea desde una cotizacion `APROBADA`.
+- No se crea mas de un pedido por cotizacion.
+- El pedido inicia en `PENDIENTE`.
+- El cliente solo ve sus pedidos y solo puede agregar observaciones mientras el pedido este `PENDIENTE`.
+- El paso a `EN_PROCESO` exige confirmacion manual del primer abono y monto minimo del 50% del total. Esto queda como hook temporal hasta implementar la API de Abonos.
+- Un pedido solo puede finalizar si esta `EN_PROCESO`.
+- Un pedido solo puede anularse si sigue `PENDIENTE`.
+- No hay eliminacion fisica de pedidos desde esta API.
+
+---
+
+## Crear pedido desde cotizacion aprobada
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+POST /api/pedidos
+```
+
+### Body
+
+```json
+{
+  "idCotizacion": 12,
+  "fechaEntregaEstimada": "2026-06-15T00:00:00.000Z",
+  "observaciones": "Cliente aprobo condiciones y tiempos."
+}
+```
+
+---
+
+## Listar pedidos
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+GET /api/pedidos
+```
+
+Comportamiento:
+
+- Admin y Secretaria ven todos.
+- Cliente solo ve sus propios pedidos.
+
+---
+
+## Buscar pedido por ID
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+GET /api/pedidos/:id
+```
+
+---
+
+## Buscar pedidos parcialmente
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+GET /api/pedidos/buscar?termino=pendiente
+```
+
+Busca por:
+
+- ID de pedido.
+- ID de cotizacion.
+- Estado.
+- Nombre del cliente.
+
+---
+
+## Actualizar observaciones como cliente
+
+Roles permitidos:
+
+```txt
+Cliente
+```
+
+```http
+PATCH /api/pedidos/:id
+```
+
+Solo permitido si el pedido pertenece al cliente autenticado y esta `PENDIENTE`.
+
+### Body
+
+```json
+{
+  "observaciones": "Confirmo direccion de entrega."
+}
+```
+
+---
+
+## Pasar pedido a EN_PROCESO
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+PATCH /api/pedidos/:id/en-proceso
+```
+
+Hook temporal para la futura API de Abonos. No crea registros en `Abonos`, pero valida la confirmacion y registra el resumen de pago en el pedido.
+
+### Body
+
+```json
+{
+  "abonoConfirmado": true,
+  "montoPrimerAbono": 50000,
+  "observaciones": "Primer abono confirmado por transferencia."
+}
+```
+
+---
+
+## Finalizar pedido
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+PATCH /api/pedidos/:id/finalizar
+```
+
+Solo permitido si el pedido esta `EN_PROCESO`.
+
+### Body
+
+```json
+{
+  "fechaEntregado": "2026-06-20T00:00:00.000Z",
+  "observaciones": "Produccion entregada al cliente."
+}
+```
+
+---
+
+## Anular pedido
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+PATCH /api/pedidos/:id/anular
+```
+
+Solo permitido si el pedido esta `PENDIENTE`, antes de iniciar produccion.
+
+### Body
+
+```json
+{
+  "observaciones": "Cliente cancelo antes del primer abono."
+}
+```
+
+---
+
+# 7. Credenciales de prueba
 
 ## Admin
 
@@ -536,7 +742,7 @@ Busca por:
 
 ---
 
-# 7. Errores comunes
+# 8. Errores comunes
 
 ## Token no enviado
 
@@ -580,7 +786,7 @@ Busca por:
 
 ---
 
-# 8. Orden recomendado de prueba
+# 9. Orden recomendado de prueba
 
 ```txt
 1. Crear roles
@@ -591,4 +797,7 @@ Busca por:
 6. Crear solicitud como cliente o solicitud presencial
 7. Cotizar solicitud como Admin/Secretaria
 8. Aprobar, anular o eliminar la cotizacion
+9. Crear pedido desde la cotizacion aprobada
+10. Confirmar primer abono para pasar el pedido a EN_PROCESO
+11. Finalizar o anular segun el estado del flujo
 ```
