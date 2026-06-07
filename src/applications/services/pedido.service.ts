@@ -1,24 +1,25 @@
+import { prisma } from "../../config/prisma";
+import type { Prisma } from "../../../generated/prisma/client";
 import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
+import { AbonoService } from "./abono.service";
+import type { MetodoPagoPermitido } from "../validators/abono.validator";
 import {
   validarActualizarPedido,
-  validarAnularPedido,
   validarCrearPedido,
   validarFinalizarPedido,
   validarPasarPedidoEnProceso,
 } from "../validators/pedido.validator";
 
 const pedidoRepository = new PedidoRepository();
+const abonoService = new AbonoService();
 
 const ESTADO_COTIZACION_APROBADA = "APROBADA";
 
 const ESTADO_PEDIDO_PENDIENTE = "PENDIENTE";
 const ESTADO_PEDIDO_EN_PROCESO = "EN_PROCESO";
 const ESTADO_PEDIDO_FINALIZADO = "FINALIZADO";
-const ESTADO_PEDIDO_ANULADO = "ANULADO";
 
 const ESTADO_PAGO_PENDIENTE = "PENDIENTE";
-const ESTADO_PAGO_PARCIAL = "PARCIAL";
-const ESTADO_PAGO_COMPLETO = "COMPLETO";
 
 const esCliente = (usuarioAuth: any) => usuarioAuth?.rol === "Cliente";
 const puedeGestionarPedido = (usuarioAuth: any) =>
@@ -329,8 +330,6 @@ export class PedidoService {
     return this.formatearPedido(pedidoActualizado);
   }
 
-  // Hook temporal para la futura API de abonos: no crea registros en Abonos,
-  // pero exige confirmacion y monto minimo antes de activar produccion.
   async marcarEnProceso(idPedido: number, data: any, usuarioAuth: any) {
     validarId(idPedido);
 
@@ -342,40 +341,74 @@ export class PedidoService {
 
     const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
+    if (pedido.estadoPedido === ESTADO_PEDIDO_EN_PROCESO) {
+      throw new Error("El pedido ya está en proceso.");
+    }
+
     if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
       throw new Error("Solo un pedido PENDIENTE puede pasar a EN_PROCESO.");
     }
 
-    const total = aNumero(pedido.total);
-    const montoPrimerAbono = redondearMoneda(Number(data.montoPrimerAbono));
-    const minimoPrimerAbono = redondearMoneda(total * 0.5);
+    const traeMontoLegacy =
+      data?.montoPrimerAbono !== undefined &&
+      data?.montoPrimerAbono !== null &&
+      data?.montoPrimerAbono !== "";
 
-    if (montoPrimerAbono < minimoPrimerAbono) {
-      throw new Error("El primer abono confirmado debe ser minimo el 50% del total.");
-    }
+    const pedidoActualizado = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        if (traeMontoLegacy) {
+          await abonoService.crearAbonoConfirmadoEnTransaccion(
+            {
+              idPedido,
+              monto: redondearMoneda(Number(data.montoPrimerAbono)),
+              metodoPago: (data.metodoPago ?? "EFECTIVO") as MetodoPagoPermitido,
+              referencia:
+                limpiarTextoOpcional(data.referencia) ??
+                limpiarTextoOpcional(data.observaciones) ??
+                "Primer abono registrado desde endpoint legado.",
+              comprobanteUrl: limpiarTextoOpcional(data.comprobanteUrl),
+            },
+            usuarioAuth,
+            tx,
+          );
+        }
 
-    if (montoPrimerAbono > total) {
-      throw new Error("El primer abono no puede superar el total del pedido.");
-    }
+        const tienePagoInicial =
+          await abonoService.pedidoTienePagoInicialValido(idPedido, tx);
 
-    const saldoPendiente = redondearMoneda(total - montoPrimerAbono);
-    const estadoPago =
-      saldoPendiente === 0 ? ESTADO_PAGO_COMPLETO : ESTADO_PAGO_PARCIAL;
-    const observacion = limpiarTextoOpcional(data.observaciones)
-      ?? `Primer abono confirmado por ${montoPrimerAbono}.`;
+        if (!tienePagoInicial) {
+          throw new Error("El pedido requiere un abono confirmado mínimo del 50% o pago completo antes de pasar a producción.");
+        }
 
-    const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
-      estadoPedido: ESTADO_PEDIDO_EN_PROCESO,
-      estadoPago,
-      totalPagado: montoPrimerAbono,
-      saldoPendiente,
-      observaciones: agregarObservacionAuditoria(
-        pedido.observaciones,
-        observacion,
-        usuarioAuth,
-        "Confirmacion de primer abono",
-      ),
-    });
+        const tieneDisenoAprobado =
+          await abonoService.pedidoTieneDisenoAprobado(idPedido, tx);
+
+        if (!tieneDisenoAprobado) {
+          throw new Error("El pedido requiere un diseño aprobado por el cliente antes de pasar a producción.");
+        }
+
+        const pedidoActual = await pedidoRepository.buscarPorId(idPedido, tx);
+
+        if (pedidoActual?.estadoPedido === ESTADO_PEDIDO_EN_PROCESO) {
+          return pedidoActual;
+        }
+
+        return await pedidoRepository.actualizarPedido(
+          idPedido,
+          {
+            estadoPedido: ESTADO_PEDIDO_EN_PROCESO,
+            observaciones: agregarObservacionAuditoria(
+              pedido.observaciones,
+              limpiarTextoOpcional(data.observaciones)
+                ?? "Pedido habilitado para produccion con pago inicial y diseño aprobado.",
+              usuarioAuth,
+              "Paso a produccion",
+            ),
+          },
+          tx,
+        );
+      },
+    );
 
     return this.formatearPedido(pedidoActualizado);
   }
@@ -392,11 +425,11 @@ export class PedidoService {
     const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
     if (pedido.estadoPedido !== ESTADO_PEDIDO_EN_PROCESO) {
-      throw new Error("Solo un pedido EN_PROCESO puede finalizarse.");
+      throw new Error("Solo se pueden finalizar pedidos en proceso.");
     }
 
     const observacion = limpiarTextoOpcional(data?.observaciones)
-      ?? "Produccion y entrega completadas.";
+      ?? "Produccion completada.";
 
     const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
       estadoPedido: ESTADO_PEDIDO_FINALIZADO,
@@ -415,36 +448,9 @@ export class PedidoService {
 
   async anularPedido(idPedido: number, data: any, usuarioAuth: any) {
     validarId(idPedido);
+    await this.buscarPorIdInterno(idPedido, usuarioAuth);
+    void data;
 
-    const error = validarAnularPedido(data);
-
-    if (error) {
-      throw new Error(error);
-    }
-
-    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
-
-    if (pedido.estadoPedido === ESTADO_PEDIDO_ANULADO) {
-      throw new Error("El pedido ya esta ANULADO.");
-    }
-
-    if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
-      throw new Error("No se puede anular un pedido que ya inicio produccion.");
-    }
-
-    const observacion = limpiarTextoOpcional(data?.observaciones)
-      ?? "Pedido anulado antes de iniciar produccion.";
-
-    const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
-      estadoPedido: ESTADO_PEDIDO_ANULADO,
-      observaciones: agregarObservacionAuditoria(
-        pedido.observaciones,
-        observacion,
-        usuarioAuth,
-        "Anulacion de pedido",
-      ),
-    });
-
-    return this.formatearPedido(pedidoActualizado);
+    throw new Error("La anulación de pedidos está deshabilitada porque EstadoPedido solo permite PENDIENTE, EN_PROCESO y FINALIZADO.");
   }
 }

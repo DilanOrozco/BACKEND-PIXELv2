@@ -12,6 +12,10 @@ const esMontoValido = (valor: any) => {
   return Number.isFinite(numero) && numero > 0;
 };
 
+const esMetodoPagoPermitido = (valor: any) => {
+  return ["EFECTIVO", "TRANSFERENCIA"].includes(valor);
+};
+
 const esTextoNoVacio = (valor: any) => {
   return typeof valor === "string" && valor.trim() !== "";
 };
@@ -158,6 +162,9 @@ export const validarPasarPedidoEnProceso = (data: any) => {
   const errorCampos = validarCamposPermitidos(data, [
     "abonoConfirmado",
     "montoPrimerAbono",
+    "metodoPago",
+    "referencia",
+    "comprobanteUrl",
     "observaciones",
   ]);
 
@@ -165,12 +172,29 @@ export const validarPasarPedidoEnProceso = (data: any) => {
     return errorCampos;
   }
 
-  if (data?.abonoConfirmado !== true) {
-    return "Debe confirmar el primer abono para pasar el pedido a EN_PROCESO.";
+  if (data?.montoPrimerAbono !== undefined) {
+    if (data?.abonoConfirmado !== true) {
+      return "Debe confirmar el primer abono para pasar el pedido a EN_PROCESO.";
+    }
+
+    if (!esMontoValido(data?.montoPrimerAbono)) {
+      return "El monto del primer abono es obligatorio y debe ser mayor a 0.";
+    }
   }
 
-  if (!esMontoValido(data?.montoPrimerAbono)) {
-    return "El monto del primer abono es obligatorio y debe ser mayor a 0.";
+  if (
+    data?.metodoPago !== undefined &&
+    !esMetodoPagoPermitido(data.metodoPago)
+  ) {
+    return "Método de pago no válido. Solo se permite EFECTIVO o TRANSFERENCIA.";
+  }
+
+  if (!esTextoOpcional(data?.referencia)) {
+    return "La referencia debe ser texto, null u omitirse.";
+  }
+
+  if (!esTextoOpcional(data?.comprobanteUrl)) {
+    return "El comprobante debe ser texto, null u omitirse.";
   }
 
   if (!esTextoOpcional(data?.observaciones)) {

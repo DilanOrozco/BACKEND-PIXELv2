@@ -57,25 +57,65 @@ export const pedidoSelect = {
       monto: true,
       metodoPago: true,
       referencia: true,
+      comprobanteUrl: true,
       estado: true,
       fechaCreacion: true,
       confirmadoPorId: true,
       fechaConfirmacion: true,
+      rechazadoPorId: true,
+      fechaRechazo: true,
+      motivoRechazo: true,
       confirmadoPor: {
         select: {
           idUsuario: true,
           nombre: true,
           correo: true,
+          rol: { select: { idRol: true, nombre: true } },
+        },
+      },
+      rechazadoPor: {
+        select: {
+          idUsuario: true,
+          nombre: true,
+          correo: true,
+          rol: { select: { idRol: true, nombre: true } },
         },
       },
     },
     orderBy: {
-      fechaCreacion: "asc",
+      fechaCreacion: "desc",
+    },
+  },
+  disenos: {
+    select: {
+      idDiseno: true,
+      idPedido: true,
+      idDisenador: true,
+      archivoUrl: true,
+      descripcion: true,
+      observaciones: true,
+      estado: true,
+      fechaCreacion: true,
+      fechaActualizacion: true,
+      fechaEnvio: true,
+      fechaAprobacion: true,
+      disenador: {
+        select: {
+          idUsuario: true,
+          nombre: true,
+          correo: true,
+          rol: { select: { idRol: true, nombre: true } },
+        },
+      },
+    },
+    orderBy: {
+      fechaCreacion: "desc",
     },
   },
   _count: {
     select: {
       abonos: true,
+      disenos: true,
     },
   },
 } as const;

@@ -25,7 +25,6 @@ enum EstadoPedido {
   PENDIENTE
   EN_PROCESO
   FINALIZADO
-  ANULADO
 }
 
 enum EstadoPago {
@@ -43,6 +42,13 @@ enum MetodoPago {
 enum EstadoAbono {
   PENDIENTE
   CONFIRMADO
+  RECHAZADO
+}
+
+enum EstadoDiseno {
+  PENDIENTE
+  ENVIADO
+  APROBADO
 }
 
 // ==========================
@@ -79,6 +85,8 @@ model Usuario {
   cotizacionesCreadas Cotizacion[] @relation("CotizacionCreador")
   pedidosCliente      Pedido[]     @relation("PedidoCliente")
   abonosConfirmados   Abonos[]     @relation("AbonosConfirmados")
+  abonosRechazados    Abonos[]     @relation("AbonosRechazados")
+  disenos             Diseno[]
 
   @@map("usuarios")
 }
@@ -110,10 +118,10 @@ model Cotizacion {
   fechaCreacion      DateTime         @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime         @updatedAt @map("fecha_actualizacion")
 
-  cliente   Usuario              @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
-  creadoPor Usuario              @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: Cascade)
+  cliente   Usuario             @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
+  creadoPor Usuario             @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: Cascade)
   detalles  DetalleCotizacion[]
-  pedidos   Pedido[]             @relation("CotizacionPedidos")
+  pedidos   Pedido[]            @relation("CotizacionPedidos")
 
   @@map("cotizaciones")
 }
@@ -155,6 +163,7 @@ model Pedido {
   cotizacion Cotizacion      @relation("CotizacionPedidos", fields: [idCotizacion], references: [idCotizacion])
   detalles   DetallePedido[]
   abonos     Abonos[]
+  disenos    Diseno[]
 
   @@map("pedidos")
 }
@@ -181,13 +190,37 @@ model Abonos {
   monto             Decimal     @db.Decimal(10, 2)
   metodoPago        MetodoPago
   referencia        String?
+  comprobanteUrl    String?     @map("comprobante_url")
   estado            EstadoAbono @default(PENDIENTE)
   fechaCreacion     DateTime    @default(now()) @map("fecha_creacion")
   confirmadoPorId   Int?        @map("confirmado_por_id")
   fechaConfirmacion DateTime?   @map("fecha_confirmacion")
+  rechazadoPorId    Int?        @map("rechazado_por_id")
+  fechaRechazo      DateTime?   @map("fecha_rechazo")
+  motivoRechazo     String?     @map("motivo_rechazo")
 
   pedido        Pedido   @relation(fields: [idPedido], references: [idPedido])
   confirmadoPor Usuario? @relation("AbonosConfirmados", fields: [confirmadoPorId], references: [idUsuario])
+  rechazadoPor  Usuario? @relation("AbonosRechazados", fields: [rechazadoPorId], references: [idUsuario])
 
   @@map("abonos")
+}
+
+model Diseno {
+  idDiseno           Int          @id @default(autoincrement()) @map("id_diseno")
+  idPedido           Int          @map("id_pedido")
+  idDisenador        Int?         @map("id_disenador")
+  archivoUrl         String?      @map("archivo_url")
+  descripcion        String?
+  observaciones      String?
+  estado             EstadoDiseno @default(PENDIENTE)
+  fechaCreacion      DateTime     @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime     @updatedAt @map("fecha_actualizacion")
+  fechaEnvio         DateTime?    @map("fecha_envio")
+  fechaAprobacion    DateTime?    @map("fecha_aprobacion")
+
+  pedido    Pedido   @relation(fields: [idPedido], references: [idPedido])
+  disenador Usuario? @relation(fields: [idDisenador], references: [idUsuario])
+
+  @@map("disenos")
 }

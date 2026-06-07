@@ -1,10 +1,14 @@
 import { Router } from "express";
 import { PedidoController } from "../controllers/pedido.controller";
+import { AbonoController } from "../controllers/abono.controller";
+import { DisenoController } from "../controllers/diseno.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarRoles } from "../middlewares/roles.middleware";
 
 const router = Router();
 const pedidoController = new PedidoController();
+const abonoController = new AbonoController();
+const disenoController = new DisenoController();
 
 router.use(verificarAuth);
 
@@ -43,19 +47,31 @@ router.patch(
 // Consulta compartida: el service restringe al cliente a sus propios pedidos.
 router.get(
   "/",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  autorizarRoles("Admin", "Secretaria", "Cliente", "Diseñador"),
   pedidoController.listarPedidos,
 );
 
 router.get(
   "/buscar",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  autorizarRoles("Admin", "Secretaria", "Cliente", "Diseñador"),
   pedidoController.buscarParcial,
 );
 
 router.get(
+  "/:idPedido/abonos",
+  autorizarRoles("Admin", "Secretaria", "Cliente", "Diseñador"),
+  abonoController.listarPorPedido,
+);
+
+router.get(
+  "/:idPedido/disenos",
+  autorizarRoles("Admin", "Secretaria", "Cliente", "Diseñador"),
+  disenoController.listarPorPedido,
+);
+
+router.get(
   "/:id",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  autorizarRoles("Admin", "Secretaria", "Cliente", "Diseñador"),
   pedidoController.buscarPorId,
 );
 

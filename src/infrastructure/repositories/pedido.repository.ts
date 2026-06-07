@@ -1,7 +1,11 @@
 import { prisma } from "../../config/prisma";
+import type { Prisma } from "../../../generated/prisma/client";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
 
-const estadosPedido = ["PENDIENTE", "EN_PROCESO", "FINALIZADO", "ANULADO"];
+const estadosPedido = ["PENDIENTE", "EN_PROCESO", "FINALIZADO"];
+type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
+
+const db = (tx?: Prisma.TransactionClient): PrismaExecutor => tx ?? prisma;
 
 const cotizacionParaPedidoSelect = {
   idCotizacion: true,
@@ -101,8 +105,8 @@ export class PedidoRepository {
     });
   }
 
-  async buscarPorId(idPedido: number) {
-    return await prisma.pedido.findUnique({
+  async buscarPorId(idPedido: number, tx?: Prisma.TransactionClient) {
+    return await db(tx).pedido.findUnique({
       where: { idPedido },
       select: pedidoSelect,
     });
@@ -147,8 +151,12 @@ export class PedidoRepository {
     });
   }
 
-  async actualizarPedido(idPedido: number, data: any) {
-    return await prisma.pedido.update({
+  async actualizarPedido(
+    idPedido: number,
+    data: any,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).pedido.update({
       where: { idPedido },
       data,
       select: pedidoSelect,
