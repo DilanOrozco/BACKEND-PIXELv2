@@ -2,6 +2,7 @@ import { Router } from "express";
 import { PedidoController } from "../controllers/pedido.controller";
 import { AbonoController } from "../controllers/abono.controller";
 import { DisenoController } from "../controllers/diseno.controller";
+import { CompraController } from "../controllers/compra.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarRoles } from "../middlewares/roles.middleware";
 
@@ -9,6 +10,8 @@ const router = Router();
 const pedidoController = new PedidoController();
 const abonoController = new AbonoController();
 const disenoController = new DisenoController();
+const compraController = new CompraController();
+const ROL_DISENADOR = "Dise\u00f1ador";
 
 router.use(verificarAuth);
 
@@ -67,6 +70,12 @@ router.get(
   "/:idPedido/disenos",
   autorizarRoles("Admin", "Secretaria", "Cliente", "Diseñador"),
   disenoController.listarPorPedido,
+);
+
+router.get(
+  "/:idPedido/compras",
+  autorizarRoles("Admin", "Secretaria", ROL_DISENADOR),
+  compraController.listarPorPedido,
 );
 
 router.get(

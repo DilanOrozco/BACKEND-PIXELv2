@@ -51,6 +51,12 @@ enum EstadoDiseno {
   APROBADO
 }
 
+enum EstadoCompra {
+  PENDIENTE
+  COMPRADA
+  ANULADA
+}
+
 // ==========================
 // MODELOS
 // ==========================
@@ -87,6 +93,7 @@ model Usuario {
   abonosConfirmados   Abonos[]     @relation("AbonosConfirmados")
   abonosRechazados    Abonos[]     @relation("AbonosRechazados")
   disenos             Diseno[]
+  comprasRealizadas   Compra[]
 
   @@map("usuarios")
 }
@@ -164,6 +171,7 @@ model Pedido {
   detalles   DetallePedido[]
   abonos     Abonos[]
   disenos    Diseno[]
+  compras    Compra[]
 
   @@map("pedidos")
 }
@@ -223,4 +231,50 @@ model Diseno {
   disenador Usuario? @relation(fields: [idDisenador], references: [idUsuario])
 
   @@map("disenos")
+}
+
+model Proveedor {
+  idProveedor        Int      @id @default(autoincrement()) @map("id_proveedor")
+  nombre             String   @unique @db.VarChar(100)
+  telefono           String?  @db.VarChar(20)
+  correo             String?  @db.VarChar(100)
+  direccion          String?  @db.VarChar(150)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  compras Compra[]
+
+  @@map("proveedores")
+}
+
+model Compra {
+  idCompra      Int          @id @default(autoincrement()) @map("id_compra")
+  idPedido      Int          @map("id_pedido")
+  idProveedor   Int          @map("id_proveedor")
+  compradoPorId Int          @map("comprado_por_id")
+  estado        EstadoCompra @default(PENDIENTE)
+  total         Decimal      @default(0) @db.Decimal(10, 2)
+  fechaCompra   DateTime     @default(now()) @map("fecha_compra")
+  observaciones String?
+
+  pedido      Pedido          @relation(fields: [idPedido], references: [idPedido])
+  proveedor   Proveedor       @relation(fields: [idProveedor], references: [idProveedor])
+  compradoPor Usuario         @relation(fields: [compradoPorId], references: [idUsuario])
+  detalles    DetalleCompra[]
+
+  @@map("compras")
+}
+
+model DetalleCompra {
+  idDetalleCompra   Int     @id @default(autoincrement()) @map("id_detalle_compra")
+  idCompra          Int     @map("id_compra")
+  descripcionInsumo String  @map("descripcion_insumo") @db.VarChar(255)
+  cantidad          Int
+  costoUnitario     Decimal @map("costo_unitario") @db.Decimal(10, 2)
+  subtotal          Decimal @db.Decimal(10, 2)
+
+  compra Compra @relation(fields: [idCompra], references: [idCompra], onDelete: Cascade)
+
+  @@map("detalle_compra")
 }

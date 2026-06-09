@@ -744,7 +744,106 @@ Solo permitido si el pedido esta `PENDIENTE`, antes de iniciar produccion.
 
 ---
 
-# 7. Credenciales de prueba
+# 7. Proveedores
+
+Modulo interno. Todas las rutas usan JWT. Cliente no tiene acceso a proveedores.
+
+```http
+POST /api/proveedores
+GET /api/proveedores
+GET /api/proveedores/buscar?termino=dtf
+GET /api/proveedores/:id
+PATCH /api/proveedores/:id
+DELETE /api/proveedores/:id
+DELETE /api/proveedores/:id/eliminar
+```
+
+Roles:
+
+- Crear, listar, buscar, consultar, actualizar y desactivar: `Admin`, `Secretaria`.
+- Eliminar fisicamente: `Admin`.
+
+Reglas principales:
+
+- `nombre` es obligatorio y unico.
+- `telefono`, `correo` y `direccion` son opcionales.
+- `correo`, si se envia, debe tener formato valido.
+- `DELETE /api/proveedores/:id` hace eliminacion logica con `estado=false`.
+- `DELETE /api/proveedores/:id/eliminar` solo elimina si no tiene compras asociadas.
+- Un proveedor inactivo no puede usarse en compras nuevas.
+
+---
+
+# 8. Compras
+
+Modulo interno de operacion. Cliente no tiene acceso a compras, proveedores, costos, subtotales ni totales de compra. Admin y Secretaria gestionan el modulo. Disenador solo consulta compras asociadas a pedidos y recibe una vista reducida sin proveedor, comprador ni valores financieros.
+
+Estados validos:
+
+```txt
+PENDIENTE, COMPRADA, ANULADA
+```
+
+Calculos del backend:
+
+```txt
+subtotalDetalle = cantidad * costoUnitario
+totalCompra = suma de subtotales
+```
+
+```http
+POST /api/compras
+GET /api/compras?idPedido=8
+GET /api/compras/resumen
+GET /api/compras/:id
+GET /api/pedidos/:idPedido/compras
+PATCH /api/compras/:id
+PATCH /api/compras/:id/confirmar
+PATCH /api/compras/:id/anular
+DELETE /api/compras/:id
+```
+
+Roles:
+
+- Crear, actualizar, confirmar, anular, eliminar y ver resumen: `Admin`, `Secretaria`.
+- Consultar por pedido o por id: `Admin`, `Secretaria`, `Disenador`.
+- Cliente: sin acceso.
+
+Crear compra:
+
+```json
+{
+  "idPedido": 8,
+  "idProveedor": 2,
+  "observaciones": "Compra de insumos para pedido urgente.",
+  "confirmar": false,
+  "detalles": [
+    {
+      "descripcionInsumo": "Pelicula DTF",
+      "cantidad": 2,
+      "costoUnitario": 45000
+    }
+  ]
+}
+```
+
+Reglas principales:
+
+- Toda compra pertenece a un pedido y a un proveedor.
+- `compradoPorId` sale del usuario autenticado.
+- No se aceptan `subtotal` ni `total` desde frontend.
+- Cada compra requiere minimo un detalle.
+- `cantidad` y `costoUnitario` deben ser mayores a cero.
+- Solo se crean compras para pedidos `PENDIENTE` o `EN_PROCESO`; no para `FINALIZADO`.
+- Solo compras `PENDIENTE` pueden actualizarse, confirmarse, anularse o eliminarse.
+- Confirmar cambia estado a `COMPRADA`.
+- Anular cambia estado a `ANULADA` y conserva detalles.
+- Eliminar borra fisicamente solo compras `PENDIENTE`; los detalles caen por cascade.
+- `/api/compras/resumen` no esta disponible para `Disenador`.
+
+---
+
+# 9. Credenciales de prueba
 
 ## Admin
 
@@ -784,7 +883,7 @@ Solo permitido si el pedido esta `PENDIENTE`, antes de iniciar produccion.
 
 ---
 
-# 8. Errores comunes
+# 10. Errores comunes
 
 ## Token no enviado
 
@@ -828,7 +927,7 @@ Solo permitido si el pedido esta `PENDIENTE`, antes de iniciar produccion.
 
 ---
 
-# 9. Orden recomendado de prueba
+# 11. Orden recomendado de prueba
 
 ```txt
 1. Crear roles

@@ -22,6 +22,9 @@ import pedidoRoutes from "../infrastructure/routes/pedido.routes";
 import tecnicaRoutes from "../infrastructure/routes/tecnica.routes";
 import abonoRoutes from "../infrastructure/routes/abono.routes";
 import disenoRoutes from "../infrastructure/routes/diseno.routes";
+import proveedorRoutes from "../infrastructure/routes/proveedor.routes";
+import compraRoutes from "../infrastructure/routes/compra.routes";
+import dashboardRoutes from "../infrastructure/routes/dashboard.routes";
 
 //endpoints
 app.use("/api/roles", rolRoutes);
@@ -32,5 +35,8 @@ app.use("/api/pedidos", pedidoRoutes);
 app.use("/api/tecnicas", tecnicaRoutes);
 app.use("/api/abonos", abonoRoutes);
 app.use("/api/disenos", disenoRoutes);
+app.use("/api/proveedores", proveedorRoutes);
+app.use("/api/compras", compraRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 export default app;
