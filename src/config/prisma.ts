@@ -1,10 +1,23 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client";
+import type { Prisma } from "../../generated/prisma/client";
 
 const connectionString = `${process.env.DATABASE_URL}`;
 
-const adapter = new PrismaPg({ connectionString });
-const prisma = new PrismaClient({ adapter });
+export const PRISMA_TRANSACTION_OPTIONS = {
+  maxWait: 10000,
+  timeout: 15000,
+} satisfies NonNullable<Prisma.PrismaClientOptions["transactionOptions"]>;
 
-export { prisma };
+const adapter = new PrismaPg({ connectionString });
+const prisma = new PrismaClient({
+  adapter,
+  transactionOptions: PRISMA_TRANSACTION_OPTIONS,
+});
+
+const runPrismaTransaction = async <T>(
+  handler: (tx: Prisma.TransactionClient) => Promise<T>,
+) => prisma.$transaction(handler, PRISMA_TRANSACTION_OPTIONS);
+
+export { prisma, runPrismaTransaction };

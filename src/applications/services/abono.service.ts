@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import {
   AbonoRepository,
@@ -35,6 +35,12 @@ interface AuthUser {
 }
 
 type DatosEntrada = Record<string, unknown>;
+
+interface ResumenConfirmacionPago {
+  total: number;
+  nuevoTotalPagado: number;
+  pagoInicialValido: boolean;
+}
 
 const esCliente = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Cliente";
 const puedeGestionarAbonos = (usuarioAuth: AuthUser) =>
@@ -115,11 +121,51 @@ export class AbonoService {
     return ESTADO_PAGO_PARCIAL;
   }
 
+  private calcularResumenPago(total: number, totalPagado: number) {
+    const totalRedondeado = redondearMoneda(total);
+    const totalPagadoRedondeado = redondearMoneda(totalPagado);
+    const saldoPendiente = redondearMoneda(
+      Math.max(totalRedondeado - totalPagadoRedondeado, 0),
+    );
+    const minimoPagoInicial = redondearMoneda(totalRedondeado * 0.5);
+
+    return {
+      totalPagado: totalPagadoRedondeado,
+      saldoPendiente,
+      estadoPago: this.calcularEstadoPago(
+        totalRedondeado,
+        totalPagadoRedondeado,
+      ),
+      pagoInicialValido:
+        totalPagadoRedondeado >= minimoPagoInicial ||
+        totalPagadoRedondeado >= totalRedondeado,
+    };
+  }
+
+  private async actualizarPagoPedidoConTotal(
+    idPedido: number,
+    total: number,
+    totalPagado: number,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const resumen = this.calcularResumenPago(total, totalPagado);
+
+    return await abonoRepository.actualizarResumenPagoPedido(
+      idPedido,
+      {
+        totalPagado: resumen.totalPagado,
+        saldoPendiente: resumen.saldoPendiente,
+        estadoPago: resumen.estadoPago,
+      },
+      tx,
+    );
+  }
+
   private async validarConfirmacionDeMonto(
     idPedido: number,
     monto: number,
     tx: Prisma.TransactionClient,
-  ) {
+  ): Promise<ResumenConfirmacionPago> {
     const pedido = await abonoRepository.buscarPedidoPorId(idPedido, tx);
 
     if (!pedido) {
@@ -131,6 +177,7 @@ export class AbonoService {
       await abonoRepository.sumarAbonosConfirmados(idPedido, tx),
     );
     const nuevoTotalPagado = redondearMoneda(totalPagadoActual + monto);
+    const resumen = this.calcularResumenPago(total, nuevoTotalPagado);
 
     if (nuevoTotalPagado > total) {
       throw new Error("El abono supera el saldo pendiente del pedido.");
@@ -142,7 +189,11 @@ export class AbonoService {
       throw new Error("El primer abono confirmado debe ser mínimo del 50% del total del pedido o el pago completo.");
     }
 
-    return pedido;
+    return {
+      total,
+      nuevoTotalPagado,
+      pagoInicialValido: resumen.pagoInicialValido,
+    };
   }
 
   async recalcularPagoPedido(idPedido: number, tx?: Prisma.TransactionClient) {
@@ -156,18 +207,7 @@ export class AbonoService {
     const totalPagado = redondearMoneda(
       await abonoRepository.sumarAbonosConfirmados(idPedido, tx),
     );
-    const saldoPendiente = redondearMoneda(Math.max(total - totalPagado, 0));
-    const estadoPago = this.calcularEstadoPago(total, totalPagado);
-
-    return await abonoRepository.actualizarResumenPagoPedido(
-      idPedido,
-      {
-        totalPagado,
-        saldoPendiente,
-        estadoPago,
-      },
-      tx,
-    );
+    return await this.actualizarPagoPedidoConTotal(idPedido, total, totalPagado, tx);
   }
 
   async pedidoTienePagoInicialValido(
@@ -184,9 +224,7 @@ export class AbonoService {
     const totalPagado = redondearMoneda(
       await abonoRepository.sumarAbonosConfirmados(idPedido, tx),
     );
-    const minimo = redondearMoneda(total * 0.5);
-
-    return totalPagado >= minimo || totalPagado >= total;
+    return this.calcularResumenPago(total, totalPagado).pagoInicialValido;
   }
 
   async pedidoTieneDisenoAprobado(
@@ -199,6 +237,7 @@ export class AbonoService {
   async intentarPasarPedidoAEnProceso(
     idPedido: number,
     tx?: Prisma.TransactionClient,
+    pagoInicialYaValidado?: boolean,
   ) {
     const pedido = await abonoRepository.buscarPedidoPorId(idPedido, tx);
 
@@ -206,10 +245,9 @@ export class AbonoService {
       return false;
     }
 
-    const tienePagoInicial = await this.pedidoTienePagoInicialValido(
-      idPedido,
-      tx,
-    );
+    const tienePagoInicial =
+      pagoInicialYaValidado ??
+      (await this.pedidoTienePagoInicialValido(idPedido, tx));
 
     if (!tienePagoInicial) {
       return false;
@@ -233,12 +271,16 @@ export class AbonoService {
     return true;
   }
 
-  async crearAbonoConfirmadoEnTransaccion(
+  async crearAbonoConfirmadoConResumenEnTransaccion(
     data: CrearAbonoData,
     user: AuthUser,
     tx: Prisma.TransactionClient,
   ) {
-    await this.validarConfirmacionDeMonto(data.idPedido, data.monto, tx);
+    const resumenConfirmacion = await this.validarConfirmacionDeMonto(
+      data.idPedido,
+      data.monto,
+      tx,
+    );
 
     const abonoCreado = await abonoRepository.crearAbono(
       {
@@ -250,10 +292,38 @@ export class AbonoService {
       tx,
     );
 
-    await this.recalcularPagoPedido(data.idPedido, tx);
-    await this.intentarPasarPedidoAEnProceso(data.idPedido, tx);
+    await this.actualizarPagoPedidoConTotal(
+      data.idPedido,
+      resumenConfirmacion.total,
+      resumenConfirmacion.nuevoTotalPagado,
+      tx,
+    );
+    await this.intentarPasarPedidoAEnProceso(
+      data.idPedido,
+      tx,
+      resumenConfirmacion.pagoInicialValido,
+    );
 
-    return await abonoRepository.buscarPorId(abonoCreado.idAbono, tx);
+    const abono = await abonoRepository.buscarPorId(abonoCreado.idAbono, tx);
+
+    return {
+      abono,
+      pagoInicialValido: resumenConfirmacion.pagoInicialValido,
+    };
+  }
+
+  async crearAbonoConfirmadoEnTransaccion(
+    data: CrearAbonoData,
+    user: AuthUser,
+    tx: Prisma.TransactionClient,
+  ) {
+    const resultado = await this.crearAbonoConfirmadoConResumenEnTransaccion(
+      data,
+      user,
+      tx,
+    );
+
+    return resultado.abono;
   }
 
   async crearAbono(data: DatosEntrada, usuarioAuth: AuthUser | undefined) {
@@ -285,7 +355,7 @@ export class AbonoService {
     }
 
     if (data.confirmar === true) {
-      return await prisma.$transaction(async (tx) => {
+      return await runPrismaTransaction(async (tx) => {
         return await this.crearAbonoConfirmadoEnTransaccion(
           datosBase,
           user,
@@ -314,7 +384,7 @@ export class AbonoService {
       throw new Error(error);
     }
 
-    return await prisma.$transaction(async (tx) => {
+    return await runPrismaTransaction(async (tx) => {
       const abono = await abonoRepository.buscarPorId(idAbono, tx);
 
       if (!abono) {
@@ -333,7 +403,7 @@ export class AbonoService {
         throw new Error("Solo se pueden confirmar abonos pendientes.");
       }
 
-      await this.validarConfirmacionDeMonto(
+      const resumenConfirmacion = await this.validarConfirmacionDeMonto(
         abono.idPedido,
         redondearMoneda(aNumero(abono.monto)),
         tx,
@@ -355,8 +425,17 @@ export class AbonoService {
         tx,
       );
 
-      await this.recalcularPagoPedido(abonoConfirmado.idPedido, tx);
-      await this.intentarPasarPedidoAEnProceso(abonoConfirmado.idPedido, tx);
+      await this.actualizarPagoPedidoConTotal(
+        abonoConfirmado.idPedido,
+        resumenConfirmacion.total,
+        resumenConfirmacion.nuevoTotalPagado,
+        tx,
+      );
+      await this.intentarPasarPedidoAEnProceso(
+        abonoConfirmado.idPedido,
+        tx,
+        resumenConfirmacion.pagoInicialValido,
+      );
 
       return await abonoRepository.buscarPorId(idAbono, tx);
     });
@@ -376,7 +455,7 @@ export class AbonoService {
       throw new Error(error);
     }
 
-    return await prisma.$transaction(async (tx) => {
+    return await runPrismaTransaction(async (tx) => {
       const abono = await abonoRepository.buscarPorId(idAbono, tx);
 
       if (!abono) {

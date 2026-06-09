@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { prisma, runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import type { EstadoCompraPermitido } from "../../applications/validators/compra.validator";
 import { compraSelect } from "../../utils/selects/compra.select";
@@ -98,7 +98,7 @@ export class CompraRepository {
   async crearCompra(data: CrearCompraData) {
     const { detalles, ...compraData } = data;
 
-    return await prisma.$transaction(async (tx) => {
+    return await runPrismaTransaction(async (tx) => {
       return await tx.compra.create({
         data: {
           ...compraData,
@@ -142,7 +142,7 @@ export class CompraRepository {
     idCompra: number,
     data: ActualizarCompraData,
   ) {
-    return await prisma.$transaction(async (tx) => {
+    return await runPrismaTransaction(async (tx) => {
       const { detalles, ...compraData } = data;
 
       if (detalles) {

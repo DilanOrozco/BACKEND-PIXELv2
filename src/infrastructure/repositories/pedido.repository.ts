@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { prisma, runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
 
@@ -64,7 +64,7 @@ export class PedidoRepository {
   async crearDesdeCotizacion(data: any) {
     const { detalles, ...pedidoData } = data;
 
-    return await prisma.$transaction(async (tx: any) => {
+    return await runPrismaTransaction(async (tx) => {
       const pedidoExistente = await tx.pedido.findFirst({
         where: { idCotizacion: pedidoData.idCotizacion },
         select: { idPedido: true },

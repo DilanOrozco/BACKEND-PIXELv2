@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
 import { AbonoService } from "./abono.service";
@@ -354,27 +354,33 @@ export class PedidoService {
       data?.montoPrimerAbono !== null &&
       data?.montoPrimerAbono !== "";
 
-    const pedidoActualizado = await prisma.$transaction(
+    const pedidoActualizado = await runPrismaTransaction(
       async (tx: Prisma.TransactionClient) => {
+        let pagoInicialValidadoPorAbono = false;
+
         if (traeMontoLegacy) {
-          await abonoService.crearAbonoConfirmadoEnTransaccion(
-            {
-              idPedido,
-              monto: redondearMoneda(Number(data.montoPrimerAbono)),
-              metodoPago: (data.metodoPago ?? "EFECTIVO") as MetodoPagoPermitido,
-              referencia:
-                limpiarTextoOpcional(data.referencia) ??
-                limpiarTextoOpcional(data.observaciones) ??
-                "Primer abono registrado desde endpoint legado.",
-              comprobanteUrl: limpiarTextoOpcional(data.comprobanteUrl),
-            },
-            usuarioAuth,
-            tx,
-          );
+          const resultadoAbono =
+            await abonoService.crearAbonoConfirmadoConResumenEnTransaccion(
+              {
+                idPedido,
+                monto: redondearMoneda(Number(data.montoPrimerAbono)),
+                metodoPago: (data.metodoPago ?? "EFECTIVO") as MetodoPagoPermitido,
+                referencia:
+                  limpiarTextoOpcional(data.referencia) ??
+                  limpiarTextoOpcional(data.observaciones) ??
+                  "Primer abono registrado desde endpoint legado.",
+                comprobanteUrl: limpiarTextoOpcional(data.comprobanteUrl),
+              },
+              usuarioAuth,
+              tx,
+            );
+
+          pagoInicialValidadoPorAbono = resultadoAbono.pagoInicialValido;
         }
 
         const tienePagoInicial =
-          await abonoService.pedidoTienePagoInicialValido(idPedido, tx);
+          pagoInicialValidadoPorAbono ||
+          (await abonoService.pedidoTienePagoInicialValido(idPedido, tx));
 
         if (!tienePagoInicial) {
           throw new Error("El pedido requiere un abono confirmado mínimo del 50% o pago completo antes de pasar a producción.");

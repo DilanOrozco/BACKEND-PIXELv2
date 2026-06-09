@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { prisma, runPrismaTransaction } from "../../config/prisma";
 import type { EstadoCotizacion } from "../../../generated/prisma/enums";
 import { cotizacionSelect } from "../../utils/selects/cotizacion.select";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
@@ -15,7 +15,7 @@ export class CotizacionRepository {
   async crearCotizacionConDetalles(data: any) {
     const { detalles, ...cotizacionData } = data;
 
-    return await prisma.$transaction(async (tx: any) => {
+    return await runPrismaTransaction(async (tx) => {
       return await tx.cotizacion.create({
         data: {
           ...cotizacionData,
@@ -100,7 +100,7 @@ export class CotizacionRepository {
     cotizacionData: any,
     detalles: any[],
   ) {
-    return await prisma.$transaction(async (tx: any) => {
+    return await runPrismaTransaction(async (tx) => {
       await tx.cotizacion.update({
         where: { idCotizacion },
         data: cotizacionData,
@@ -144,7 +144,7 @@ export class CotizacionRepository {
     cotizacionData: any,
     detalles: any[],
   ) {
-    return await prisma.$transaction(async (tx: any) => {
+    return await runPrismaTransaction(async (tx) => {
       for (const detalle of detalles) {
         const { idDetalleCotizacion, ...detalleData } = detalle;
 
@@ -198,7 +198,7 @@ export class CotizacionRepository {
   ) {
     const { detalles, ...pedidoCabecera } = pedidoData;
 
-    return await prisma.$transaction(async (tx: any) => {
+    return await runPrismaTransaction(async (tx) => {
       const pedidoExistente = await tx.pedido.findFirst({
         where: { idCotizacion },
         select: { idPedido: true },

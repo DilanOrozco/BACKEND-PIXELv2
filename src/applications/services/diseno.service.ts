@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import {
   DisenoRepository,
@@ -43,6 +43,21 @@ const limpiarTextoOpcional = (valor: unknown) => {
 
   const texto = valor.trim();
   return texto === "" ? null : texto;
+};
+
+const aNumero = (valor: unknown) => Number(valor ?? 0);
+
+const redondearMoneda = (valor: number) => Math.round(valor * 100) / 100;
+
+const pedidoTienePagoInicial = (pedido: {
+  total: unknown;
+  totalPagado: unknown;
+}) => {
+  const total = redondearMoneda(aNumero(pedido.total));
+  const totalPagado = redondearMoneda(aNumero(pedido.totalPagado));
+  const minimo = redondearMoneda(total * 0.5);
+
+  return totalPagado >= minimo || totalPagado >= total;
 };
 
 const validarId = (id: number, mensaje: string) => {
@@ -301,7 +316,7 @@ export class DisenoService {
       throw new Error(error);
     }
 
-    return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    return await runPrismaTransaction(async (tx: Prisma.TransactionClient) => {
       const diseno = await disenoRepository.buscarPorId(idDiseno, tx);
 
       if (!diseno) {
@@ -351,10 +366,7 @@ export class DisenoService {
         tx,
       );
 
-      const tienePagoInicial = await abonoService.pedidoTienePagoInicialValido(
-        diseno.idPedido,
-        tx,
-      );
+      const tienePagoInicial = pedidoTienePagoInicial(diseno.pedido);
 
       let pedido = await disenoRepository.buscarPedidoCompleto(
         diseno.idPedido,
