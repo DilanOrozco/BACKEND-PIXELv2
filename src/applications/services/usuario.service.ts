@@ -10,6 +10,15 @@ import {
 const usuarioRepository = new UsuarioRepository();
 const rolRepository = new RolRepository();
 
+const limpiarTextoOpcional = (valor: unknown) => {
+  if (typeof valor !== "string") {
+    return null;
+  }
+
+  const texto = valor.trim();
+  return texto === "" ? null : texto;
+};
+
 export class UsuarioService {
   async crearUsuario(data: any) {
     const error = validarCrearUsuario(data);
@@ -24,21 +33,24 @@ export class UsuarioService {
       throw new Error("El rol debe existir.");
     }
 
+    const correoLimpio = data.correo.trim().toLowerCase();
+    const documentoLimpio = limpiarTextoOpcional(data.documento);
+
     const correoExistente = await usuarioRepository.buscarPorCorreo(
-      data.correo.trim().toLowerCase()
+      correoLimpio
     );
 
     if (correoExistente) {
       throw new Error("El correo debe ser único en todo el sistema.");
     }
 
-    if (data.documento) {
+    if (documentoLimpio) {
       const documentoExistente = await usuarioRepository.buscarPorDocumento(
-        data.documento.trim()
+        documentoLimpio
       );
 
       if (documentoExistente) {
-        throw new Error("El documento debe ser único.");
+        throw new Error("El documento ya esta registrado.");
       }
     }
 
@@ -46,10 +58,10 @@ export class UsuarioService {
 
     const dataCrear = {
       nombre: data.nombre.trim(),
-      documento: data.documento ? data.documento.trim() : null,
-      telefono: data.telefono ? data.telefono.trim() : null,
-      direccion: data.direccion ? data.direccion.trim() : null,
-      correo: data.correo.trim().toLowerCase(),
+      documento: documentoLimpio,
+      telefono: limpiarTextoOpcional(data.telefono),
+      direccion: limpiarTextoOpcional(data.direccion),
+      correo: correoLimpio,
       contrasenaHash,
       idRol: Number(data.idRol),
     };
@@ -103,12 +115,12 @@ export class UsuarioService {
     }
 
     if (data.documento !== undefined) {
-      const docLimpio = data.documento ? data.documento.trim() : null;
+      const docLimpio = limpiarTextoOpcional(data.documento);
 
       if (docLimpio) {
         const docExistente = await usuarioRepository.buscarPorDocumento(docLimpio);
         if (docExistente && docExistente.idUsuario !== idUsuario) {
-          throw new Error("El documento debe ser único.");
+          throw new Error("El documento ya esta registrado.");
         }
       }
       dataActualizar.documento = docLimpio;
@@ -126,11 +138,11 @@ export class UsuarioService {
     }
 
     if (data.telefono !== undefined) {
-      dataActualizar.telefono = data.telefono.trim();
+      dataActualizar.telefono = limpiarTextoOpcional(data.telefono);
     }
 
     if (data.direccion !== undefined) {
-      dataActualizar.direccion = data.direccion.trim();
+      dataActualizar.direccion = limpiarTextoOpcional(data.direccion);
     }
 
     if (data.contrasena !== undefined) {

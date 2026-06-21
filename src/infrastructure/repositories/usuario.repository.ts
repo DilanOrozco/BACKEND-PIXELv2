@@ -1,13 +1,50 @@
 // backend/src/infrastructure/repositories/usuario.repository.ts
 import { prisma } from "../../config/prisma";
+import { Prisma } from "../../../generated/prisma/client";
 import { usuarioSelect, usuarioAuthSelect } from "../../utils/selects/usuario.select";
+
+const manejarErrorPrismaUsuario = (error: unknown): never => {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      const target = Array.isArray(error.meta?.target)
+        ? error.meta.target.map(String)
+        : [];
+
+      if (target.includes("documento")) {
+        throw new Error("El documento ya esta registrado.");
+      }
+
+      if (target.includes("correo")) {
+        throw new Error("El correo ya esta registrado en el sistema.");
+      }
+
+      throw new Error("Ya existe un usuario con un dato unico registrado.");
+    }
+
+    if (error.code === "P2003") {
+      throw new Error(
+        "No se puede eliminar el usuario porque tiene registros relacionados.",
+      );
+    }
+
+    if (error.code === "P2025") {
+      throw new Error("El usuario no existe.");
+    }
+  }
+
+  throw error;
+};
 
 export class UsuarioRepository {
   async crearUsuario(data: any) {
-    return await prisma.usuario.create({
-      data,
-      select: usuarioSelect,
-    });
+    try {
+      return await prisma.usuario.create({
+        data,
+        select: usuarioSelect,
+      });
+    } catch (error) {
+      manejarErrorPrismaUsuario(error);
+    }
   }
 
   async listarUsuarios(filtros?: { idRol?: number }) {
@@ -90,25 +127,37 @@ export class UsuarioRepository {
   }
 
   async actualizarUsuario(idUsuario: number, data: any) {
-    return await prisma.usuario.update({
-      where: { idUsuario },
-      data,
-      select: usuarioSelect,
-    });
+    try {
+      return await prisma.usuario.update({
+        where: { idUsuario },
+        data,
+        select: usuarioSelect,
+      });
+    } catch (error) {
+      manejarErrorPrismaUsuario(error);
+    }
   }
 
   async desactivarUsuario(idUsuario: number) {
-    return await prisma.usuario.update({
-      where: { idUsuario },
-      data: { estado: false },
-      select: usuarioSelect,
-    });
+    try {
+      return await prisma.usuario.update({
+        where: { idUsuario },
+        data: { estado: false },
+        select: usuarioSelect,
+      });
+    } catch (error) {
+      manejarErrorPrismaUsuario(error);
+    }
   }
 
   async eliminarUsuario(idUsuario: number) {
-    return await prisma.usuario.delete({
-      where: { idUsuario },
-      select: { idUsuario: true },
-    });
+    try {
+      return await prisma.usuario.delete({
+        where: { idUsuario },
+        select: { idUsuario: true },
+      });
+    } catch (error) {
+      manejarErrorPrismaUsuario(error);
+    }
   }
 }

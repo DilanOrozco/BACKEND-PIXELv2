@@ -115,7 +115,7 @@ model Tecnica {
 model Cotizacion {
   idCotizacion       Int              @id @default(autoincrement()) @map("id_cotizacion")
   idCliente          Int              @map("id_cliente")
-  creadoPorId        Int              @map("creado_por_id")
+  creadoPorId        Int?             @map("creado_por_id")
   tipoCotizacion     String           @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
   estado             EstadoCotizacion @default(PENDIENTE)
   subtotal           Decimal          @default(0) @db.Decimal(10, 2)
@@ -126,7 +126,7 @@ model Cotizacion {
   fechaActualizacion DateTime         @updatedAt @map("fecha_actualizacion")
 
   cliente   Usuario             @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
-  creadoPor Usuario             @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: Cascade)
+  creadoPor Usuario?            @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: SetNull)
   detalles  DetalleCotizacion[]
   pedidos   Pedido[]            @relation("CotizacionPedidos")
 
@@ -166,8 +166,8 @@ model Pedido {
   fechaEntregado       DateTime?    @map("fecha_entregado")
   observaciones        String?
 
-  cliente    Usuario         @relation("PedidoCliente", fields: [idCliente], references: [idUsuario])
-  cotizacion Cotizacion      @relation("CotizacionPedidos", fields: [idCotizacion], references: [idCotizacion])
+  cliente    Usuario         @relation("PedidoCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
+  cotizacion Cotizacion      @relation("CotizacionPedidos", fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
   detalles   DetallePedido[]
   abonos     Abonos[]
   disenos    Diseno[]
@@ -186,7 +186,7 @@ model DetallePedido {
   subtotal        Decimal @db.Decimal(10, 2)
   observaciones   String?
 
-  pedido  Pedido  @relation(fields: [idPedido], references: [idPedido])
+  pedido  Pedido  @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
   tecnica Tecnica @relation(fields: [idTecnica], references: [idTecnica])
 
   @@map("detalle_pedido")
@@ -207,9 +207,9 @@ model Abonos {
   fechaRechazo      DateTime?   @map("fecha_rechazo")
   motivoRechazo     String?     @map("motivo_rechazo")
 
-  pedido        Pedido   @relation(fields: [idPedido], references: [idPedido])
-  confirmadoPor Usuario? @relation("AbonosConfirmados", fields: [confirmadoPorId], references: [idUsuario])
-  rechazadoPor  Usuario? @relation("AbonosRechazados", fields: [rechazadoPorId], references: [idUsuario])
+  pedido        Pedido   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  confirmadoPor Usuario? @relation("AbonosConfirmados", fields: [confirmadoPorId], references: [idUsuario], onDelete: SetNull)
+  rechazadoPor  Usuario? @relation("AbonosRechazados", fields: [rechazadoPorId], references: [idUsuario], onDelete: SetNull)
 
   @@map("abonos")
 }
@@ -227,8 +227,8 @@ model Diseno {
   fechaEnvio         DateTime?    @map("fecha_envio")
   fechaAprobacion    DateTime?    @map("fecha_aprobacion")
 
-  pedido    Pedido   @relation(fields: [idPedido], references: [idPedido])
-  disenador Usuario? @relation(fields: [idDisenador], references: [idUsuario])
+  pedido    Pedido   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  disenador Usuario? @relation(fields: [idDisenador], references: [idUsuario], onDelete: SetNull)
 
   @@map("disenos")
 }
@@ -252,15 +252,15 @@ model Compra {
   idCompra      Int          @id @default(autoincrement()) @map("id_compra")
   idPedido      Int          @map("id_pedido")
   idProveedor   Int          @map("id_proveedor")
-  compradoPorId Int          @map("comprado_por_id")
+  compradoPorId Int?         @map("comprado_por_id")
   estado        EstadoCompra @default(PENDIENTE)
   total         Decimal      @default(0) @db.Decimal(10, 2)
   fechaCompra   DateTime     @default(now()) @map("fecha_compra")
   observaciones String?
 
-  pedido      Pedido          @relation(fields: [idPedido], references: [idPedido])
+  pedido      Pedido          @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
   proveedor   Proveedor       @relation(fields: [idProveedor], references: [idProveedor])
-  compradoPor Usuario         @relation(fields: [compradoPorId], references: [idUsuario])
+  compradoPor Usuario?        @relation(fields: [compradoPorId], references: [idUsuario], onDelete: SetNull)
   detalles    DetalleCompra[]
 
   @@map("compras")
