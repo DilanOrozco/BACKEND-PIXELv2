@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { DashboardController } from "../controllers/dashboard.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
-import { autorizarRoles } from "../middlewares/roles.middleware";
+import { autorizarPermiso } from "../middlewares/permisos.middleware";
 
 const router = Router();
 const dashboardController = new DashboardController();
@@ -9,14 +9,14 @@ const dashboardController = new DashboardController();
 router.get(
   "/admin",
   verificarAuth,
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("dashboard.admin"),
   dashboardController.obtenerDashboardAdmin,
 );
 
 router.get(
   "/cliente",
   verificarAuth,
-  autorizarRoles("Cliente"),
+  autorizarPermiso("dashboard.cliente"),
   dashboardController.obtenerDashboardCliente,
 );
 

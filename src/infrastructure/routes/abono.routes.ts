@@ -1,58 +1,19 @@
 import { Router } from "express";
 import { AbonoController } from "../controllers/abono.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
-import { autorizarRoles } from "../middlewares/roles.middleware";
+import { autorizarPermiso } from "../middlewares/permisos.middleware";
 
 const router = Router();
 const controller = new AbonoController();
 
-router.post(
-  "/",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
-  controller.crearAbono,
-);
+router.use(verificarAuth);
 
-router.get(
-  "/",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria"),
-  controller.listarAbonos,
-);
-
-router.get(
-  "/:id",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Cliente", "Diseñador"),
-  controller.buscarPorId,
-);
-
-router.patch(
-  "/:id",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria"),
-  controller.actualizarAbono,
-);
-
-router.patch(
-  "/:id/confirmar",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria"),
-  controller.confirmarAbono,
-);
-
-router.patch(
-  "/:id/rechazar",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria"),
-  controller.rechazarAbono,
-);
-
-router.delete(
-  "/:id",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria"),
-  controller.eliminarAbono,
-);
+router.post("/", autorizarPermiso("abonos.crear"), controller.crearAbono);
+router.get("/", autorizarPermiso("abonos.ver"), controller.listarAbonos);
+router.get("/:id", autorizarPermiso("abonos.ver"), controller.buscarPorId);
+router.patch("/:id", autorizarPermiso("abonos.editar"), controller.actualizarAbono);
+router.patch("/:id/confirmar", autorizarPermiso("abonos.confirmar"), controller.confirmarAbono);
+router.patch("/:id/rechazar", autorizarPermiso("abonos.rechazar"), controller.rechazarAbono);
+router.delete("/:id", autorizarPermiso("abonos.eliminar"), controller.eliminarAbono);
 
 export default router;

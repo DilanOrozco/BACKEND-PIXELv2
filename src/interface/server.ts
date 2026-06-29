@@ -26,6 +26,7 @@ import proveedorRoutes from "../infrastructure/routes/proveedor.routes";
 import compraRoutes from "../infrastructure/routes/compra.routes";
 import dashboardRoutes from "../infrastructure/routes/dashboard.routes";
 import ventaRoutes from "../infrastructure/routes/venta.routes";
+import permisoRoutes from "../infrastructure/routes/permiso.routes";
 
 //endpoints
 app.use("/api/roles", rolRoutes);
@@ -40,5 +41,6 @@ app.use("/api/proveedores", proveedorRoutes);
 app.use("/api/compras", compraRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/ventas", ventaRoutes);
+app.use("/api/permisos", permisoRoutes);
 
 export default app;

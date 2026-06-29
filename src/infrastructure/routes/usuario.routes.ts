@@ -1,15 +1,19 @@
 import { Router } from "express";
 import { UsuarioController } from "../controllers/usuario.controller";
+import { verificarAuth } from "../middlewares/auth.middleware";
+import { autorizarPermiso } from "../middlewares/permisos.middleware";
 
 const router = Router();
 const usuarioController = new UsuarioController();
 
-router.post("/", usuarioController.crearUsuario);
-router.get("/", usuarioController.listarUsuarios);
-router.get("/buscar", usuarioController.buscarUsuarios);
-router.get("/:id", usuarioController.buscarUsuarioPorId);
-router.patch("/:id", usuarioController.actualizarUsuario);
-router.delete("/:id/eliminar", usuarioController.eliminarUsuario);
-router.delete("/:id", usuarioController.desactivarUsuario);
+router.use(verificarAuth);
+
+router.post("/", autorizarPermiso("usuarios.crear"), usuarioController.crearUsuario);
+router.get("/", autorizarPermiso("usuarios.ver"), usuarioController.listarUsuarios);
+router.get("/buscar", autorizarPermiso("usuarios.ver"), usuarioController.buscarUsuarios);
+router.get("/:id", autorizarPermiso("usuarios.ver"), usuarioController.buscarUsuarioPorId);
+router.patch("/:id", autorizarPermiso("usuarios.editar"), usuarioController.actualizarUsuario);
+router.delete("/:id/eliminar", autorizarPermiso("usuarios.eliminar"), usuarioController.eliminarUsuario);
+router.delete("/:id", autorizarPermiso("usuarios.desactivar"), usuarioController.desactivarUsuario);
 
 export default router;

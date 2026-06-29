@@ -5,6 +5,7 @@ import {
   compararContrasena,
 } from "../../utils/password.util";
 import { generarToken } from "../../utils/jwt.util";
+import { PermisoService } from "./permiso.service";
 import {
   validarRegistroCliente,
   validarLogin,
@@ -12,6 +13,7 @@ import {
 
 const usuarioRepository = new UsuarioRepository();
 const rolRepository = new RolRepository();
+const permisoService = new PermisoService();
 
 export class AuthService {
   async registrarCliente(data: any) {
@@ -90,6 +92,28 @@ export class AuthService {
     return {
       token,
       usuario: usuarioSinContrasena,
+    };
+  }
+
+  async obtenerPermisosUsuario(usuarioAuth: any) {
+    if (!usuarioAuth?.idRol) {
+      throw new Error("Usuario no autenticado.");
+    }
+
+    const permisos =
+      usuarioAuth.rol === "Admin"
+        ? await permisoService.listarPermisos()
+        : await permisoService.listarPermisosPorRol(Number(usuarioAuth.idRol));
+
+    return {
+      usuario: {
+        idUsuario: usuarioAuth.idUsuario,
+        correo: usuarioAuth.correo,
+        idRol: usuarioAuth.idRol,
+        rol: usuarioAuth.rol,
+      },
+      permisos,
+      codigos: permisos.map((permiso: any) => permiso.codigo),
     };
   }
 }

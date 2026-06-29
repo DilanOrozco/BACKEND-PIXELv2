@@ -1,58 +1,23 @@
 import { Router } from "express";
 import { DisenoController } from "../controllers/diseno.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
-import { autorizarRoles } from "../middlewares/roles.middleware";
+import { autorizarPermiso } from "../middlewares/permisos.middleware";
 
 const router = Router();
 const controller = new DisenoController();
 
-router.post(
-  "/",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Diseñador"),
-  controller.crearDiseno,
-);
+router.use(verificarAuth);
 
-router.get(
-  "/",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Diseñador"),
-  controller.listarDisenos,
-);
-
+router.post("/", autorizarPermiso("disenos.crear"), controller.crearDiseno);
+router.get("/", autorizarPermiso("disenos.ver"), controller.listarDisenos);
 router.get(
   "/produccion/pendientes",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Diseñador"),
+  autorizarPermiso("disenos.produccion"),
   controller.listarProduccionPendiente,
 );
-
-router.get(
-  "/:id",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Diseñador", "Cliente"),
-  controller.buscarPorId,
-);
-
-router.patch(
-  "/:id",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Diseñador"),
-  controller.actualizarDiseno,
-);
-
-router.patch(
-  "/:id/aprobar",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
-  controller.aprobarDiseno,
-);
-
-router.delete(
-  "/:id",
-  verificarAuth,
-  autorizarRoles("Admin", "Secretaria"),
-  controller.eliminarDiseno,
-);
+router.get("/:id", autorizarPermiso("disenos.ver"), controller.buscarPorId);
+router.patch("/:id", autorizarPermiso("disenos.editar"), controller.actualizarDiseno);
+router.patch("/:id/aprobar", autorizarPermiso("disenos.aprobar"), controller.aprobarDiseno);
+router.delete("/:id", autorizarPermiso("disenos.eliminar"), controller.eliminarDiseno);
 
 export default router;

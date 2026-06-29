@@ -9,9 +9,13 @@ export const autorizarRoles = (...rolesPermitidos: string[]) => {
       });
     }
 
+    if (req.user.rol === "Admin") {
+      return next();
+    }
+
     if (!rolesPermitidos.includes(req.user.rol)) {
       return res.status(403).json({
-        message: "No tienes permisos para realizar esta acción.",
+        message: "No tienes permisos para realizar esta accion.",
       });
     }
 

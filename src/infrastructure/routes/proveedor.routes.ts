@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { ProveedorController } from "../controllers/proveedor.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
-import { autorizarRoles } from "../middlewares/roles.middleware";
+import { autorizarPermiso } from "../middlewares/permisos.middleware";
 
 const router = Router();
 const proveedorController = new ProveedorController();
@@ -10,43 +10,43 @@ router.use(verificarAuth);
 
 router.post(
   "/",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("proveedores.crear"),
   proveedorController.crearProveedor,
 );
 
 router.get(
   "/",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("proveedores.ver"),
   proveedorController.listarProveedores,
 );
 
 router.get(
   "/buscar",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("proveedores.ver"),
   proveedorController.buscarParcial,
 );
 
 router.get(
   "/:id",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("proveedores.ver"),
   proveedorController.buscarPorId,
 );
 
 router.patch(
   "/:id",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("proveedores.editar"),
   proveedorController.actualizarProveedor,
 );
 
 router.delete(
   "/:id/eliminar",
-  autorizarRoles("Admin"),
+  autorizarPermiso("proveedores.eliminar"),
   proveedorController.eliminarProveedor,
 );
 
 router.delete(
   "/:id",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("proveedores.desactivar"),
   proveedorController.desactivarProveedor,
 );
 

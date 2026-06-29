@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { AuthService } from "../../applications/services/auth.service";
+import type { AuthRequest } from "../middlewares/auth.middleware";
 
 const authService = new AuthService();
 
@@ -25,6 +26,20 @@ export class AuthController {
 
       return res.status(200).json({
         message: "Inicio de sesión exitoso.",
+        data,
+      });
+    } catch (error: any) {
+      return res.status(401).json({
+        message: error.message,
+      });
+    }
+  }
+
+  async misPermisos(req: AuthRequest, res: Response) {
+    try {
+      const data = await authService.obtenerPermisosUsuario(req.user);
+
+      return res.status(200).json({
         data,
       });
     } catch (error: any) {
