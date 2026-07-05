@@ -64,11 +64,12 @@ export class CotizacionController {
 
   async listarCotizaciones(req: AuthRequest, res: Response) {
     try {
-      const cotizaciones = await cotizacionService.listarCotizaciones(req.user);
+      const cotizaciones = await cotizacionService.listarCotizaciones(
+        req.user,
+        req.query as Record<string, unknown>,
+      );
 
-      return res.status(200).json({
-        data: cotizaciones,
-      });
+      return res.status(200).json(cotizaciones);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,

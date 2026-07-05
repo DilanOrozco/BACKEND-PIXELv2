@@ -9,7 +9,7 @@ export const ventaSelect = {
   fechaEntregado: true,
   cliente: {
     select: {
-      idUsuario: true,
+      idCliente: true,
       nombre: true,
       correo: true,
       telefono: true,
@@ -19,10 +19,17 @@ export const ventaSelect = {
     select: {
       idDetallePedido: true,
       idTecnica: true,
+      idProducto: true,
       cantidad: true,
       tecnica: {
         select: {
           idTecnica: true,
+          nombre: true,
+        },
+      },
+      producto: {
+        select: {
+          idProducto: true,
           nombre: true,
         },
       },

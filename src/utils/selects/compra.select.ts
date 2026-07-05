@@ -40,7 +40,7 @@ export const compraSelect = {
       saldoPendiente: true,
       cliente: {
         select: {
-          idUsuario: true,
+          idCliente: true,
           nombre: true,
           correo: true,
           telefono: true,

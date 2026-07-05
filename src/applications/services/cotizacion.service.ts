@@ -1,15 +1,20 @@
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
-import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
+import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { PedidoService } from "./pedido.service";
 import {
   validarActualizarCotizacion,
   validarCotizar,
   validarSolicitudCliente,
 } from "../validators/cotizacion.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
 
 const cotizacionRepository = new CotizacionRepository();
-const usuarioRepository = new UsuarioRepository();
+const clienteRepository = new ClienteRepository();
 const tecnicaRepository = new TecnicaRepository();
 const pedidoService = new PedidoService();
 
@@ -61,14 +66,10 @@ const cotizacionTienePrecios = (cotizacion: any) => {
 
 export class CotizacionService {
   private async asegurarClienteExiste(idCliente: number) {
-    const cliente = await usuarioRepository.buscarPorId(idCliente);
+    const cliente = await clienteRepository.buscarPorId(idCliente);
 
     if (!cliente) {
       throw new Error("El cliente no existe.");
-    }
-
-    if (cliente.rol?.nombre !== "Cliente") {
-      throw new Error("El usuario seleccionado debe tener rol Cliente.");
     }
 
     return cliente;
@@ -169,7 +170,25 @@ export class CotizacionService {
     });
   }
 
-  async listarCotizaciones(usuarioAuth: any) {
+  async listarCotizaciones(usuarioAuth: any, query: PaginationQuery = {}) {
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "idCotizacion",
+      allowedSortBy: ["idCotizacion", "fechaCreacion", "total", "estado"],
+      maxLimit: 10,
+    });
+    const filtros = esCliente(usuarioAuth)
+      ? { idCliente: Number(usuarioAuth.idUsuario) }
+      : {};
+
+    if (pagination.isPaginated) {
+      const resultado = await cotizacionRepository.listarCotizacionesPaginado(
+        filtros,
+        pagination,
+      );
+
+      return paginatedResponse(resultado.data, pagination, resultado.total);
+    }
+
     const cotizaciones = esCliente(usuarioAuth)
       ? await cotizacionRepository.listarPorCliente(Number(usuarioAuth.idUsuario))
       : await cotizacionRepository.listarCotizaciones();
@@ -178,7 +197,7 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return cotizaciones;
+    return { data: cotizaciones };
   }
 
   async buscarPorId(idCotizacion: number, usuarioAuth: any) {

@@ -3,6 +3,11 @@ import {
   validarCrearRol,
   validarActualizarRol,
 } from "../validators/rol.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
 
 const rolRepository = new RolRepository();
 
@@ -25,14 +30,30 @@ export class RolService {
     return await rolRepository.crearRol(nombre.trim(), descripcion?.trim());
   }
 
-  async listarRoles() {
+  async listarRoles(query: PaginationQuery = {}) {
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "idRol",
+      allowedSortBy: ["idRol", "nombre"],
+      maxLimit: 10,
+    });
+
+    if (pagination.isPaginated) {
+      const resultado = await rolRepository.listarRolesPaginado(pagination);
+
+      if (resultado.data.length === 0) {
+        throw new Error("No se encontraron resultados.");
+      }
+
+      return paginatedResponse(resultado.data, pagination, resultado.total);
+    }
+
     const roles = await rolRepository.listarRoles();
 
     if (roles.length === 0) {
       throw new Error("No se encontraron resultados.");
     }
 
-    return roles;
+    return { data: roles };
   }
 
   async buscarPorNombre(nombre: string) {

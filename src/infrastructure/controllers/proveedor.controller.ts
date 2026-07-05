@@ -28,9 +28,7 @@ export class ProveedorController {
         req.query as Record<string, unknown>,
       );
 
-      return res.status(200).json({
-        data: proveedores,
-      });
+      return res.status(200).json(proveedores);
     } catch (error: unknown) {
       return res.status(404).json({
         message: mensajeError(error),

@@ -22,14 +22,11 @@ export class UsuarioController {
 
   async listarUsuarios(req: Request, res: Response) {
     try {
-      const { idRol } = req.query;
-      const filtros = idRol ? { idRol: Number(idRol) } : undefined;
+      const usuarios = await usuarioService.listarUsuarios(
+        req.query as Record<string, unknown>,
+      );
 
-      const usuarios = await usuarioService.listarUsuarios(filtros);
-
-      return res.status(200).json({
-        data: usuarios,
-      });
+      return res.status(200).json(usuarios);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,
@@ -60,12 +57,11 @@ export class UsuarioController {
 
       const usuarios = await usuarioService.buscarParcial(
         String(termino || ""),
-        parsedIdRol
+        parsedIdRol,
+        req.query as Record<string, unknown>,
       );
 
-      return res.status(200).json({
-        data: usuarios,
-      });
+      return res.status(200).json(usuarios);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,

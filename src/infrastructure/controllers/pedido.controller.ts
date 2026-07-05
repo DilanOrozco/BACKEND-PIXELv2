@@ -22,11 +22,12 @@ export class PedidoController {
 
   async listarPedidos(req: AuthRequest, res: Response) {
     try {
-      const pedidos = await pedidoService.listarPedidos(req.user);
+      const pedidos = await pedidoService.listarPedidos(
+        req.user,
+        req.query as Record<string, unknown>,
+      );
 
-      return res.status(200).json({
-        data: pedidos,
-      });
+      return res.status(200).json(pedidos);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,

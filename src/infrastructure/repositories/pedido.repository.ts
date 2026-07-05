@@ -1,11 +1,59 @@
 import { prisma, runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
+import { looksNumeric, type ParsedPagination } from "../../utils/pagination.util";
 
 const estadosPedido = ["PENDIENTE", "EN_PROCESO", "FINALIZADO"];
 type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 
 const db = (tx?: Prisma.TransactionClient): PrismaExecutor => tx ?? prisma;
+
+const buildPedidoWhere = (
+  filtros: { idCliente?: number } = {},
+  search?: string | null,
+): Prisma.PedidoWhereInput => {
+  const where: Prisma.PedidoWhereInput = {};
+
+  if (filtros.idCliente) {
+    where.idCliente = filtros.idCliente;
+  }
+
+  if (!search) {
+    return where;
+  }
+
+  const termino = search.trim();
+  const terminoMinuscula = termino.toLowerCase();
+  const estadosCoincidentes = estadosPedido.filter((estado) =>
+    estado.toLowerCase().startsWith(terminoMinuscula),
+  );
+
+  if (looksNumeric(termino)) {
+    const idNumerico = Number(termino);
+    where.OR = [{ idPedido: idNumerico }, { idCotizacion: idNumerico }];
+    return where;
+  }
+
+  where.OR = [
+    ...(estadosCoincidentes.length > 0
+      ? [{ estadoPedido: { in: estadosCoincidentes as any } }]
+      : []),
+    {
+      cliente: {
+        nombre: {
+          contains: termino,
+          mode: "insensitive",
+        },
+      },
+    },
+  ];
+
+  return where;
+};
+
+const buildPedidoOrderBy = (pagination: ParsedPagination) => ({
+  [pagination.sortBy]: pagination.order,
+});
 
 const cotizacionParaPedidoSelect = {
   idCotizacion: true,
@@ -18,7 +66,7 @@ const cotizacionParaPedidoSelect = {
   observaciones: true,
   cliente: {
     select: {
-      idUsuario: true,
+      idCliente: true,
       nombre: true,
       telefono: true,
       correo: true,
@@ -36,12 +84,16 @@ const cotizacionParaPedidoSelect = {
     select: {
       idDetalleCotizacion: true,
       idTecnica: true,
+      idProducto: true,
       descripcion: true,
       cantidad: true,
+      precioBase: true,
+      descuentoPorcentaje: true,
       precioUnitario: true,
       subtotal: true,
       observaciones: true,
       tecnica: { select: { idTecnica: true, nombre: true } },
+      producto: { select: { idProducto: true, nombre: true } },
     },
   },
 };
@@ -103,6 +155,25 @@ export class PedidoRepository {
         idPedido: "desc",
       },
     });
+  }
+
+  async listarPedidosPaginado(
+    filtros: { idCliente?: number },
+    pagination: ParsedPagination,
+  ) {
+    const where = buildPedidoWhere(filtros, pagination.search);
+    const [total, data] = await Promise.all([
+      prisma.pedido.count({ where }),
+      prisma.pedido.findMany({
+        where,
+        select: pedidoSelect,
+        orderBy: buildPedidoOrderBy(pagination),
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
   }
 
   async buscarPorId(idPedido: number, tx?: Prisma.TransactionClient) {

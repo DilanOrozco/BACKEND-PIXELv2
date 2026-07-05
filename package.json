@@ -8,6 +8,7 @@
     "build": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:watch": "tsx --test --watch \"src/**/*.test.ts\"",
+    "sync:productos": "tsx scripts/sync-productos-cotizables.ts",
     "start": "tsx src/app.ts"
   },
   "keywords": [],

@@ -9,6 +9,11 @@ import {
   validarFinalizarPedido,
   validarPasarPedidoEnProceso,
 } from "../validators/pedido.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
 
 const pedidoRepository = new PedidoRepository();
 const abonoService = new AbonoService();
@@ -99,7 +104,8 @@ const prepararDetallePedido = (detalle: any) => {
   }
 
   return {
-    idTecnica: Number(detalle.idTecnica),
+    idProducto: detalle.idProducto ? Number(detalle.idProducto) : null,
+    idTecnica: detalle.idTecnica ? Number(detalle.idTecnica) : null,
     descripcion: detalle.descripcion,
     cantidad: Number(detalle.cantidad),
     precioUnitario: aNumero(detalle.precioUnitario),
@@ -223,7 +229,29 @@ export class PedidoService {
     return this.formatearPedido(pedido);
   }
 
-  async listarPedidos(usuarioAuth: any) {
+  async listarPedidos(usuarioAuth: any, query: PaginationQuery = {}) {
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "idPedido",
+      allowedSortBy: ["idPedido", "fechaCreacion", "total", "estadoPedido"],
+      maxLimit: 10,
+    });
+    const filtros = esCliente(usuarioAuth)
+      ? { idCliente: Number(usuarioAuth.idUsuario) }
+      : {};
+
+    if (pagination.isPaginated) {
+      const resultado = await pedidoRepository.listarPedidosPaginado(
+        filtros,
+        pagination,
+      );
+
+      return paginatedResponse(
+        this.formatearPedidos(resultado.data),
+        pagination,
+        resultado.total,
+      );
+    }
+
     const pedidos = esCliente(usuarioAuth)
       ? await pedidoRepository.listarPorCliente(Number(usuarioAuth.idUsuario))
       : await pedidoRepository.listarPedidos();
@@ -232,7 +260,7 @@ export class PedidoService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return this.formatearPedidos(pedidos);
+    return { data: this.formatearPedidos(pedidos) };
   }
 
   async buscarPorId(idPedido: number, usuarioAuth: any) {

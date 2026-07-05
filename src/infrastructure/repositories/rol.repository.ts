@@ -1,4 +1,22 @@
 import { prisma } from "../../config/prisma";
+import type { ParsedPagination } from "../../utils/pagination.util";
+
+const buildRolWhere = (search?: string | null) => {
+  if (!search) {
+    return {};
+  }
+
+  return {
+    nombre: {
+      contains: search,
+      mode: "insensitive" as const,
+    },
+  };
+};
+
+const buildRolOrderBy = (pagination: ParsedPagination) => ({
+  [pagination.sortBy]: pagination.order,
+});
 
 export class RolRepository {
   async crearRol(nombre: string, descripcion?: string) {
@@ -29,6 +47,21 @@ export class RolRepository {
         idRol: "asc",
       },
     });
+  }
+
+  async listarRolesPaginado(pagination: ParsedPagination) {
+    const where = buildRolWhere(pagination.search);
+    const [total, data] = await Promise.all([
+      prisma.rol.count({ where }),
+      prisma.rol.findMany({
+        where,
+        orderBy: buildRolOrderBy(pagination),
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
   }
 
   async buscarPorNombreParcial(nombre: string) {

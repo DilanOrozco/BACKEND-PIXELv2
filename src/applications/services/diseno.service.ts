@@ -88,13 +88,13 @@ export class DisenoService {
   private validarAccesoConsultaDiseno(
     diseno: {
       idDisenador: number | null;
-      pedido: { cliente: { idUsuario: number } };
+      pedido: { cliente: { idCliente: number } };
     },
     user: AuthUser,
   ) {
     if (
       esCliente(user) &&
-      Number(diseno.pedido.cliente.idUsuario) !== Number(user.idUsuario)
+      Number(diseno.pedido.cliente.idCliente) !== Number(user.idUsuario)
     ) {
       throw new Error("No tienes permiso para consultar este diseño.");
     }
@@ -325,7 +325,7 @@ export class DisenoService {
 
       if (
         esCliente(user) &&
-        Number(diseno.pedido.cliente.idUsuario) !== Number(user.idUsuario)
+        Number(diseno.pedido.cliente.idCliente) !== Number(user.idUsuario)
       ) {
         throw new Error("No tienes permiso para aprobar este diseño.");
       }

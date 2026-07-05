@@ -114,15 +114,33 @@ model Usuario {
 
   rol Rol @relation(fields: [idRol], references: [idRol], onDelete: Cascade)
 
-  cotizacionesCliente Cotizacion[] @relation("CotizacionCliente")
   cotizacionesCreadas Cotizacion[] @relation("CotizacionCreador")
-  pedidosCliente      Pedido[]     @relation("PedidoCliente")
   abonosConfirmados   Abonos[]     @relation("AbonosConfirmados")
   abonosRechazados    Abonos[]     @relation("AbonosRechazados")
   disenos             Diseno[]
   comprasRealizadas   Compra[]
 
   @@map("usuarios")
+}
+
+model Cliente {
+  idCliente          Int      @id @default(autoincrement()) @map("id_cliente")
+  nombre             String   @db.VarChar(100)
+  documento          String?  @db.VarChar(30)
+  correo             String?  @db.VarChar(100)
+  telefono           String?  @db.VarChar(20)
+  direccion          String?  @db.VarChar(150)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  cotizaciones Cotizacion[]
+  pedidos      Pedido[]
+
+  @@index([correo])
+  @@index([telefono])
+  @@index([documento])
+  @@map("clientes")
 }
 
 model Tecnica {
@@ -139,6 +157,38 @@ model Tecnica {
   @@map("tecnicas")
 }
 
+model ProductoCotizable {
+  idProducto         Int      @id @default(autoincrement()) @map("id_producto")
+  nombre             String   @unique @db.VarChar(150)
+  descripcion        String?  @db.VarChar(255)
+  precioBase         Decimal  @map("precio_base") @db.Decimal(10, 2)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  rangos              PrecioProductoRango[]
+  detallesCotizacion  DetalleCotizacion[]
+  detallesPedido      DetallePedido[]
+
+  @@map("productos_cotizables")
+}
+
+model PrecioProductoRango {
+  idRango              Int      @id @default(autoincrement()) @map("id_rango")
+  idProducto           Int      @map("id_producto")
+  cantidadMin          Int      @map("cantidad_min")
+  descuentoPorcentaje  Decimal  @default(0) @map("descuento_porcentaje") @db.Decimal(5, 2)
+  estado               Boolean  @default(true)
+  fechaCreacion        DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion   DateTime @updatedAt @map("fecha_actualizacion")
+
+  producto ProductoCotizable @relation(fields: [idProducto], references: [idProducto], onDelete: Cascade)
+
+  @@unique([idProducto, cantidadMin])
+  @@index([idProducto, estado, cantidadMin])
+  @@map("precios_producto_rangos")
+}
+
 model Cotizacion {
   idCotizacion       Int              @id @default(autoincrement()) @map("id_cotizacion")
   idCliente          Int              @map("id_cliente")
@@ -152,20 +202,24 @@ model Cotizacion {
   fechaCreacion      DateTime         @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime         @updatedAt @map("fecha_actualizacion")
 
-  cliente   Usuario             @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
+  cliente   Cliente             @relation(fields: [idCliente], references: [idCliente], onDelete: Cascade)
   creadoPor Usuario?            @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: SetNull)
   detalles  DetalleCotizacion[]
   pedidos   Pedido[]            @relation("CotizacionPedidos")
 
+  @@index([idCliente, fechaCreacion])
   @@map("cotizaciones")
 }
 
 model DetalleCotizacion {
   idDetalleCotizacion Int      @id @default(autoincrement()) @map("id_detalle_cotizacion")
   idCotizacion        Int      @map("id_cotizacion")
-  idTecnica           Int      @map("id_tecnica")
+  idTecnica           Int?     @map("id_tecnica")
+  idProducto          Int?     @map("id_producto")
   descripcion         String   @db.VarChar(255)
   cantidad            Int
+  precioBase          Decimal? @map("precio_base") @db.Decimal(10, 2)
+  descuentoPorcentaje Decimal? @default(0) @map("descuento_porcentaje") @db.Decimal(5, 2)
   precioUnitario      Decimal? @map("precio_unitario") @db.Decimal(10, 2)
   costoDiseno         Decimal? @default(0) @map("costo_diseno") @db.Decimal(10, 2)
   subtotal            Decimal? @db.Decimal(10, 2)
@@ -173,7 +227,8 @@ model DetalleCotizacion {
   observaciones       String?  @db.VarChar(255)
 
   cotizacion Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
-  tecnica    Tecnica    @relation(fields: [idTecnica], references: [idTecnica], onDelete: Cascade)
+  tecnica    Tecnica?   @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)
+  producto   ProductoCotizable? @relation(fields: [idProducto], references: [idProducto], onDelete: SetNull)
 
   @@map("detalle_cotizacion")
 }
@@ -193,28 +248,32 @@ model Pedido {
   fechaEntregado       DateTime?    @map("fecha_entregado")
   observaciones        String?
 
-  cliente    Usuario         @relation("PedidoCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
+  cliente    Cliente         @relation(fields: [idCliente], references: [idCliente], onDelete: Cascade)
   cotizacion Cotizacion      @relation("CotizacionPedidos", fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
   detalles   DetallePedido[]
   abonos     Abonos[]
   disenos    Diseno[]
   compras    Compra[]
 
+  @@index([idCliente, fechaCreacion])
+  @@index([idCotizacion])
   @@map("pedidos")
 }
 
 model DetallePedido {
   idDetallePedido Int     @id @default(autoincrement()) @map("id_detalle_pedido")
   idPedido        Int     @map("id_pedido")
-  idTecnica       Int     @map("id_tecnica")
+  idTecnica       Int?    @map("id_tecnica")
+  idProducto      Int?    @map("id_producto")
   descripcion     String
   cantidad        Int
   precioUnitario  Decimal @db.Decimal(10, 2)
   subtotal        Decimal @db.Decimal(10, 2)
   observaciones   String?
 
-  pedido  Pedido  @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
-  tecnica Tecnica @relation(fields: [idTecnica], references: [idTecnica])
+  pedido   Pedido  @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  tecnica  Tecnica? @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)
+  producto ProductoCotizable? @relation(fields: [idProducto], references: [idProducto], onDelete: SetNull)
 
   @@map("detalle_pedido")
 }

@@ -12,10 +12,12 @@ export const cotizacionSelect = {
   fechaActualizacion: true,
   cliente: {
     select: {
-      idUsuario: true,
+      idCliente: true,
       nombre: true,
+      documento: true,
       telefono: true,
       correo: true,
+      direccion: true,
     },
   },
   creadoPor: {
@@ -30,14 +32,24 @@ export const cotizacionSelect = {
     select: {
       idDetalleCotizacion: true,
       idTecnica: true,
+      idProducto: true,
       descripcion: true,
       cantidad: true,
+      precioBase: true,
+      descuentoPorcentaje: true,
       precioUnitario: true,
       costoDiseno: true,
       subtotal: true,
       imagenReferencia: true,
       observaciones: true,
       tecnica: { select: { idTecnica: true, nombre: true } },
+      producto: {
+        select: {
+          idProducto: true,
+          nombre: true,
+          precioBase: true,
+        },
+      },
     },
   },
 };

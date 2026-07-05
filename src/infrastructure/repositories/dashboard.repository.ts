@@ -3,7 +3,7 @@ import { prisma } from "../../config/prisma";
 const ESTADOS_PEDIDO = ["PENDIENTE", "EN_PROCESO", "FINALIZADO"] as const;
 
 const clienteResumenSelect = {
-  idUsuario: true,
+  idCliente: true,
   nombre: true,
   correo: true,
   telefono: true,
@@ -35,6 +35,7 @@ const cotizacionPendienteAdminSelect = {
 const detallePedidoClienteSelect = {
   idDetallePedido: true,
   idTecnica: true,
+  idProducto: true,
   descripcion: true,
   cantidad: true,
   precioUnitario: true,
@@ -43,6 +44,12 @@ const detallePedidoClienteSelect = {
   tecnica: {
     select: {
       idTecnica: true,
+      nombre: true,
+    },
+  },
+  producto: {
+    select: {
+      idProducto: true,
       nombre: true,
     },
   },
@@ -115,8 +122,11 @@ const historialPedidoClienteSelect = {
 const detalleCotizacionClienteSelect = {
   idDetalleCotizacion: true,
   idTecnica: true,
+  idProducto: true,
   descripcion: true,
   cantidad: true,
+  precioBase: true,
+  descuentoPorcentaje: true,
   precioUnitario: true,
   subtotal: true,
   imagenReferencia: true,
@@ -124,6 +134,12 @@ const detalleCotizacionClienteSelect = {
   tecnica: {
     select: {
       idTecnica: true,
+      nombre: true,
+    },
+  },
+  producto: {
+    select: {
+      idProducto: true,
       nombre: true,
     },
   },
@@ -173,12 +189,9 @@ export class DashboardRepository {
   }
 
   async contarClientesActivos() {
-    return await prisma.usuario.count({
+    return await prisma.cliente.count({
       where: {
         estado: true,
-        rol: {
-          nombre: "Cliente",
-        },
       },
     });
   }

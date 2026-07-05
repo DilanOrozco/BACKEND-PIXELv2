@@ -3,6 +3,11 @@ import {
   validarCrearTecnica,
   validarActualizarTecnica,
 } from "../validators/tecnica.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
 
 const tecnicaRepository = new TecnicaRepository();
 
@@ -32,14 +37,32 @@ export class TecnicaService {
     });
   }
 
-  async listarTecnicas() {
+  async listarTecnicas(query: PaginationQuery = {}) {
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "idTecnica",
+      allowedSortBy: ["idTecnica", "nombre", "fechaCreacion"],
+      maxLimit: 10,
+    });
+
+    if (pagination.isPaginated) {
+      const resultado = await tecnicaRepository.listarTecnicasPaginado(
+        pagination,
+      );
+
+      if (resultado.data.length === 0) {
+        throw new Error("No se encontraron resultados.");
+      }
+
+      return paginatedResponse(resultado.data, pagination, resultado.total);
+    }
+
     const tecnicas = await tecnicaRepository.listarTecnicas();
 
     if (tecnicas.length === 0) {
       throw new Error("No se encontraron resultados.");
     }
 
-    return tecnicas;
+    return { data: tecnicas };
   }
 
   async buscarPorId(idTecnica: number) {

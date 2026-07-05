@@ -31,9 +31,9 @@ interface CompraConsulta {
     estadoPedido: string;
     estadoPago: string;
     cliente?: {
-      idUsuario: number;
+      idCliente: number;
       nombre: string;
-      correo: string;
+      correo: string | null;
       telefono: string | null;
     };
   };

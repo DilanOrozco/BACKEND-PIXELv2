@@ -2,6 +2,11 @@
 import { prisma } from "../../config/prisma";
 import { Prisma } from "../../../generated/prisma/client";
 import { usuarioSelect, usuarioAuthSelect } from "../../utils/selects/usuario.select";
+import {
+  looksLikeEmail,
+  looksNumeric,
+  type ParsedPagination,
+} from "../../utils/pagination.util";
 
 const manejarErrorPrismaUsuario = (error: unknown): never => {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -35,6 +40,48 @@ const manejarErrorPrismaUsuario = (error: unknown): never => {
   throw error;
 };
 
+const buildUsuarioWhere = (
+  filtros?: { idRol?: number },
+  search?: string | null,
+): Prisma.UsuarioWhereInput => {
+  const where: Prisma.UsuarioWhereInput = {};
+
+  if (filtros?.idRol) {
+    where.idRol = filtros.idRol;
+  }
+
+  if (!search) {
+    return where;
+  }
+
+  if (looksLikeEmail(search)) {
+    where.correo = {
+      startsWith: search.toLowerCase(),
+      mode: "insensitive",
+    };
+    return where;
+  }
+
+  if (looksNumeric(search)) {
+    where.OR = [
+      { documento: { startsWith: search } },
+      { telefono: { startsWith: search } },
+    ];
+    return where;
+  }
+
+  where.OR = [
+    { nombre: { contains: search, mode: "insensitive" } },
+    { correo: { startsWith: search.toLowerCase(), mode: "insensitive" } },
+  ];
+
+  return where;
+};
+
+const buildUsuarioOrderBy = (pagination: ParsedPagination) => ({
+  [pagination.sortBy]: pagination.order,
+});
+
 export class UsuarioRepository {
   async crearUsuario(data: any) {
     try {
@@ -48,11 +95,7 @@ export class UsuarioRepository {
   }
 
   async listarUsuarios(filtros?: { idRol?: number }) {
-    const where: any = {};
-
-    if (filtros?.idRol) {
-      where.idRol = filtros.idRol;
-    }
+    const where = buildUsuarioWhere(filtros);
 
     return await prisma.usuario.findMany({
       where,
@@ -61,6 +104,25 @@ export class UsuarioRepository {
         idUsuario: "asc",
       },
     });
+  }
+
+  async listarUsuariosPaginado(
+    filtros: { idRol?: number } | undefined,
+    pagination: ParsedPagination,
+  ) {
+    const where = buildUsuarioWhere(filtros, pagination.search);
+    const [total, data] = await Promise.all([
+      prisma.usuario.count({ where }),
+      prisma.usuario.findMany({
+        where,
+        select: usuarioSelect,
+        orderBy: buildUsuarioOrderBy(pagination),
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
   }
 
   async buscarPorId(idUsuario: number) {
@@ -90,32 +152,7 @@ export class UsuarioRepository {
   }
 
   async buscarParcial(termino: string, idRol?: number) {
-    const where: any = {
-      OR: [
-        {
-          nombre: {
-            contains: termino,
-            mode: "insensitive",
-          },
-        },
-        {
-          correo: {
-            contains: termino,
-            mode: "insensitive",
-          },
-        },
-        {
-          documento: {
-            contains: termino,
-            mode: "insensitive",
-          },
-        },
-      ],
-    };
-
-    if (idRol) {
-      where.idRol = idRol;
-    }
+    const where = buildUsuarioWhere(idRol ? { idRol } : undefined, termino);
 
     return await prisma.usuario.findMany({
       where,

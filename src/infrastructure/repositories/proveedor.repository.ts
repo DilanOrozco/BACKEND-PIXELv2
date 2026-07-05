@@ -1,9 +1,44 @@
 import { prisma } from "../../config/prisma";
 import { proveedorSelect } from "../../utils/selects/proveedor.select";
+import {
+  looksLikeEmail,
+  looksNumeric,
+  type ParsedPagination,
+} from "../../utils/pagination.util";
 
 export interface ProveedorFiltros {
   estado?: boolean;
 }
+
+const buildProveedorWhere = (
+  filtros: ProveedorFiltros,
+  search?: string | null,
+) => {
+  const where: any = {
+    ...(filtros.estado !== undefined ? { estado: filtros.estado } : {}),
+  };
+
+  if (!search) {
+    return where;
+  }
+
+  if (looksLikeEmail(search)) {
+    where.correo = { startsWith: search.toLowerCase(), mode: "insensitive" };
+    return where;
+  }
+
+  if (looksNumeric(search)) {
+    where.telefono = { startsWith: search };
+    return where;
+  }
+
+  where.nombre = { contains: search, mode: "insensitive" };
+  return where;
+};
+
+const buildProveedorOrderBy = (pagination: ParsedPagination) => ({
+  [pagination.sortBy]: pagination.order,
+});
 
 export class ProveedorRepository {
   async crearProveedor(data: {
@@ -21,14 +56,31 @@ export class ProveedorRepository {
 
   async listarProveedores(filtros: ProveedorFiltros) {
     return await prisma.proveedor.findMany({
-      where: {
-        ...(filtros.estado !== undefined ? { estado: filtros.estado } : {}),
-      },
+      where: buildProveedorWhere(filtros),
       select: proveedorSelect,
       orderBy: {
         nombre: "asc",
       },
     });
+  }
+
+  async listarProveedoresPaginado(
+    filtros: ProveedorFiltros,
+    pagination: ParsedPagination,
+  ) {
+    const where = buildProveedorWhere(filtros, pagination.search);
+    const [total, data] = await Promise.all([
+      prisma.proveedor.count({ where }),
+      prisma.proveedor.findMany({
+        where,
+        select: proveedorSelect,
+        orderBy: buildProveedorOrderBy(pagination),
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
   }
 
   async buscarPorId(idProveedor: number) {
@@ -47,28 +99,7 @@ export class ProveedorRepository {
 
   async buscarParcial(termino: string) {
     return await prisma.proveedor.findMany({
-      where: {
-        OR: [
-          {
-            nombre: {
-              contains: termino,
-              mode: "insensitive",
-            },
-          },
-          {
-            telefono: {
-              contains: termino,
-              mode: "insensitive",
-            },
-          },
-          {
-            correo: {
-              contains: termino,
-              mode: "insensitive",
-            },
-          },
-        ],
-      },
+      where: buildProveedorWhere({}, termino),
       select: proveedorSelect,
       orderBy: {
         nombre: "asc",

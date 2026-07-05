@@ -20,6 +20,10 @@ import {
   validarCamposPermitidos,
   validarIdPositivo,
 } from "./validation.util";
+import {
+  buildPaginationMeta,
+  parsePaginationQuery,
+} from "./pagination.util";
 
 test("helpers numericos normalizan valores usados por servicios", () => {
   assert.equal(aNumero(undefined), 0);
@@ -62,4 +66,42 @@ test("helpers de validacion reportan campos no permitidos e ids invalidos", () =
     () => validarIdPositivo(0, "ID invalido."),
     /ID invalido\./,
   );
+});
+
+test("helpers de paginacion parsean query params con limites seguros", () => {
+  const pagination = parsePaginationQuery(
+    {
+      page: "2",
+      limit: "500",
+      search: " pixel ",
+      sortBy: "nombre",
+      order: "asc",
+    },
+    {
+      defaultSortBy: "idUsuario",
+      allowedSortBy: ["idUsuario", "nombre"],
+      maxLimit: 10,
+    },
+  );
+
+  assert.deepEqual(pagination, {
+    page: 2,
+    limit: 10,
+    skip: 10,
+    search: "pixel",
+    sortBy: "nombre",
+    order: "asc",
+    isPaginated: true,
+  });
+});
+
+test("helpers de paginacion generan meta estable", () => {
+  assert.deepEqual(buildPaginationMeta({ page: 2, limit: 10 }, 25), {
+    page: 2,
+    limit: 10,
+    total: 25,
+    totalPages: 3,
+    hasNextPage: true,
+    hasPrevPage: true,
+  });
 });

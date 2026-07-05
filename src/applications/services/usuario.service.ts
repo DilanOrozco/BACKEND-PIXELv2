@@ -6,6 +6,11 @@ import {
   validarCrearUsuario,
   validarActualizarUsuario,
 } from "../validators/usuario.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
 
 const usuarioRepository = new UsuarioRepository();
 const rolRepository = new RolRepository();
@@ -70,8 +75,25 @@ export class UsuarioService {
   }
 
   // 🎯 Modificado para recibir y delegar los filtros de rol al repositorio
-  async listarUsuarios(filtros?: { idRol?: number }) {
-    return await usuarioRepository.listarUsuarios(filtros);
+  async listarUsuarios(query: PaginationQuery & { idRol?: unknown } = {}) {
+    const idRol = query.idRol ? Number(query.idRol) : undefined;
+    const filtros = idRol ? { idRol } : undefined;
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "idUsuario",
+      allowedSortBy: ["idUsuario", "nombre", "correo", "fechaCreacion"],
+      maxLimit: 10,
+    });
+
+    if (!pagination.isPaginated) {
+      return { data: await usuarioRepository.listarUsuarios(filtros) };
+    }
+
+    const resultado = await usuarioRepository.listarUsuariosPaginado(
+      filtros,
+      pagination,
+    );
+
+    return paginatedResponse(resultado.data, pagination, resultado.total);
   }
 
   async buscarPorId(idUsuario: number) {
@@ -89,8 +111,37 @@ export class UsuarioService {
   }
 
   // 🎯 Modificado para recibir el idRol opcional y pasarlo a la búsqueda parcial
-  async buscarParcial(termino: string, idRol?: number) {
-    return await usuarioRepository.buscarParcial(termino, idRol);
+  async buscarParcial(
+    termino: string,
+    idRol?: number,
+    query: PaginationQuery = {},
+  ) {
+    const pagination = parsePaginationQuery(
+      { ...query, search: query.search ?? termino },
+      {
+        defaultSortBy: "idUsuario",
+        allowedSortBy: ["idUsuario", "nombre", "correo", "fechaCreacion"],
+        maxLimit: 10,
+      },
+    );
+
+    if (!pagination.search) {
+      throw new Error("Debe ingresar un termino de busqueda.");
+    }
+
+    if (!pagination.isPaginated) {
+      return {
+        data: await usuarioRepository.buscarParcial(pagination.search, idRol),
+      };
+    }
+
+    const filtros = idRol ? { idRol } : undefined;
+    const resultado = await usuarioRepository.listarUsuariosPaginado(
+      filtros,
+      pagination,
+    );
+
+    return paginatedResponse(resultado.data, pagination, resultado.total);
   }
 
   async actualizarUsuario(idUsuario: number, data: any) {

@@ -50,10 +50,12 @@ const pedidoResumenSelect = {
   saldoPendiente: true,
   cliente: {
     select: {
-      idUsuario: true,
+      idCliente: true,
       nombre: true,
+      documento: true,
       correo: true,
       telefono: true,
+      direccion: true,
     },
   },
 } as const;

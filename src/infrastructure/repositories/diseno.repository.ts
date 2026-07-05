@@ -41,6 +41,16 @@ const pedidoResumenSelect = {
   total: true,
   totalPagado: true,
   saldoPendiente: true,
+  cliente: {
+    select: {
+      idCliente: true,
+      nombre: true,
+      documento: true,
+      correo: true,
+      telefono: true,
+      direccion: true,
+    },
+  },
 } as const;
 
 export class DisenoRepository {

@@ -85,12 +85,12 @@ export class AbonoService {
   }
 
   private validarAccesoConsultaAbono(
-    abono: { pedido: { cliente: { idUsuario: number } } },
+    abono: { pedido: { cliente: { idCliente: number } } },
     user: AuthUser,
   ) {
     if (
       esCliente(user) &&
-      Number(abono.pedido.cliente.idUsuario) !== Number(user.idUsuario)
+      Number(abono.pedido.cliente.idCliente) !== Number(user.idUsuario)
     ) {
       throw new Error("No tienes permiso para consultar este abono.");
     }

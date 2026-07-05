@@ -1,13 +1,67 @@
 import { prisma, runPrismaTransaction } from "../../config/prisma";
 import type { EstadoCotizacion } from "../../../generated/prisma/enums";
+import type { Prisma } from "../../../generated/prisma/client";
 import { cotizacionSelect } from "../../utils/selects/cotizacion.select";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
+import { looksNumeric, type ParsedPagination } from "../../utils/pagination.util";
 
 const estadosCotizacion = [
   "PENDIENTE",
   "APROBADA",
   "ANULADA",
 ];
+
+const buildCotizacionWhere = (
+  filtros: { idCliente?: number } = {},
+  search?: string | null,
+): Prisma.CotizacionWhereInput => {
+  const where: Prisma.CotizacionWhereInput = {};
+
+  if (filtros.idCliente) {
+    where.idCliente = filtros.idCliente;
+  }
+
+  if (!search) {
+    return where;
+  }
+
+  const termino = search.trim();
+  const terminoMinuscula = termino.toLowerCase();
+  const estadosCoincidentes = estadosCotizacion.filter((estado) =>
+    estado.toLowerCase().startsWith(terminoMinuscula),
+  );
+
+  if (looksNumeric(termino)) {
+    where.idCotizacion = Number(termino);
+    return where;
+  }
+
+  where.OR = [
+    ...(estadosCoincidentes.length > 0
+      ? [{ estado: { in: estadosCoincidentes as any } }]
+      : []),
+    {
+      tipoCotizacion: {
+        startsWith: termino,
+        mode: "insensitive",
+      },
+    },
+    {
+      cliente: {
+        nombre: {
+          contains: termino,
+          mode: "insensitive",
+        },
+      },
+    },
+  ];
+
+  return where;
+};
+
+const buildCotizacionOrderBy = (pagination: ParsedPagination) => ({
+  [pagination.sortBy]: pagination.order,
+});
 
 export class CotizacionRepository {
   // Crea la cotizacion y sus detalles en una sola transaccion para evitar
@@ -52,6 +106,25 @@ export class CotizacionRepository {
         idCotizacion: "desc",
       },
     });
+  }
+
+  async listarCotizacionesPaginado(
+    filtros: { idCliente?: number },
+    pagination: ParsedPagination,
+  ) {
+    const where = buildCotizacionWhere(filtros, pagination.search);
+    const [total, data] = await Promise.all([
+      prisma.cotizacion.count({ where }),
+      prisma.cotizacion.findMany({
+        where,
+        select: cotizacionSelect,
+        orderBy: buildCotizacionOrderBy(pagination),
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
   }
 
   async buscarParcial(termino: string) {

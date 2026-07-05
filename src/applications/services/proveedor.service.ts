@@ -7,6 +7,11 @@ import {
   validarCrearProveedor,
   validarFiltrosProveedor,
 } from "../validators/proveedor.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
 
 type DatosEntrada = Record<string, unknown>;
 
@@ -69,22 +74,40 @@ export class ProveedorService {
     });
   }
 
-  async listarProveedores(filtrosEntrada: DatosEntrada) {
+  async listarProveedores(filtrosEntrada: DatosEntrada & PaginationQuery) {
     const error = validarFiltrosProveedor(filtrosEntrada);
 
     if (error) {
       throw new Error(error);
     }
 
-    const proveedores = await proveedorRepository.listarProveedores(
-      prepararFiltros(filtrosEntrada),
-    );
+    const pagination = parsePaginationQuery(filtrosEntrada, {
+      defaultSortBy: "nombre",
+      allowedSortBy: ["idProveedor", "nombre", "correo", "fechaCreacion"],
+      maxLimit: 10,
+    });
+    const filtros = prepararFiltros(filtrosEntrada);
+
+    if (pagination.isPaginated) {
+      const resultado = await proveedorRepository.listarProveedoresPaginado(
+        filtros,
+        pagination,
+      );
+
+      if (resultado.data.length === 0) {
+        throw new Error("No se encontraron resultados.");
+      }
+
+      return paginatedResponse(resultado.data, pagination, resultado.total);
+    }
+
+    const proveedores = await proveedorRepository.listarProveedores(filtros);
 
     if (proveedores.length === 0) {
       throw new Error("No se encontraron resultados.");
     }
 
-    return proveedores;
+    return { data: proveedores };
   }
 
   async buscarPorId(idProveedor: number) {
