@@ -1,0 +1,154 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { ProductoService } from "./producto.service";
+import { ProductoRepository } from "../../infrastructure/repositories/producto.repository";
+import { CategoriaProductoRepository } from "../../infrastructure/repositories/categoria-producto.repository";
+
+const categoria = {
+  idCategoriaProducto: 1,
+  nombre: "General",
+  descripcion: null,
+  estado: true,
+};
+
+const rangos = [
+  { idRango: 1, idProducto: 1, cantidadMin: 1, descuentoPorcentaje: 0, estado: true },
+  { idRango: 2, idProducto: 1, cantidadMin: 12, descuentoPorcentaje: 7.14, estado: true },
+  { idRango: 3, idProducto: 1, cantidadMin: 24, descuentoPorcentaje: 17.86, estado: true },
+  { idRango: 4, idProducto: 1, cantidadMin: 50, descuentoPorcentaje: 21.43, estado: true },
+  { idRango: 5, idProducto: 1, cantidadMin: 100, descuentoPorcentaje: 28.57, estado: true },
+];
+
+const producto = {
+  idProducto: 1,
+  idCategoriaProducto: 1,
+  nombre: "Camiseta",
+  descripcion: null,
+  precioBase: 28000,
+  estado: true,
+  categoriaProducto: categoria,
+  rangos,
+};
+
+test("ProductoService crea producto con categoria y falla sin categoria", async (t) => {
+  t.mock.method(ProductoRepository.prototype, "buscarPorNombreExacto", async () => null);
+  t.mock.method(
+    CategoriaProductoRepository.prototype,
+    "buscarActivaPorId",
+    async () => categoria,
+  );
+  const crearMock = t.mock.method(
+    ProductoRepository.prototype,
+    "crearProducto",
+    async (data: any) => ({ ...producto, ...data }),
+  );
+
+  const service = new ProductoService();
+  const creado = await service.crearProducto({
+    nombre: "Camiseta",
+    precioBase: 28000,
+    idCategoriaProducto: 1,
+  });
+
+  assert.equal(creado.idCategoriaProducto, 1);
+  assert.equal(crearMock.mock.calls[0]?.arguments[0].idCategoriaProducto, 1);
+  await assert.rejects(
+    () => service.crearProducto({ nombre: "Camiseta", precioBase: 28000 }),
+    /categoria del producto es obligatoria/,
+  );
+});
+
+test("ProductoService lista con categoria, filtro, paginacion, search y sort", async (t) => {
+  const listarMock = t.mock.method(
+    ProductoRepository.prototype,
+    "listarProductosPaginado",
+    async () => ({ data: [producto], total: 1 }),
+  );
+
+  const service = new ProductoService();
+  const respuesta = await service.listarProductos({
+    page: "1",
+    limit: "99",
+    search: "cam",
+    sortBy: "nombre",
+    order: "asc",
+    idCategoriaProducto: "1",
+  });
+
+  const [pagination, filtros] = listarMock.mock.calls[0]?.arguments ?? [];
+  assert.ok(pagination);
+  assert.equal(pagination.limit, 10);
+  assert.equal(pagination.search, "cam");
+  assert.deepEqual(filtros, { idCategoriaProducto: 1 });
+  assert.equal(respuesta.data[0]?.categoriaProducto?.nombre, "General");
+});
+
+test("ProductoService edita categoria valida y desactiva producto", async (t) => {
+  t.mock.method(ProductoRepository.prototype, "buscarPorId", async () => producto);
+  t.mock.method(ProductoRepository.prototype, "buscarPorNombreExacto", async () => null);
+  t.mock.method(
+    CategoriaProductoRepository.prototype,
+    "buscarActivaPorId",
+    async () => categoria,
+  );
+  const actualizarMock = t.mock.method(
+    ProductoRepository.prototype,
+    "actualizarProducto",
+    async (_id: number, data: any) => ({ ...producto, ...data }),
+  );
+  const desactivarMock = t.mock.method(
+    ProductoRepository.prototype,
+    "desactivarProducto",
+    async () => ({ ...producto, estado: false }),
+  );
+
+  const service = new ProductoService();
+  const editado = await service.actualizarProducto(1, {
+    precioBase: 30000,
+    idCategoriaProducto: 1,
+  });
+  const desactivado = await service.desactivarProducto(1);
+
+  assert.equal(editado.precioBase.toNumber(), 30000);
+  assert.equal(actualizarMock.mock.calls[0]?.arguments[1].idCategoriaProducto, 1);
+  assert.equal(desactivado.estado, false);
+  assert.equal(desactivarMock.mock.calls[0]?.arguments[0], 1);
+});
+
+test("ProductoService calcula rangos de descuento y snapshots sin confiar en frontend", async (t) => {
+  t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => producto);
+  const service = new ProductoService();
+  const casos = [
+    { cantidad: 1, descuento: 0, precioUnitario: 28000 },
+    { cantidad: 12, descuento: 7.14, precioUnitario: 26001 },
+    { cantidad: 24, descuento: 17.86, precioUnitario: 22999 },
+    { cantidad: 50, descuento: 21.43, precioUnitario: 22000 },
+    { cantidad: 100, descuento: 28.57, precioUnitario: 20000 },
+    { cantidad: 150, descuento: 28.57, precioUnitario: 20000 },
+  ];
+
+  for (const caso of casos) {
+    const calculo = await service.calcularItems([
+      { idProducto: 1, cantidad: caso.cantidad },
+    ]);
+
+    assert.equal(calculo.items[0]?.descuentoPorcentaje, caso.descuento);
+    assert.equal(calculo.items[0]?.precioUnitario, caso.precioUnitario);
+    assert.equal(calculo.items[0]?.subtotal, caso.precioUnitario * caso.cantidad);
+    assert.equal(calculo.items[0]?.snapshot.precioUnitario.toNumber(), caso.precioUnitario);
+  }
+});
+
+test("ProductoService falla con producto inactivo o cantidad invalida", async (t) => {
+  t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => null);
+  const service = new ProductoService();
+
+  await assert.rejects(
+    () => service.calcularItems([{ idProducto: 1, cantidad: 0 }]),
+    /cantidad debe ser mayor a 0/,
+  );
+  await assert.rejects(
+    () => service.calcularItems([{ idProducto: 1, cantidad: 1 }]),
+    /no existe o esta inactivo/,
+  );
+});

@@ -2,6 +2,9 @@ import { ClienteRepository } from "../../infrastructure/repositories/cliente.rep
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { limpiarTextoOpcional } from "../../utils/text.util";
 import { ProductoService } from "./producto.service";
+import { CategoriaProductoService } from "./categoria-producto.service";
+import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
+import { NotificationService } from "./notification.service";
 import {
   validarCalcularCotizacionPublica,
   validarCrearCotizacionPublica,
@@ -10,6 +13,9 @@ import {
 const clienteRepository = new ClienteRepository();
 const cotizacionRepository = new CotizacionRepository();
 const productoService = new ProductoService();
+const categoriaProductoService = new CategoriaProductoService();
+const tecnicaRepository = new TecnicaRepository();
+const notificationService = new NotificationService();
 
 const limpiarCorreo = (valor: unknown) => {
   const texto = limpiarTextoOpcional(valor);
@@ -26,9 +32,45 @@ const respuestaCalculoPublica = (calculo: any) => ({
   total: calculo.total,
 });
 
+const enviarCorreosCotizacion = async (
+  cliente: any,
+  cotizacion: any,
+  calculo: any,
+  observaciones: string | null,
+) => {
+  const payload = {
+    idCotizacion: cotizacion.idCotizacion,
+    cliente,
+    items: respuestaCalculoPublica(calculo).items,
+    total: calculo.total,
+    observaciones,
+  };
+  return await notificationService.cotizacionCreada(payload);
+};
+
 export class PublicCotizacionService {
-  async listarProductos() {
-    return await productoService.listarProductosPublicos();
+  async listarProductos(query: Record<string, unknown> = {}) {
+    return await productoService.listarProductosPublicos(query);
+  }
+
+  async listarCategoriasProducto() {
+    return await categoriaProductoService.listarCategoriasPublicas();
+  }
+
+  async listarTecnicas() {
+    return await tecnicaRepository.listarTecnicasActivas();
+  }
+
+  private async asegurarTecnicasActivas(items: any[]) {
+    const idsTecnicas = [...new Set(items.map((item) => Number(item.idTecnica)))];
+
+    for (const idTecnica of idsTecnicas) {
+      const tecnica = await tecnicaRepository.buscarPorId(idTecnica);
+
+      if (!tecnica || !tecnica.estado) {
+        throw new Error(`La tecnica con ID ${idTecnica} no existe o esta inactiva.`);
+      }
+    }
   }
 
   async calcular(data: Record<string, unknown>) {
@@ -49,6 +91,10 @@ export class PublicCotizacionService {
       throw new Error(error);
     }
 
+    const itemsEntrada = data.items as any[];
+    await this.asegurarTecnicasActivas(itemsEntrada);
+
+    const calculo = await productoService.calcularItems(itemsEntrada);
     const clienteEntrada = data.cliente as Record<string, unknown>;
     const correo = limpiarCorreo(clienteEntrada.correo);
     const telefono = limpiarTextoOpcional(clienteEntrada.telefono);
@@ -71,10 +117,9 @@ export class PublicCotizacionService {
           direccion: limpiarTextoOpcional(clienteEntrada.direccion),
         });
 
-    const calculo = await productoService.calcularItems(data.items as any[]);
-    const detalles = calculo.items.map((item: any) => ({
+    const detalles = calculo.items.map((item: any, index: number) => ({
       idProducto: item.snapshot.idProducto,
-      idTecnica: null,
+      idTecnica: Number(itemsEntrada[index]?.idTecnica),
       descripcion: item.snapshot.descripcion,
       cantidad: item.snapshot.cantidad,
       precioBase: item.snapshot.precioBase,
@@ -96,10 +141,18 @@ export class PublicCotizacionService {
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
+    const observaciones = limpiarTextoOpcional(data.observaciones);
+    const email = await enviarCorreosCotizacion(
+      cliente,
+      cotizacion,
+      calculo,
+      observaciones,
+    );
 
     return {
       cotizacion,
       calculo: respuestaCalculoPublica(calculo),
+      email,
     };
   }
 }

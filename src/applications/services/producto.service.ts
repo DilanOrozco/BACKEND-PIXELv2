@@ -1,4 +1,5 @@
 import { Prisma } from "../../../generated/prisma/client";
+import { CategoriaProductoRepository } from "../../infrastructure/repositories/categoria-producto.repository";
 import { ProductoRepository } from "../../infrastructure/repositories/producto.repository";
 import {
   validarActualizarProducto,
@@ -13,6 +14,7 @@ import {
 import { limpiarTextoOpcional } from "../../utils/text.util";
 
 const productoRepository = new ProductoRepository();
+const categoriaProductoRepository = new CategoriaProductoRepository();
 
 type ItemCalculoEntrada = {
   idProducto: number;
@@ -30,6 +32,20 @@ const normalizarDecimal = (valor: unknown) => new Prisma.Decimal(String(valor));
 
 const redondearPesos = (valor: Prisma.Decimal) => valor.toDecimalPlaces(0);
 
+const parseFiltroCategoria = (query: PaginationQuery = {}) => {
+  if (query.idCategoriaProducto === undefined || query.idCategoriaProducto === "") {
+    return undefined;
+  }
+
+  const idCategoriaProducto = Number(query.idCategoriaProducto);
+
+  if (!Number.isInteger(idCategoriaProducto) || idCategoriaProducto <= 0) {
+    throw new Error("El filtro de categoria debe ser valido.");
+  }
+
+  return { idCategoriaProducto };
+};
+
 export class ProductoService {
   async listarProductos(query: PaginationQuery = {}) {
     const pagination = parsePaginationQuery(query, {
@@ -40,13 +56,16 @@ export class ProductoService {
 
     const resultado = await productoRepository.listarProductosPaginado(
       pagination,
+      parseFiltroCategoria(query),
     );
 
     return paginatedResponse(resultado.data, pagination, resultado.total);
   }
 
-  async listarProductosPublicos() {
-    return await productoRepository.listarProductosPublicos();
+  async listarProductosPublicos(query: PaginationQuery = {}) {
+    return await productoRepository.listarProductosPublicos(
+      parseFiltroCategoria(query),
+    );
   }
 
   async buscarPorId(idProducto: number) {
@@ -69,14 +88,24 @@ export class ProductoService {
     }
 
     const nombre = String(data.nombre).trim();
+    const idCategoriaProducto = Number(data.idCategoriaProducto);
     const existente = await productoRepository.buscarPorNombreExacto(nombre);
 
     if (existente) {
       throw new Error("El nombre del producto no puede repetirse.");
     }
 
+    const categoria = await categoriaProductoRepository.buscarActivaPorId(
+      idCategoriaProducto,
+    );
+
+    if (!categoria) {
+      throw new Error("La categoria del producto no existe o esta inactiva.");
+    }
+
     return await productoRepository.crearProducto({
       nombre,
+      idCategoriaProducto,
       descripcion: limpiarTextoOpcional(data.descripcion),
       precioBase: normalizarDecimal(data.precioBase),
       estado: data.estado === undefined ? true : Boolean(data.estado),
@@ -117,6 +146,19 @@ export class ProductoService {
 
     if (data.precioBase !== undefined) {
       dataActualizar.precioBase = normalizarDecimal(data.precioBase);
+    }
+
+    if (data.idCategoriaProducto !== undefined) {
+      const idCategoriaProducto = Number(data.idCategoriaProducto);
+      const categoria = await categoriaProductoRepository.buscarActivaPorId(
+        idCategoriaProducto,
+      );
+
+      if (!categoria) {
+        throw new Error("La categoria del producto no existe o esta inactiva.");
+      }
+
+      dataActualizar.idCategoriaProducto = idCategoriaProducto;
     }
 
     if (data.estado !== undefined) {
@@ -217,6 +259,7 @@ export class ProductoService {
           idProducto: producto.idProducto,
           nombre: producto.nombre,
           descripcion: producto.descripcion,
+          categoriaProducto: producto.categoriaProducto,
         },
         cantidad,
         precioBase: precioBase.toNumber(),

@@ -9,6 +9,7 @@ import type { ParsedPagination } from "../../utils/pagination.util";
 
 export interface ProductoData {
   nombre: string;
+  idCategoriaProducto: number;
   descripcion?: string | null;
   precioBase: Prisma.Decimal | number | string;
   estado?: boolean;
@@ -20,17 +21,26 @@ export interface RangoData {
   estado?: boolean;
 }
 
-const buildProductoWhere = (search?: string | null): Prisma.ProductoCotizableWhereInput => {
-  if (!search) {
-    return {};
+const buildProductoWhere = (
+  search?: string | null,
+  filtros?: { idCategoriaProducto?: number },
+): Prisma.ProductoCotizableWhereInput => {
+  const where: Prisma.ProductoCotizableWhereInput = {};
+
+  if (filtros?.idCategoriaProducto) {
+    where.idCategoriaProducto = filtros.idCategoriaProducto;
   }
 
-  return {
-    nombre: {
+  if (!search) {
+    return where;
+  }
+
+  where.nombre = {
       contains: search,
       mode: "insensitive",
-    },
   };
+
+  return where;
 };
 
 const buildProductoOrderBy = (pagination: ParsedPagination) => ({
@@ -38,16 +48,24 @@ const buildProductoOrderBy = (pagination: ParsedPagination) => ({
 });
 
 export class ProductoRepository {
-  async listarProductosPublicos() {
+  async listarProductosPublicos(filtros?: { idCategoriaProducto?: number }) {
     return await prisma.productoCotizable.findMany({
-      where: { estado: true },
+      where: {
+        estado: true,
+        ...(filtros?.idCategoriaProducto
+          ? { idCategoriaProducto: filtros.idCategoriaProducto }
+          : {}),
+      },
       select: productoPublicSelect,
       orderBy: { nombre: "asc" },
     });
   }
 
-  async listarProductosPaginado(pagination: ParsedPagination) {
-    const where = buildProductoWhere(pagination.search);
+  async listarProductosPaginado(
+    pagination: ParsedPagination,
+    filtros?: { idCategoriaProducto?: number },
+  ) {
+    const where = buildProductoWhere(pagination.search, filtros);
     const [total, data] = await Promise.all([
       prisma.productoCotizable.count({ where }),
       prisma.productoCotizable.findMany({

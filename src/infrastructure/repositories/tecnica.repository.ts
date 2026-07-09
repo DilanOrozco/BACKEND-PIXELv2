@@ -36,6 +36,18 @@ export class TecnicaRepository {
     });
   }
 
+  async listarTecnicasActivas() {
+    return await prisma.tecnica.findMany({
+      where: {
+        estado: true,
+      },
+      select: tecnicaSelect,
+      orderBy: {
+        idTecnica: "asc",
+      },
+    });
+  }
+
   async listarTecnicasPaginado(pagination: ParsedPagination) {
     const where = buildTecnicaWhere(pagination.search);
     const [total, data] = await Promise.all([

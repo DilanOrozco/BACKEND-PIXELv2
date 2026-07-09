@@ -6,6 +6,7 @@ import {
   type ActualizarAbonoData,
   type CrearAbonoData,
 } from "../../infrastructure/repositories/abono.repository";
+import { NotificationService } from "./notification.service";
 import {
   type EstadoAbonoPermitido,
   type MetodoPagoPermitido,
@@ -17,6 +18,7 @@ import {
 } from "../validators/abono.validator";
 
 const abonoRepository = new AbonoRepository();
+const notificationService = new NotificationService();
 
 const ESTADO_ABONO_PENDIENTE = "PENDIENTE" as const;
 const ESTADO_ABONO_CONFIRMADO = "CONFIRMADO" as const;
@@ -40,6 +42,7 @@ interface ResumenConfirmacionPago {
   total: number;
   nuevoTotalPagado: number;
   pagoInicialValido: boolean;
+  primerAbonoConfirmado: boolean;
 }
 
 const esCliente = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Cliente";
@@ -193,6 +196,7 @@ export class AbonoService {
       total,
       nuevoTotalPagado,
       pagoInicialValido: resumen.pagoInicialValido,
+      primerAbonoConfirmado: totalPagadoActual === 0,
     };
   }
 
@@ -309,6 +313,7 @@ export class AbonoService {
     return {
       abono,
       pagoInicialValido: resumenConfirmacion.pagoInicialValido,
+      primerAbonoConfirmado: resumenConfirmacion.primerAbonoConfirmado,
     };
   }
 
@@ -355,13 +360,19 @@ export class AbonoService {
     }
 
     if (data.confirmar === true) {
-      return await runPrismaTransaction(async (tx) => {
-        return await this.crearAbonoConfirmadoEnTransaccion(
+      const resultado = await runPrismaTransaction(async (tx) => {
+        return await this.crearAbonoConfirmadoConResumenEnTransaccion(
           datosBase,
           user,
           tx,
         );
       });
+
+      if (resultado.primerAbonoConfirmado) {
+        await notificationService.primerAbonoConfirmado(resultado.abono);
+      }
+
+      return resultado.abono;
     }
 
     return await abonoRepository.crearAbono({
@@ -384,7 +395,7 @@ export class AbonoService {
       throw new Error(error);
     }
 
-    return await runPrismaTransaction(async (tx) => {
+    const resultado = await runPrismaTransaction(async (tx) => {
       const abono = await abonoRepository.buscarPorId(idAbono, tx);
 
       if (!abono) {
@@ -437,8 +448,17 @@ export class AbonoService {
         resumenConfirmacion.pagoInicialValido,
       );
 
-      return await abonoRepository.buscarPorId(idAbono, tx);
+      return {
+        abono: await abonoRepository.buscarPorId(idAbono, tx),
+        primerAbonoConfirmado: resumenConfirmacion.primerAbonoConfirmado,
+      };
     });
+
+    if (resultado.primerAbonoConfirmado) {
+      await notificationService.primerAbonoConfirmado(resultado.abono);
+    }
+
+    return resultado.abono;
   }
 
   async rechazarAbono(

@@ -9,10 +9,41 @@ const mensajeError = (error: unknown) =>
 export class PublicController {
   async listarProductos(req: Request, res: Response) {
     try {
-      const productos = await publicCotizacionService.listarProductos();
+      const productos = await publicCotizacionService.listarProductos(
+        req.query as Record<string, unknown>,
+      );
 
       return res.status(200).json({
         data: productos,
+      });
+    } catch (error: unknown) {
+      return res.status(400).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
+  async listarCategoriasProducto(_req: Request, res: Response) {
+    try {
+      const categorias =
+        await publicCotizacionService.listarCategoriasProducto();
+
+      return res.status(200).json({
+        data: categorias,
+      });
+    } catch (error: unknown) {
+      return res.status(400).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
+  async listarTecnicas(_req: Request, res: Response) {
+    try {
+      const tecnicas = await publicCotizacionService.listarTecnicas();
+
+      return res.status(200).json({
+        data: tecnicas,
       });
     } catch (error: unknown) {
       return res.status(400).json({

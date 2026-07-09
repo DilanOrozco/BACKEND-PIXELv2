@@ -51,6 +51,7 @@ export const validarCrearProducto = (data: DatosEntrada) => {
     "nombre",
     "descripcion",
     "precioBase",
+    "idCategoriaProducto",
     "estado",
   ]);
 
@@ -68,6 +69,10 @@ export const validarCrearProducto = (data: DatosEntrada) => {
     return "El precio base debe ser mayor a 0.";
   }
 
+  if (!esEnteroPositivo(valor(data, "idCategoriaProducto"))) {
+    return "La categoria del producto es obligatoria y debe ser valida.";
+  }
+
   if (!esBooleanoOpcional(valor(data, "estado"))) {
     return "El estado debe ser booleano.";
   }
@@ -80,6 +85,7 @@ export const validarActualizarProducto = (data: DatosEntrada) => {
     "nombre",
     "descripcion",
     "precioBase",
+    "idCategoriaProducto",
     "estado",
   ]);
 
@@ -99,6 +105,13 @@ export const validarActualizarProducto = (data: DatosEntrada) => {
 
   if (valor(data, "precioBase") !== undefined && !esMontoPositivo(valor(data, "precioBase"))) {
     return "El precio base debe ser mayor a 0.";
+  }
+
+  if (
+    valor(data, "idCategoriaProducto") !== undefined &&
+    !esEnteroPositivo(valor(data, "idCategoriaProducto"))
+  ) {
+    return "La categoria del producto debe ser valida.";
   }
 
   if (!esBooleanoOpcional(valor(data, "estado"))) {

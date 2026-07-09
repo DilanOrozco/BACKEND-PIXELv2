@@ -28,7 +28,11 @@ const esEnteroPositivo = (valorEntrada: unknown) => {
   return Number.isInteger(numero) && numero > 0;
 };
 
-const validarItems = (items: unknown, permiteObservaciones = false) => {
+const validarItems = (
+  items: unknown,
+  permiteObservaciones = false,
+  requiereTecnica = false,
+) => {
   if (!Array.isArray(items) || items.length === 0) {
     return "Debe enviar al menos un producto para cotizar.";
   }
@@ -40,6 +44,10 @@ const validarItems = (items: unknown, permiteObservaciones = false) => {
 
     if (!esEnteroPositivo(item?.cantidad)) {
       return "La cantidad debe ser mayor a 0.";
+    }
+
+    if (requiereTecnica && !esEnteroPositivo(item?.idTecnica)) {
+      return "La tecnica es obligatoria para cotizar.";
     }
 
     if (
@@ -88,7 +96,7 @@ export const validarCrearCotizacionPublica = (data: DatosEntrada) => {
     return "Debe enviar correo o telefono para contactar al cliente.";
   }
 
-  const errorItems = validarItems(valor(data, "items"), true);
+  const errorItems = validarItems(valor(data, "items"), true, true);
 
   if (errorItems) {
     return errorItems;

@@ -5,7 +5,7 @@ import type { AuthRequest } from "../middlewares/auth.middleware";
 const permisoService = new PermisoService();
 
 export class PermisoController {
-  async sincronizarPermisos(req: AuthRequest, res: Response) {
+  async sincronizarPermisos(_req: AuthRequest, res: Response) {
     try {
       const permisos = await permisoService.sincronizarPermisosSistema();
 
@@ -20,7 +20,7 @@ export class PermisoController {
     }
   }
 
-  async listarPermisos(req: AuthRequest, res: Response) {
+  async listarPermisos(_req: AuthRequest, res: Response) {
     try {
       const permisos = await permisoService.listarPermisos();
 

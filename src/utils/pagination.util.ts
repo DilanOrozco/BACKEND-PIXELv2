@@ -5,6 +5,7 @@ export interface PaginationQuery {
   sortBy?: unknown;
   order?: unknown;
   termino?: unknown;
+  idCategoriaProducto?: unknown;
 }
 
 export interface PaginationOptions {

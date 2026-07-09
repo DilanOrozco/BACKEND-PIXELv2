@@ -2,6 +2,7 @@ import { runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
 import { AbonoService } from "./abono.service";
+import { NotificationService } from "./notification.service";
 import type { MetodoPagoPermitido } from "../validators/abono.validator";
 import {
   validarActualizarPedido,
@@ -17,6 +18,7 @@ import {
 
 const pedidoRepository = new PedidoRepository();
 const abonoService = new AbonoService();
+const notificationService = new NotificationService();
 
 const ESTADO_COTIZACION_APROBADA = "APROBADA";
 
@@ -225,6 +227,8 @@ export class PedidoService {
     );
 
     const pedido = await pedidoRepository.crearDesdeCotizacion(pedidoData);
+
+    await notificationService.pedidoCreadoDesdeCotizacion(pedido);
 
     return this.formatearPedido(pedido);
   }
@@ -476,6 +480,8 @@ export class PedidoService {
         "Finalizacion de pedido",
       ),
     });
+
+    await notificationService.pedidoFinalizado(pedidoActualizado);
 
     return this.formatearPedido(pedidoActualizado);
   }

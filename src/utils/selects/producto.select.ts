@@ -10,12 +10,21 @@ export const rangoProductoSelect = {
 
 export const productoSelect = {
   idProducto: true,
+  idCategoriaProducto: true,
   nombre: true,
   descripcion: true,
   precioBase: true,
   estado: true,
   fechaCreacion: true,
   fechaActualizacion: true,
+  categoriaProducto: {
+    select: {
+      idCategoriaProducto: true,
+      nombre: true,
+      descripcion: true,
+      estado: true,
+    },
+  },
   rangos: {
     select: rangoProductoSelect,
     orderBy: {
@@ -26,9 +35,17 @@ export const productoSelect = {
 
 export const productoPublicSelect = {
   idProducto: true,
+  idCategoriaProducto: true,
   nombre: true,
   descripcion: true,
   precioBase: true,
+  categoriaProducto: {
+    select: {
+      idCategoriaProducto: true,
+      nombre: true,
+      descripcion: true,
+    },
+  },
   rangos: {
     where: {
       estado: true,

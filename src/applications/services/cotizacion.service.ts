@@ -2,6 +2,7 @@ import { CotizacionRepository } from "../../infrastructure/repositories/cotizaci
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { PedidoService } from "./pedido.service";
+import { NotificationService } from "./notification.service";
 import {
   validarActualizarCotizacion,
   validarCotizar,
@@ -17,6 +18,7 @@ const cotizacionRepository = new CotizacionRepository();
 const clienteRepository = new ClienteRepository();
 const tecnicaRepository = new TecnicaRepository();
 const pedidoService = new PedidoService();
+const notificationService = new NotificationService();
 
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
@@ -41,6 +43,11 @@ const limpiarTextoOpcional = (valor: any) => {
 
   const texto = valor.trim();
   return texto === "" ? null : texto;
+};
+
+const limpiarCorreo = (valor: any) => {
+  const texto = limpiarTextoOpcional(valor);
+  return texto ? texto.toLowerCase() : null;
 };
 
 const calcularSubtotalDetalle = (
@@ -86,6 +93,88 @@ export class CotizacionService {
       if (!tecnica) {
         throw new Error(`La tecnica con ID ${idTecnica} no existe.`);
       }
+    }
+  }
+
+  private async resolverClientePresencial(data: any) {
+    if (data.idCliente) {
+      const cliente = await this.asegurarClienteExiste(Number(data.idCliente));
+      return cliente.idCliente;
+    }
+
+    const clienteEntrada = data.cliente;
+
+    if (
+      !clienteEntrada ||
+      typeof clienteEntrada !== "object" ||
+      Array.isArray(clienteEntrada)
+    ) {
+      throw new Error("Debes seleccionar o registrar los datos del cliente.");
+    }
+
+    if (
+      typeof clienteEntrada.nombre !== "string" ||
+      clienteEntrada.nombre.trim() === ""
+    ) {
+      throw new Error("El nombre del cliente es obligatorio.");
+    }
+
+    const correo = limpiarCorreo(clienteEntrada.correo);
+    const telefono = limpiarTextoOpcional(clienteEntrada.telefono);
+
+    if (!correo && !telefono) {
+      throw new Error("Debes enviar correo o telefono del cliente.");
+    }
+
+    const clienteExistente =
+      await clienteRepository.buscarPorCorreoOTelefono(correo, telefono);
+
+    const cliente = clienteExistente
+      ? await clienteRepository.actualizarCliente(clienteExistente.idCliente, {
+          nombre: clienteEntrada.nombre.trim(),
+          documento: limpiarTextoOpcional(clienteEntrada.documento),
+          correo: correo ?? clienteExistente.correo,
+          telefono: telefono ?? clienteExistente.telefono,
+          direccion: limpiarTextoOpcional(clienteEntrada.direccion),
+        })
+      : await clienteRepository.crearCliente({
+          nombre: clienteEntrada.nombre.trim(),
+          documento: limpiarTextoOpcional(clienteEntrada.documento),
+          correo,
+          telefono,
+          direccion: limpiarTextoOpcional(clienteEntrada.direccion),
+        });
+
+    return cliente.idCliente;
+  }
+
+  private validarDatosClientePresencial(data: any) {
+    if (data.idCliente) {
+      return;
+    }
+
+    const clienteEntrada = data.cliente;
+
+    if (
+      !clienteEntrada ||
+      typeof clienteEntrada !== "object" ||
+      Array.isArray(clienteEntrada)
+    ) {
+      throw new Error("Debes seleccionar o registrar los datos del cliente.");
+    }
+
+    if (
+      typeof clienteEntrada.nombre !== "string" ||
+      clienteEntrada.nombre.trim() === ""
+    ) {
+      throw new Error("El nombre del cliente es obligatorio.");
+    }
+
+    const correo = limpiarCorreo(clienteEntrada.correo);
+    const telefono = limpiarTextoOpcional(clienteEntrada.telefono);
+
+    if (!correo && !telefono) {
+      throw new Error("Debes enviar correo o telefono del cliente.");
     }
   }
 
@@ -142,23 +231,28 @@ export class CotizacionService {
   // Empleado: crea una solicitud presencial para un cliente elegido por la
   // empresa. Tambien inicia sin precios y queda lista para cotizar.
   async crearCotizacionNormal(data: any, usuarioAuth: any) {
-    if (!data.idCliente) {
-      throw new Error("El cliente es obligatorio.");
-    }
-
     const error = validarSolicitudCliente(data);
 
     if (error) {
       throw new Error(error);
     }
 
-    await this.asegurarClienteExiste(Number(data.idCliente));
-    await this.asegurarTecnicasExisten(data.detalles);
+    this.validarDatosClientePresencial(data);
+
+    let idCliente: number;
+
+    if (data.idCliente) {
+      idCliente = await this.resolverClientePresencial(data);
+      await this.asegurarTecnicasExisten(data.detalles);
+    } else {
+      await this.asegurarTecnicasExisten(data.detalles);
+      idCliente = await this.resolverClientePresencial(data);
+    }
 
     const detalles = this.prepararDetallesSolicitud(data.detalles);
 
     return await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente: Number(data.idCliente),
+      idCliente,
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
       estado: ESTADO_PENDIENTE,
@@ -476,6 +570,8 @@ export class CotizacionService {
       ESTADO_APROBADA,
       pedidoData,
     );
+
+    await notificationService.pedidoCreadoDesdeCotizacion(resultado.pedido);
 
     return {
       ...resultado,
