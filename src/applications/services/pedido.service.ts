@@ -29,6 +29,8 @@ const ESTADO_PEDIDO_FINALIZADO = "FINALIZADO";
 const ESTADO_PAGO_PENDIENTE = "PENDIENTE";
 
 const esCliente = (usuarioAuth: any) => usuarioAuth?.rol === "Cliente";
+const idClienteAutenticado = (usuarioAuth: any) =>
+  Number(usuarioAuth?.idCliente ?? usuarioAuth?.idUsuario);
 const puedeGestionarPedido = (usuarioAuth: any) =>
   ["Admin", "Secretaria"].includes(usuarioAuth?.rol);
 
@@ -146,7 +148,7 @@ export class PedidoService {
       throw new Error("No se encontraron resultados.");
     }
 
-    if (esCliente(usuarioAuth) && pedido.idCliente !== Number(usuarioAuth.idUsuario)) {
+    if (esCliente(usuarioAuth) && pedido.idCliente !== idClienteAutenticado(usuarioAuth)) {
       throw new Error("No tienes permisos para ver este pedido.");
     }
 
@@ -240,7 +242,7 @@ export class PedidoService {
       maxLimit: 10,
     });
     const filtros = esCliente(usuarioAuth)
-      ? { idCliente: Number(usuarioAuth.idUsuario) }
+      ? { idCliente: idClienteAutenticado(usuarioAuth) }
       : {};
 
     if (pagination.isPaginated) {
@@ -257,7 +259,7 @@ export class PedidoService {
     }
 
     const pedidos = esCliente(usuarioAuth)
-      ? await pedidoRepository.listarPorCliente(Number(usuarioAuth.idUsuario))
+      ? await pedidoRepository.listarPorCliente(idClienteAutenticado(usuarioAuth))
       : await pedidoRepository.listarPedidos();
 
     if (pedidos.length === 0) {
@@ -281,7 +283,7 @@ export class PedidoService {
     const resultados = await pedidoRepository.buscarParcial(termino.trim());
     const pedidos = esCliente(usuarioAuth)
       ? resultados.filter(
-          (item: any) => item.idCliente === Number(usuarioAuth.idUsuario),
+          (item: any) => item.idCliente === idClienteAutenticado(usuarioAuth),
         )
       : resultados;
 

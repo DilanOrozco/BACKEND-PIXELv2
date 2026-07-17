@@ -5,6 +5,16 @@ import { PERMISOS_SISTEMA, PERMISOS_VALIDOS } from "../../utils/permisos";
 const permisoRepository = new PermisoRepository();
 const rolRepository = new RolRepository();
 
+const PERMISOS_ROL_CLIENTE = [
+  "dashboard.cliente",
+  "cotizaciones.cliente.ver",
+  "pedidos.cliente.ver",
+  "abonos.cliente.ver",
+  "disenos.cliente.ver",
+  "perfil.ver",
+  "perfil.editar",
+];
+
 const validarIdRol = (idRol: number) => {
   if (!Number.isInteger(idRol) || idRol <= 0) {
     throw new Error("El ID del rol no es valido.");
@@ -23,7 +33,14 @@ const normalizarCodigos = (codigos: unknown) => {
 
 export class PermisoService {
   async sincronizarPermisosSistema() {
-    return await permisoRepository.sincronizarPermisosSistema();
+    const permisos = await permisoRepository.sincronizarPermisosSistema();
+    await rolRepository.asegurarRolConPermisos(
+      "Cliente",
+      "Cliente externo con acceso a su propio dashboard",
+      PERMISOS_ROL_CLIENTE,
+    );
+
+    return permisos;
   }
 
   async listarPermisos() {

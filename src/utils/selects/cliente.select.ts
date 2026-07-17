@@ -1,5 +1,6 @@
 export const clienteSelect = {
   idCliente: true,
+  idUsuario: true,
   nombre: true,
   documento: true,
   correo: true,

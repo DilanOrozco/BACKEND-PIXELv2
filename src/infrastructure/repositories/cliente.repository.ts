@@ -13,6 +13,7 @@ export interface ClienteData {
   correo?: string | null;
   telefono?: string | null;
   direccion?: string | null;
+  idUsuario?: number | null;
 }
 
 const buildClienteWhere = (search?: string | null): Prisma.ClienteWhereInput => {
@@ -117,6 +118,23 @@ export class ClienteRepository {
       where: { idCliente },
       data,
       select: clienteSelect,
+    });
+  }
+
+  async vincularUsuario(idCliente: number, idUsuario: number) {
+    return await prisma.cliente.update({
+      where: { idCliente },
+      data: {
+        idUsuario,
+      },
+      select: clienteSelect,
+    });
+  }
+
+  async buscarPorIdUsuario(idUsuario: number) {
+    return await prisma.cliente.findUnique({
+      where: { idUsuario },
+      select: clienteDetalleSelect,
     });
   }
 

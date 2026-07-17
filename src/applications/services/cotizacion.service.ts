@@ -27,6 +27,8 @@ const ESTADO_ANULADA = "ANULADA";
 const TIPO_NORMAL = "NORMAL";
 
 const esCliente = (usuarioAuth: any) => usuarioAuth?.rol === "Cliente";
+const idClienteAutenticado = (usuarioAuth: any) =>
+  Number(usuarioAuth?.idCliente ?? usuarioAuth?.idUsuario);
 
 const validarId = (idCotizacion: number) => {
   if (!Number.isInteger(idCotizacion) || idCotizacion <= 0) {
@@ -210,13 +212,14 @@ export class CotizacionService {
       throw new Error(error);
     }
 
-    await this.asegurarClienteExiste(Number(usuarioAuth.idUsuario));
+    const idCliente = idClienteAutenticado(usuarioAuth);
+    await this.asegurarClienteExiste(idCliente);
     await this.asegurarTecnicasExisten(data.detalles);
 
     const detalles = this.prepararDetallesSolicitud(data.detalles);
 
     return await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente: Number(usuarioAuth.idUsuario),
+      idCliente,
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
       estado: ESTADO_PENDIENTE,
@@ -271,7 +274,7 @@ export class CotizacionService {
       maxLimit: 10,
     });
     const filtros = esCliente(usuarioAuth)
-      ? { idCliente: Number(usuarioAuth.idUsuario) }
+      ? { idCliente: idClienteAutenticado(usuarioAuth) }
       : {};
 
     if (pagination.isPaginated) {
@@ -284,7 +287,7 @@ export class CotizacionService {
     }
 
     const cotizaciones = esCliente(usuarioAuth)
-      ? await cotizacionRepository.listarPorCliente(Number(usuarioAuth.idUsuario))
+      ? await cotizacionRepository.listarPorCliente(idClienteAutenticado(usuarioAuth))
       : await cotizacionRepository.listarCotizaciones();
 
     if (cotizaciones.length === 0) {
@@ -303,7 +306,7 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    if (esCliente(usuarioAuth) && cotizacion.idCliente !== usuarioAuth.idUsuario) {
+    if (esCliente(usuarioAuth) && cotizacion.idCliente !== idClienteAutenticado(usuarioAuth)) {
       throw new Error("No tienes permisos para ver esta cotizacion.");
     }
 
@@ -319,7 +322,7 @@ export class CotizacionService {
 
     const cotizaciones = esCliente(usuarioAuth)
       ? resultados.filter(
-          (item: any) => item.idCliente === Number(usuarioAuth.idUsuario),
+          (item: any) => item.idCliente === idClienteAutenticado(usuarioAuth),
         )
       : resultados;
 

@@ -75,6 +75,29 @@ const tablaItems = (items: any[]) => `
 
 export const buildCotizacionCreadaClienteTemplate = (payload: any): MailData => {
   const items = normalizarItems(payload);
+  const acceso = payload.accesoCliente;
+  const mensajeAccesoTexto = acceso?.linkCrearPassword
+    ? [
+        "Creamos un acceso para que puedas consultar el estado de tu pedido.",
+        `Crea tu contrasena aqui: ${acceso.linkCrearPassword}`,
+      ]
+    : acceso?.usuarioExistente
+      ? [
+          "Ya tienes una cuenta para consultar el estado de tu pedido.",
+          "Puedes iniciar sesion con tu correo cuando quieras revisar el proceso.",
+        ]
+      : [];
+  const mensajeAccesoHtml = acceso?.linkCrearPassword
+    ? `
+      <p>Creamos un acceso para que puedas consultar el estado de tu pedido.</p>
+      <p><a href="${escapeHtml(acceso.linkCrearPassword)}">Crear contrasena de acceso</a></p>
+    `
+    : acceso?.usuarioExistente
+      ? `
+        <p>Ya tienes una cuenta para consultar el estado de tu pedido.</p>
+        <p>Puedes iniciar sesion con tu correo cuando quieras revisar el proceso.</p>
+      `
+      : "";
 
   return {
     to: payload.cliente.correo,
@@ -90,6 +113,7 @@ export const buildCotizacionCreadaClienteTemplate = (payload: any): MailData => 
       "",
       "El valor final sera confirmado por nuestro equipo.",
       "Por este mismo correo te notificaremos si la cotizacion avanza a pedido.",
+      ...mensajeAccesoTexto,
       "",
       "PIXEL",
     ].join("\n"),
@@ -101,6 +125,7 @@ export const buildCotizacionCreadaClienteTemplate = (payload: any): MailData => 
       <p><strong>Observaciones:</strong> ${escapeHtml(payload.observaciones ?? "Sin observaciones")}</p>
       <p>El valor final sera confirmado por nuestro equipo.</p>
       <p>Por este mismo correo te notificaremos si la cotizacion avanza a pedido.</p>
+      ${mensajeAccesoHtml}
       <p>PIXEL</p>
     `,
   };

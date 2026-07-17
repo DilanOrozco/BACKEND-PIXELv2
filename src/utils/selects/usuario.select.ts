@@ -16,6 +16,15 @@ export const usuarioSelect = {
       estado: true,
     },
   },
+  cliente: {
+    select: {
+      idCliente: true,
+      nombre: true,
+      correo: true,
+      telefono: true,
+      estado: true,
+    },
+  },
 };
 
 export const usuarioAuthSelect = {
@@ -31,6 +40,15 @@ export const usuarioAuthSelect = {
       idRol: true,
       nombre: true,
       descripcion: true,
+      estado: true,
+    },
+  },
+  cliente: {
+    select: {
+      idCliente: true,
+      nombre: true,
+      correo: true,
+      telefono: true,
       estado: true,
     },
   },

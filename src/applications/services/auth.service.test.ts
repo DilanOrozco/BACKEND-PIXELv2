@@ -131,3 +131,77 @@ test("AuthService reset-password falla con token invalido o contrasena invalida"
     /no es valido o expiro/,
   );
 });
+
+test("AuthService crear-password cliente cambia contrasena y consume token", async (t) => {
+  const usuarioCliente = {
+    ...usuario,
+    idRol: 5,
+    rol: { idRol: 5, nombre: "Cliente", estado: true },
+    cliente: { idCliente: 10, estado: true },
+  };
+
+  t.mock.method(
+    PasswordResetTokenRepository.prototype,
+    "buscarTokenValido",
+    async () => ({
+      idPasswordResetToken: 60,
+      idUsuario: 1,
+      usuario: usuarioCliente,
+    }),
+  );
+  const actualizarMock = t.mock.method(
+    UsuarioRepository.prototype,
+    "actualizarUsuario",
+    async (_id: number, data: any) => ({ ...usuarioCliente, ...data }),
+  );
+  const marcarUsadoMock = t.mock.method(
+    PasswordResetTokenRepository.prototype,
+    "marcarUsado",
+    async () => ({}),
+  );
+
+  const respuesta = await new AuthService().crearPasswordCliente({
+    token: "token-valido",
+    password: "NuevaPassword123",
+  });
+  const dataActualizar = actualizarMock.mock.calls[0]?.arguments[1];
+
+  assert.equal(respuesta.message, "Contrasena de cliente creada correctamente.");
+  assert.equal(dataActualizar.estado, true);
+  assert.equal(
+    await compararContrasena("NuevaPassword123", dataActualizar.contrasenaHash),
+    true,
+  );
+  assert.equal(marcarUsadoMock.mock.calls[0]?.arguments[0], 60);
+});
+
+test("AuthService crear-password cliente rechaza token invalido, vencido o no cliente", async (t) => {
+  t.mock.method(
+    PasswordResetTokenRepository.prototype,
+    "buscarTokenValido",
+    async () => ({
+      idPasswordResetToken: 61,
+      idUsuario: 1,
+      usuario: {
+        ...usuario,
+        rol: { idRol: 1, nombre: "Admin", estado: true },
+        cliente: null,
+      },
+    }),
+  );
+
+  const service = new AuthService();
+
+  await assert.rejects(
+    () => service.crearPasswordCliente({ token: "x", password: "123" }),
+    /minimo 6 caracteres/,
+  );
+  await assert.rejects(
+    () =>
+      service.crearPasswordCliente({
+        token: "x",
+        password: "NuevaPassword123",
+      }),
+    /no es valido o expiro/,
+  );
+});

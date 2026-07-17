@@ -31,6 +31,7 @@ import productoRoutes from "../infrastructure/routes/producto.routes";
 import publicRoutes from "../infrastructure/routes/public.routes";
 import categoriaProductoRoutes from "../infrastructure/routes/categoria-producto.routes";
 import clienteRoutes from "../infrastructure/routes/cliente.routes";
+import clienteDashboardRoutes from "../infrastructure/routes/cliente-dashboard.routes";
 
 //endpoints
 app.use("/api/roles", rolRoutes);
@@ -49,6 +50,7 @@ app.use("/api/permisos", permisoRoutes);
 app.use("/api/productos", productoRoutes);
 app.use("/api/categorias-producto", categoriaProductoRoutes);
 app.use("/api/clientes", clienteRoutes);
+app.use("/api/cliente", clienteDashboardRoutes);
 app.use("/api/public", publicRoutes);
 
 export default app;

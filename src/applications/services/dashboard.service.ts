@@ -2,8 +2,10 @@ import {
   DashboardRepository,
   type VentaPorMesRaw,
 } from "../../infrastructure/repositories/dashboard.repository";
+import { ClienteAccessService } from "./cliente-access.service";
 
 const dashboardRepository = new DashboardRepository();
+const clienteAccessService = new ClienteAccessService();
 
 const ESTADOS_PEDIDO = ["PENDIENTE", "EN_PROCESO", "FINALIZADO"] as const;
 const MESES = [
@@ -195,7 +197,7 @@ const completarVentasPorMes = (ventas: VentaPorMesRaw[]) => {
   return ventasPorMes;
 };
 
-const obtenerIdCliente = (user: AuthUser | undefined) => {
+const obtenerIdUsuario = (user: AuthUser | undefined) => {
   const idCliente = Number(user?.idUsuario);
 
   if (!Number.isInteger(idCliente) || idCliente <= 0) {
@@ -281,7 +283,9 @@ export class DashboardService {
     user: AuthUser | undefined,
     query: Record<string, unknown> = {},
   ) {
-    const idCliente = obtenerIdCliente(user);
+    const idUsuario = obtenerIdUsuario(user);
+    const cliente = await clienteAccessService.obtenerClienteDeUsuario(idUsuario);
+    const idCliente = cliente.idCliente;
     const limite = validarLimite(query.limite);
 
     const [
@@ -318,6 +322,12 @@ export class DashboardService {
         cotizacionesPendientes: totalCotizacionesPendientes,
         totalGastado: redondearMoneda(totalGastado),
         saldoPendiente: redondearMoneda(saldoPendiente),
+      },
+      cliente: {
+        idCliente: cliente.idCliente,
+        nombre: cliente.nombre,
+        correo: cliente.correo,
+        telefono: cliente.telefono,
       },
       pedidoActivo,
       historialPedidos,

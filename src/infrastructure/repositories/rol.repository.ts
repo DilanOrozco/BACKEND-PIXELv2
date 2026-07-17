@@ -19,6 +19,51 @@ const buildRolOrderBy = (pagination: ParsedPagination) => ({
 });
 
 export class RolRepository {
+  async asegurarRolConPermisos(
+    nombre: string,
+    descripcion: string,
+    codigosPermisos: string[],
+  ) {
+    return await prisma.$transaction(async (tx) => {
+      const rol = await tx.rol.upsert({
+        where: { nombre },
+        update: {
+          descripcion,
+          estado: true,
+        },
+        create: {
+          nombre,
+          descripcion,
+          estado: true,
+        },
+      });
+
+      const permisos = await tx.permiso.findMany({
+        where: {
+          codigo: {
+            in: codigosPermisos,
+          },
+          estado: true,
+        },
+        select: {
+          idPermiso: true,
+        },
+      });
+
+      if (permisos.length > 0) {
+        await tx.rolPermiso.createMany({
+          data: permisos.map((permiso) => ({
+            idRol: rol.idRol,
+            idPermiso: permiso.idPermiso,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return rol;
+    });
+  }
+
   async crearRol(nombre: string, descripcion?: string) {
     return await prisma.rol.create({
       data: {

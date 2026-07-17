@@ -120,6 +120,7 @@ model Usuario {
   disenos             Diseno[]
   comprasRealizadas   Compra[]
   passwordResetTokens PasswordResetToken[]
+  cliente             Cliente?
 
   @@map("usuarios")
 }
@@ -141,6 +142,7 @@ model PasswordResetToken {
 
 model Cliente {
   idCliente          Int      @id @default(autoincrement()) @map("id_cliente")
+  idUsuario          Int?     @unique @map("id_usuario")
   nombre             String   @db.VarChar(100)
   documento          String?  @db.VarChar(30)
   correo             String?  @db.VarChar(100)
@@ -150,6 +152,7 @@ model Cliente {
   fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
 
+  usuario      Usuario?     @relation(fields: [idUsuario], references: [idUsuario], onDelete: SetNull)
   cotizaciones Cotizacion[]
   pedidos      Pedido[]
 

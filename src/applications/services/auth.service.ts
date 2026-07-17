@@ -201,4 +201,37 @@ export class AuthService {
 
     return { message: "Contrasena actualizada correctamente." };
   }
+
+  async crearPasswordCliente(data: any) {
+    const error = validarResetPassword(data);
+
+    if (error) {
+      throw new Error(error);
+    }
+
+    const tokenHash = hashToken(data.token.trim());
+    const resetToken =
+      await passwordResetTokenRepository.buscarTokenValido(tokenHash);
+
+    if (
+      !resetToken ||
+      !resetToken.usuario.estado ||
+      resetToken.usuario.rol?.nombre !== "Cliente" ||
+      !resetToken.usuario.cliente
+    ) {
+      throw new Error("El token para crear contrasena no es valido o expiro.");
+    }
+
+    const contrasenaHash = await encriptarContrasena(data.password);
+
+    await usuarioRepository.actualizarUsuario(resetToken.idUsuario, {
+      contrasenaHash,
+      estado: true,
+    });
+    await passwordResetTokenRepository.marcarUsado(
+      resetToken.idPasswordResetToken,
+    );
+
+    return { message: "Contrasena de cliente creada correctamente." };
+  }
 }

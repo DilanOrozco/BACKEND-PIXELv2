@@ -26,12 +26,15 @@ const ESTADO_APROBADO_DISENO = "APROBADO" as const;
 
 interface AuthUser {
   idUsuario: number;
+  idCliente?: number | null;
   rol: string;
 }
 
 type DatosEntrada = Record<string, unknown>;
 
 const esCliente = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Cliente";
+const idClienteAutenticado = (usuarioAuth: AuthUser) =>
+  Number(usuarioAuth.idCliente ?? usuarioAuth.idUsuario);
 const esDisenador = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Diseñador";
 const puedeGestionarDisenos = (usuarioAuth: AuthUser) =>
   ["Admin", "Secretaria"].includes(usuarioAuth.rol);
@@ -80,7 +83,7 @@ export class DisenoService {
     user: AuthUser,
     mensaje = "No tienes permiso para consultar este diseño.",
   ) {
-    if (esCliente(user) && Number(pedido.idCliente) !== Number(user.idUsuario)) {
+    if (esCliente(user) && Number(pedido.idCliente) !== idClienteAutenticado(user)) {
       throw new Error(mensaje);
     }
   }
@@ -94,7 +97,7 @@ export class DisenoService {
   ) {
     if (
       esCliente(user) &&
-      Number(diseno.pedido.cliente.idCliente) !== Number(user.idUsuario)
+      Number(diseno.pedido.cliente.idCliente) !== idClienteAutenticado(user)
     ) {
       throw new Error("No tienes permiso para consultar este diseño.");
     }
@@ -325,7 +328,7 @@ export class DisenoService {
 
       if (
         esCliente(user) &&
-        Number(diseno.pedido.cliente.idCliente) !== Number(user.idUsuario)
+        Number(diseno.pedido.cliente.idCliente) !== idClienteAutenticado(user)
       ) {
         throw new Error("No tienes permiso para aprobar este diseño.");
       }

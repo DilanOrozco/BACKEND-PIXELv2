@@ -33,6 +33,7 @@ const ESTADO_PAGO_COMPLETO = "COMPLETO" as const;
 
 interface AuthUser {
   idUsuario: number;
+  idCliente?: number | null;
   rol: string;
 }
 
@@ -46,6 +47,8 @@ interface ResumenConfirmacionPago {
 }
 
 const esCliente = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Cliente";
+const idClienteAutenticado = (usuarioAuth: AuthUser) =>
+  Number(usuarioAuth.idCliente ?? usuarioAuth.idUsuario);
 const puedeGestionarAbonos = (usuarioAuth: AuthUser) =>
   ["Admin", "Secretaria"].includes(usuarioAuth.rol);
 
@@ -82,7 +85,7 @@ export class AbonoService {
     user: AuthUser,
     mensaje = "No tienes permiso para registrar abonos en este pedido.",
   ) {
-    if (esCliente(user) && Number(pedido.idCliente) !== Number(user.idUsuario)) {
+    if (esCliente(user) && Number(pedido.idCliente) !== idClienteAutenticado(user)) {
       throw new Error(mensaje);
     }
   }
@@ -93,7 +96,7 @@ export class AbonoService {
   ) {
     if (
       esCliente(user) &&
-      Number(abono.pedido.cliente.idCliente) !== Number(user.idUsuario)
+      Number(abono.pedido.cliente.idCliente) !== idClienteAutenticado(user)
     ) {
       throw new Error("No tienes permiso para consultar este abono.");
     }

@@ -9,6 +9,7 @@ router.post("/register", authController.registrarCliente);
 router.post("/login", authController.login);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/reset-password", authController.resetPassword);
+router.post("/cliente/crear-password", authController.crearPasswordCliente);
 router.get("/me/permisos", verificarAuth, authController.misPermisos);
 
 export default router;

@@ -41,7 +41,12 @@ export class PasswordResetTokenRepository {
         },
       },
       include: {
-        usuario: true,
+        usuario: {
+          include: {
+            rol: true,
+            cliente: true,
+          },
+        },
       },
     });
   }

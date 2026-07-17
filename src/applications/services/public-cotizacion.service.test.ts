@@ -7,6 +7,7 @@ import { EmailService } from "./email.service";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
+import { ClienteAccessService } from "./cliente-access.service";
 
 const cliente = {
   idCliente: 10,
@@ -89,6 +90,16 @@ test("PublicCotizacionService no requiere login y crea cotizacion pendiente con 
   );
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
   t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  t.mock.method(
+    ClienteAccessService.prototype,
+    "asegurarAccesoCliente",
+    async () => ({
+      usuarioCreado: true,
+      usuarioExistente: false,
+      linkCrearPassword: "https://pixel.test/crear-password-cliente/token",
+      idUsuario: 77,
+    }),
+  );
   const crearCotizacionMock = t.mock.method(
     CotizacionRepository.prototype,
     "crearCotizacionConDetalles",
@@ -128,6 +139,8 @@ test("PublicCotizacionService no requiere login y crea cotizacion pendiente con 
   assert.ok(correoCliente);
   assert.ok(correoStaff);
   assert.match(correoCliente.subject, /Cotizacion PIXEL #99/);
+  assert.match(correoCliente.text, /Creamos un acceso/);
+  assert.match(correoCliente.text, /crear-password-cliente\/token/);
   assert.match(correoStaff.subject, /Nueva cotizacion publica #99/);
   assert.deepEqual(respuesta.email, {
     event: "COTIZACION_CREADA",
@@ -159,6 +172,15 @@ test("PublicCotizacionService reutiliza Cliente y no rompe si falla email", asyn
   );
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
   t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  t.mock.method(
+    ClienteAccessService.prototype,
+    "asegurarAccesoCliente",
+    async () => ({
+      usuarioCreado: false,
+      usuarioExistente: true,
+      idUsuario: 77,
+    }),
+  );
   t.mock.method(
     CotizacionRepository.prototype,
     "crearCotizacionConDetalles",

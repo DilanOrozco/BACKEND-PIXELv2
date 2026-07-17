@@ -145,6 +145,24 @@ export class UsuarioRepository {
     });
   }
 
+  async buscarPorCorreoConRolYCliente(correo: string) {
+    return await prisma.usuario.findUnique({
+      where: { correo },
+      select: {
+        ...usuarioAuthSelect,
+        cliente: {
+          select: {
+            idCliente: true,
+            nombre: true,
+            correo: true,
+            telefono: true,
+            estado: true,
+          },
+        },
+      },
+    });
+  }
+
   async buscarPorDocumento(documento: string) {
     return await prisma.usuario.findUnique({
       where: { documento },

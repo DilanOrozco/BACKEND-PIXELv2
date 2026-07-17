@@ -59,6 +59,18 @@ export class AuthController {
     }
   }
 
+  async crearPasswordCliente(req: Request, res: Response) {
+    try {
+      const data = await authService.crearPasswordCliente(req.body);
+
+      return res.status(200).json(data);
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
   async misPermisos(req: AuthRequest, res: Response) {
     try {
       const data = await authService.obtenerPermisosUsuario(req.user);

@@ -73,6 +73,12 @@ export const PERMISOS_SISTEMA = [
   { codigo: "ventas.resumen", modulo: "ventas", accion: "resumen", descripcion: "Consultar resumen de ventas" },
   { codigo: "dashboard.admin", modulo: "dashboard", accion: "admin", descripcion: "Consultar dashboard administrativo" },
   { codigo: "dashboard.cliente", modulo: "dashboard", accion: "cliente", descripcion: "Consultar dashboard de cliente" },
+  { codigo: "cotizaciones.cliente.ver", modulo: "cotizaciones", accion: "cliente_ver", descripcion: "Consultar cotizaciones propias como cliente" },
+  { codigo: "pedidos.cliente.ver", modulo: "pedidos", accion: "cliente_ver", descripcion: "Consultar pedidos propios como cliente" },
+  { codigo: "abonos.cliente.ver", modulo: "abonos", accion: "cliente_ver", descripcion: "Consultar abonos propios como cliente" },
+  { codigo: "disenos.cliente.ver", modulo: "disenos", accion: "cliente_ver", descripcion: "Consultar disenos propios como cliente" },
+  { codigo: "perfil.ver", modulo: "perfil", accion: "ver", descripcion: "Consultar perfil propio" },
+  { codigo: "perfil.editar", modulo: "perfil", accion: "editar", descripcion: "Editar perfil propio" },
 ] as const;
 
 export type CodigoPermiso = (typeof PERMISOS_SISTEMA)[number]["codigo"];

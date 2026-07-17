@@ -50,6 +50,12 @@ export const verificarAuth = async (
             estado: true,
           },
         },
+        cliente: {
+          select: {
+            idCliente: true,
+            estado: true,
+          },
+        },
       },
     });
 
@@ -65,6 +71,7 @@ export const verificarAuth = async (
       correo: usuario.correo,
       idRol: usuario.idRol,
       rol: usuario.rol.nombre,
+      idCliente: usuario.cliente?.estado ? usuario.cliente.idCliente : null,
     };
 
     next();

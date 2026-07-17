@@ -5,6 +5,7 @@ import { ProductoService } from "./producto.service";
 import { CategoriaProductoService } from "./categoria-producto.service";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 import { NotificationService } from "./notification.service";
+import { ClienteAccessService } from "./cliente-access.service";
 import {
   validarCalcularCotizacionPublica,
   validarCrearCotizacionPublica,
@@ -16,6 +17,7 @@ const productoService = new ProductoService();
 const categoriaProductoService = new CategoriaProductoService();
 const tecnicaRepository = new TecnicaRepository();
 const notificationService = new NotificationService();
+const clienteAccessService = new ClienteAccessService();
 
 const limpiarCorreo = (valor: unknown) => {
   const texto = limpiarTextoOpcional(valor);
@@ -37,6 +39,7 @@ const enviarCorreosCotizacion = async (
   cotizacion: any,
   calculo: any,
   observaciones: string | null,
+  accesoCliente?: any,
 ) => {
   const payload = {
     idCotizacion: cotizacion.idCotizacion,
@@ -44,6 +47,7 @@ const enviarCorreosCotizacion = async (
     items: respuestaCalculoPublica(calculo).items,
     total: calculo.total,
     observaciones,
+    accesoCliente,
   };
   return await notificationService.cotizacionCreada(payload);
 };
@@ -117,6 +121,8 @@ export class PublicCotizacionService {
           direccion: limpiarTextoOpcional(clienteEntrada.direccion),
         });
 
+    const accesoCliente = await clienteAccessService.asegurarAccesoCliente(cliente);
+
     const detalles = calculo.items.map((item: any, index: number) => ({
       idProducto: item.snapshot.idProducto,
       idTecnica: Number(itemsEntrada[index]?.idTecnica),
@@ -147,6 +153,7 @@ export class PublicCotizacionService {
       cotizacion,
       calculo,
       observaciones,
+      accesoCliente,
     );
 
     return {
