@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ClienteAccessService } from "./cliente-access.service";
 import { PermisoService } from "./permiso.service";
-import { RolRepository } from "../../infrastructure/repositories/rol.repository";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { PasswordResetTokenRepository } from "../../infrastructure/repositories/password-reset-token.repository";
@@ -27,10 +26,9 @@ test("ClienteAccessService crea Usuario Cliente, vincula Cliente y genera token"
   const frontendAnterior = process.env.FRONTEND_URL;
   process.env.FRONTEND_URL = "https://pixel.test";
 
-  t.mock.method(PermisoService.prototype, "sincronizarPermisosSistema", async () => []);
   const rolMock = t.mock.method(
-    RolRepository.prototype,
-    "asegurarRolConPermisos",
+    PermisoService.prototype,
+    "asegurarRolCliente",
     async () => rolCliente,
   );
   t.mock.method(
@@ -75,7 +73,7 @@ test("ClienteAccessService crea Usuario Cliente, vincula Cliente y genera token"
     respuesta?.linkCrearPassword ?? "",
     /^https:\/\/pixel\.test\/crear-password-cliente\/[a-f0-9]{64}$/,
   );
-  assert.equal(rolMock.mock.calls[0]?.arguments[0], "Cliente");
+  assert.equal(rolMock.mock.calls.length, 1);
   assert.equal(usuarioData.correo, "ana@pixel.test");
   assert.equal(usuarioData.idRol, 5);
   assert.equal(vincularMock.mock.calls[0]?.arguments[0], 10);
@@ -93,10 +91,9 @@ test("ClienteAccessService crea Usuario Cliente, vincula Cliente y genera token"
 });
 
 test("ClienteAccessService reutiliza Usuario Cliente existente y no duplica", async (t) => {
-  t.mock.method(PermisoService.prototype, "sincronizarPermisosSistema", async () => []);
   t.mock.method(
-    RolRepository.prototype,
-    "asegurarRolConPermisos",
+    PermisoService.prototype,
+    "asegurarRolCliente",
     async () => rolCliente,
   );
   t.mock.method(
@@ -130,10 +127,9 @@ test("ClienteAccessService reutiliza Usuario Cliente existente y no duplica", as
 });
 
 test("ClienteAccessService bloquea correos de usuarios internos", async (t) => {
-  t.mock.method(PermisoService.prototype, "sincronizarPermisosSistema", async () => []);
   t.mock.method(
-    RolRepository.prototype,
-    "asegurarRolConPermisos",
+    PermisoService.prototype,
+    "asegurarRolCliente",
     async () => rolCliente,
   );
   t.mock.method(

@@ -231,6 +231,7 @@ model Cotizacion {
   tipoCotizacion     String           @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
   estado             EstadoCotizacion @default(PENDIENTE)
   subtotal           Decimal          @default(0) @db.Decimal(10, 2)
+  descuentoTotal     Decimal          @default(0) @map("descuento_total") @db.Decimal(10, 2)
   costosAdicionales  Decimal          @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
   total              Decimal          @default(0) @db.Decimal(10, 2)
   observaciones      String?          @db.VarChar(255)
@@ -255,9 +256,13 @@ model DetalleCotizacion {
   cantidad            Int
   precioBase          Decimal? @map("precio_base") @db.Decimal(10, 2)
   descuentoPorcentaje Decimal? @default(0) @map("descuento_porcentaje") @db.Decimal(5, 2)
+  descuentoValorUnitario Decimal? @default(0) @map("descuento_valor_unitario") @db.Decimal(10, 2)
   precioUnitario      Decimal? @map("precio_unitario") @db.Decimal(10, 2)
   costoDiseno         Decimal? @default(0) @map("costo_diseno") @db.Decimal(10, 2)
   subtotal            Decimal? @db.Decimal(10, 2)
+  subtotalBruto       Decimal? @map("subtotal_bruto") @db.Decimal(10, 2)
+  descuentoTotal      Decimal? @default(0) @map("descuento_total") @db.Decimal(10, 2)
+  subtotalConDescuento Decimal? @map("subtotal_con_descuento") @db.Decimal(10, 2)
   imagenReferencia    String?  @map("imagen_referencia") @db.VarChar(255)
   observaciones       String?  @db.VarChar(255)
 

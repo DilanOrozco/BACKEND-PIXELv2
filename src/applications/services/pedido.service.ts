@@ -113,7 +113,7 @@ const prepararDetallePedido = (detalle: any) => {
     descripcion: detalle.descripcion,
     cantidad: Number(detalle.cantidad),
     precioUnitario: aNumero(detalle.precioUnitario),
-    subtotal: aNumero(detalle.subtotal),
+    subtotal: aNumero(detalle.subtotalConDescuento ?? detalle.subtotal),
     observaciones: limpiarTextoOpcional(detalle.observaciones),
   };
 };

@@ -1,5 +1,7 @@
 import type { Response } from "express";
 import {
+  DashboardForbiddenError,
+  DashboardNotFoundError,
   DashboardService,
   DashboardValidationError,
 } from "../../applications/services/dashboard.service";
@@ -23,6 +25,18 @@ export class DashboardController {
     } catch (error: unknown) {
       if (error instanceof DashboardValidationError) {
         return res.status(400).json({
+          message: mensajeError(error),
+        });
+      }
+
+      if (error instanceof DashboardForbiddenError) {
+        return res.status(403).json({
+          message: mensajeError(error),
+        });
+      }
+
+      if (error instanceof DashboardNotFoundError) {
+        return res.status(404).json({
           message: mensajeError(error),
         });
       }

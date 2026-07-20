@@ -218,6 +218,8 @@ export class ProductoService {
     }
 
     const resultados = [];
+    let subtotalBrutoGeneral = new Prisma.Decimal(0);
+    let descuentoTotalGeneral = new Prisma.Decimal(0);
     let total = new Prisma.Decimal(0);
 
     for (const item of items) {
@@ -249,9 +251,17 @@ export class ProductoService {
       const descuentoPorcentaje = new Prisma.Decimal(rango.descuentoPorcentaje);
       const descuentoValor = precioBase.mul(descuentoPorcentaje).div(100);
       const precioUnitario = redondearPesos(precioBase.minus(descuentoValor));
-      const subtotal = precioUnitario.mul(cantidad);
+      const descuentoValorUnitario = redondearPesos(descuentoValor);
+      const subtotalBruto = precioBase.mul(cantidad);
+      const descuentoTotal = redondearPesos(
+        subtotalBruto.mul(descuentoPorcentaje).div(100),
+      );
+      const subtotalConDescuento = subtotalBruto.minus(descuentoTotal);
+      const subtotalFinal = subtotalConDescuento;
 
-      total = total.plus(subtotal);
+      subtotalBrutoGeneral = subtotalBrutoGeneral.plus(subtotalBruto);
+      descuentoTotalGeneral = descuentoTotalGeneral.plus(descuentoTotal);
+      total = total.plus(subtotalFinal);
 
       resultados.push({
         idProducto: producto.idProducto,
@@ -264,9 +274,14 @@ export class ProductoService {
         cantidad,
         precioBase: precioBase.toNumber(),
         descuentoPorcentaje: descuentoPorcentaje.toNumber(),
-        descuentoAplicado: redondearPesos(descuentoValor).toNumber(),
+        descuentoValorUnitario: descuentoValorUnitario.toNumber(),
+        descuentoAplicado: descuentoTotal.toNumber(),
+        descuentoTotal: descuentoTotal.toNumber(),
         precioUnitario: precioUnitario.toNumber(),
-        subtotal: subtotal.toNumber(),
+        subtotalBruto: subtotalBruto.toNumber(),
+        subtotal: subtotalBruto.toNumber(),
+        subtotalConDescuento: subtotalConDescuento.toNumber(),
+        subtotalFinal: subtotalFinal.toNumber(),
         observaciones: limpiarTextoOpcional(item.observaciones),
         snapshot: {
           idProducto: producto.idProducto,
@@ -274,8 +289,12 @@ export class ProductoService {
           cantidad,
           precioBase,
           descuentoPorcentaje,
+          descuentoValorUnitario,
           precioUnitario,
-          subtotal,
+          subtotal: subtotalBruto,
+          subtotalBruto,
+          descuentoTotal,
+          subtotalConDescuento,
           observaciones: limpiarTextoOpcional(item.observaciones),
         },
       });
@@ -283,7 +302,10 @@ export class ProductoService {
 
     return {
       items: resultados,
-      subtotal: total.toNumber(),
+      subtotal: subtotalBrutoGeneral.toNumber(),
+      subtotalBruto: subtotalBrutoGeneral.toNumber(),
+      descuentoTotal: descuentoTotalGeneral.toNumber(),
+      costosAdicionales: 0,
       total: total.toNumber(),
     };
   }

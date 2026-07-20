@@ -130,9 +130,13 @@ export class PublicCotizacionService {
       cantidad: item.snapshot.cantidad,
       precioBase: item.snapshot.precioBase,
       descuentoPorcentaje: item.snapshot.descuentoPorcentaje,
+      descuentoValorUnitario: item.snapshot.descuentoValorUnitario,
       precioUnitario: item.snapshot.precioUnitario,
       costoDiseno: 0,
       subtotal: item.snapshot.subtotal,
+      subtotalBruto: item.snapshot.subtotalBruto,
+      descuentoTotal: item.snapshot.descuentoTotal,
+      subtotalConDescuento: item.snapshot.subtotalConDescuento,
       observaciones: item.snapshot.observaciones,
     }));
 
@@ -142,6 +146,7 @@ export class PublicCotizacionService {
       tipoCotizacion: "PUBLICA",
       estado: "PENDIENTE",
       subtotal: calculo.subtotal,
+      descuentoTotal: calculo.descuentoTotal,
       costosAdicionales: 0,
       total: calculo.total,
       observaciones: limpiarTextoOpcional(data.observaciones),

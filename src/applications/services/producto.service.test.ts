@@ -119,12 +119,12 @@ test("ProductoService calcula rangos de descuento y snapshots sin confiar en fro
   t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => producto);
   const service = new ProductoService();
   const casos = [
-    { cantidad: 1, descuento: 0, precioUnitario: 28000 },
-    { cantidad: 12, descuento: 7.14, precioUnitario: 26001 },
-    { cantidad: 24, descuento: 17.86, precioUnitario: 22999 },
-    { cantidad: 50, descuento: 21.43, precioUnitario: 22000 },
-    { cantidad: 100, descuento: 28.57, precioUnitario: 20000 },
-    { cantidad: 150, descuento: 28.57, precioUnitario: 20000 },
+    { cantidad: 1, descuento: 0, precioUnitario: 28000, subtotal: 28000, descuentoTotal: 0, total: 28000 },
+    { cantidad: 12, descuento: 7.14, precioUnitario: 26001, subtotal: 336000, descuentoTotal: 23990, total: 312010 },
+    { cantidad: 24, descuento: 17.86, precioUnitario: 22999, subtotal: 672000, descuentoTotal: 120019, total: 551981 },
+    { cantidad: 50, descuento: 21.43, precioUnitario: 22000, subtotal: 1400000, descuentoTotal: 300020, total: 1099980 },
+    { cantidad: 100, descuento: 28.57, precioUnitario: 20000, subtotal: 2800000, descuentoTotal: 799960, total: 2000040 },
+    { cantidad: 150, descuento: 28.57, precioUnitario: 20000, subtotal: 4200000, descuentoTotal: 1199940, total: 3000060 },
   ];
 
   for (const caso of casos) {
@@ -134,9 +134,46 @@ test("ProductoService calcula rangos de descuento y snapshots sin confiar en fro
 
     assert.equal(calculo.items[0]?.descuentoPorcentaje, caso.descuento);
     assert.equal(calculo.items[0]?.precioUnitario, caso.precioUnitario);
-    assert.equal(calculo.items[0]?.subtotal, caso.precioUnitario * caso.cantidad);
+    assert.equal(calculo.items[0]?.subtotal, caso.subtotal);
+    assert.equal(calculo.items[0]?.subtotalBruto, caso.subtotal);
+    assert.equal(calculo.items[0]?.descuentoTotal, caso.descuentoTotal);
+    assert.equal(calculo.items[0]?.descuentoAplicado, caso.descuentoTotal);
+    assert.equal(calculo.items[0]?.subtotalConDescuento, caso.total);
+    assert.equal(calculo.items[0]?.subtotalFinal, caso.total);
     assert.equal(calculo.items[0]?.snapshot.precioUnitario.toNumber(), caso.precioUnitario);
+    assert.equal(calculo.items[0]?.snapshot.subtotal.toNumber(), caso.subtotal);
+    assert.equal(calculo.items[0]?.snapshot.subtotalConDescuento.toNumber(), caso.total);
+    assert.equal(calculo.subtotal, caso.subtotal);
+    assert.equal(calculo.descuentoTotal, caso.descuentoTotal);
+    assert.equal(calculo.total, caso.total);
   }
+});
+
+test("ProductoService calcula subtotal bruto descuento total y total final", async (t) => {
+  t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => ({
+    ...producto,
+    precioBase: 30000,
+    rangos: [
+      { idRango: 1, idProducto: 1, cantidadMin: 1, descuentoPorcentaje: 15, estado: true },
+    ],
+  }));
+
+  const calculo = await new ProductoService().calcularItems([
+    { idProducto: 1, cantidad: 2000 },
+  ]);
+
+  assert.equal(calculo.items[0]?.precioBase, 30000);
+  assert.equal(calculo.items[0]?.descuentoPorcentaje, 15);
+  assert.equal(calculo.items[0]?.descuentoValorUnitario, 4500);
+  assert.equal(calculo.items[0]?.precioUnitario, 25500);
+  assert.equal(calculo.items[0]?.subtotal, 60000000);
+  assert.equal(calculo.items[0]?.subtotalBruto, 60000000);
+  assert.equal(calculo.items[0]?.descuentoTotal, 9000000);
+  assert.equal(calculo.items[0]?.subtotalConDescuento, 51000000);
+  assert.equal(calculo.items[0]?.subtotalFinal, 51000000);
+  assert.equal(calculo.subtotal, 60000000);
+  assert.equal(calculo.descuentoTotal, 9000000);
+  assert.equal(calculo.total, 51000000);
 });
 
 test("ProductoService falla con producto inactivo o cantidad invalida", async (t) => {

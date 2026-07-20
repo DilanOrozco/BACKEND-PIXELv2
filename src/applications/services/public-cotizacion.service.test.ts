@@ -32,9 +32,14 @@ const calculo = {
       cantidad: 12,
       precioBase: 28000,
       descuentoPorcentaje: 7.14,
-      descuentoAplicado: 1999,
+      descuentoValorUnitario: 1999,
+      descuentoAplicado: 23990,
+      descuentoTotal: 23990,
       precioUnitario: 26001,
-      subtotal: 312012,
+      subtotalBruto: 336000,
+      subtotal: 336000,
+      subtotalConDescuento: 312010,
+      subtotalFinal: 312010,
       observaciones: "Talla M",
       snapshot: {
         idProducto: 1,
@@ -42,14 +47,21 @@ const calculo = {
         cantidad: 12,
         precioBase: new Prisma.Decimal(28000),
         descuentoPorcentaje: new Prisma.Decimal(7.14),
+        descuentoValorUnitario: new Prisma.Decimal(1999),
         precioUnitario: new Prisma.Decimal(26001),
-        subtotal: new Prisma.Decimal(312012),
+        subtotal: new Prisma.Decimal(336000),
+        subtotalBruto: new Prisma.Decimal(336000),
+        descuentoTotal: new Prisma.Decimal(23990),
+        subtotalConDescuento: new Prisma.Decimal(312010),
         observaciones: "Talla M",
       },
     },
   ],
-  subtotal: 312012,
-  total: 312012,
+  subtotal: 336000,
+  subtotalBruto: 336000,
+  descuentoTotal: 23990,
+  costosAdicionales: 0,
+  total: 312010,
 };
 
 const tecnica = {
@@ -129,9 +141,14 @@ test("PublicCotizacionService no requiere login y crea cotizacion pendiente con 
   assert.equal(cotizacionData.creadoPorId, null);
   assert.equal(cotizacionData.estado, "PENDIENTE");
   assert.equal(cotizacionData.tipoCotizacion, "PUBLICA");
-  assert.equal(cotizacionData.total, 312012);
+  assert.equal(cotizacionData.subtotal, 336000);
+  assert.equal(cotizacionData.descuentoTotal, 23990);
+  assert.equal(cotizacionData.total, 312010);
   assert.equal(cotizacionData.detalles[0].idTecnica, 5);
   assert.equal(cotizacionData.detalles[0].precioUnitario.toNumber(), 26001);
+  assert.equal(cotizacionData.detalles[0].subtotal.toNumber(), 336000);
+  assert.equal(cotizacionData.detalles[0].descuentoTotal.toNumber(), 23990);
+  assert.equal(cotizacionData.detalles[0].subtotalConDescuento.toNumber(), 312010);
   assert.equal(respuesta.calculo.items[0]?.snapshot, undefined);
   assert.equal(sendMailMock.mock.calls.length, 2);
   const correoCliente = sendMailMock.mock.calls[0]?.arguments[0];

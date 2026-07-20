@@ -127,8 +127,12 @@ const detalleCotizacionClienteSelect = {
   cantidad: true,
   precioBase: true,
   descuentoPorcentaje: true,
+  descuentoValorUnitario: true,
   precioUnitario: true,
   subtotal: true,
+  subtotalBruto: true,
+  descuentoTotal: true,
+  subtotalConDescuento: true,
   imagenReferencia: true,
   observaciones: true,
   tecnica: {
@@ -340,6 +344,43 @@ export class DashboardRepository {
       orderBy: {
         fechaCreacion: "desc",
       },
+    });
+  }
+
+  async obtenerPedidosActivosCliente(idCliente: number) {
+    return await prisma.pedido.findMany({
+      where: {
+        idCliente,
+        OR: [
+          {
+            estadoPedido: {
+              in: ["PENDIENTE", "EN_PROCESO"],
+            },
+          },
+          {
+            estadoPedido: "FINALIZADO",
+            OR: [
+              {
+                saldoPendiente: {
+                  gt: 0,
+                },
+              },
+              {
+                fechaEntregado: null,
+              },
+            ],
+          },
+        ],
+      },
+      select: pedidoActivoClienteSelect,
+      orderBy: [
+        {
+          fechaCreacion: "desc",
+        },
+        {
+          idPedido: "desc",
+        },
+      ],
     });
   }
 

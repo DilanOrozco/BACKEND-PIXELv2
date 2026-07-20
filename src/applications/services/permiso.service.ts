@@ -32,6 +32,16 @@ const normalizarCodigos = (codigos: unknown) => {
 };
 
 export class PermisoService {
+  async asegurarRolCliente() {
+    await permisoRepository.sincronizarPermisosSistema();
+
+    return await rolRepository.asegurarRolConPermisos(
+      "Cliente",
+      "Cliente externo con acceso a su propio dashboard",
+      PERMISOS_ROL_CLIENTE,
+    );
+  }
+
   async sincronizarPermisosSistema() {
     const permisos = await permisoRepository.sincronizarPermisosSistema();
     await rolRepository.asegurarRolConPermisos(

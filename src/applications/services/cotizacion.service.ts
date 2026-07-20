@@ -74,6 +74,45 @@ const cotizacionTienePrecios = (cotizacion: any) => {
 };
 
 export class CotizacionService {
+  private formatearDetalleCotizacion(detalle: any) {
+    if (!detalle) {
+      return detalle;
+    }
+
+    const subtotal = detalle.subtotal ?? null;
+    const descuentoTotal = detalle.descuentoTotal ?? 0;
+
+    return {
+      ...detalle,
+      descuentoValorUnitario: detalle.descuentoValorUnitario ?? 0,
+      subtotalBruto: detalle.subtotalBruto ?? subtotal,
+      descuentoTotal,
+      subtotalConDescuento:
+        detalle.subtotalConDescuento ??
+        (subtotal !== null ? aNumero(subtotal) - aNumero(descuentoTotal) : null),
+    };
+  }
+
+  private formatearCotizacion(cotizacion: any) {
+    if (!cotizacion) {
+      return cotizacion;
+    }
+
+    return {
+      ...cotizacion,
+      descuentoTotal: cotizacion.descuentoTotal ?? 0,
+      detalles: Array.isArray(cotizacion.detalles)
+        ? cotizacion.detalles.map((detalle: any) =>
+            this.formatearDetalleCotizacion(detalle),
+          )
+        : cotizacion.detalles,
+    };
+  }
+
+  private formatearCotizaciones(cotizaciones: any[]) {
+    return cotizaciones.map((cotizacion) => this.formatearCotizacion(cotizacion));
+  }
+
   private async asegurarClienteExiste(idCliente: number) {
     const cliente = await clienteRepository.buscarPorId(idCliente);
 
@@ -189,6 +228,10 @@ export class CotizacionService {
         precioUnitario: null,
         costoDiseno: null,
         subtotal: null,
+        subtotalBruto: null,
+        descuentoValorUnitario: null,
+        descuentoTotal: null,
+        subtotalConDescuento: null,
         imagenReferencia: limpiarTextoOpcional(detalle.imagenReferencia),
         observaciones: limpiarTextoOpcional(detalle.observaciones),
       };
@@ -218,17 +261,20 @@ export class CotizacionService {
 
     const detalles = this.prepararDetallesSolicitud(data.detalles);
 
-    return await cotizacionRepository.crearCotizacionConDetalles({
+    const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
       idCliente,
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
       estado: ESTADO_PENDIENTE,
       subtotal: 0,
+      descuentoTotal: 0,
       costosAdicionales: 0,
       total: 0,
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
+
+    return this.formatearCotizacion(cotizacion);
   }
 
   // Empleado: crea una solicitud presencial para un cliente elegido por la
@@ -254,17 +300,20 @@ export class CotizacionService {
 
     const detalles = this.prepararDetallesSolicitud(data.detalles);
 
-    return await cotizacionRepository.crearCotizacionConDetalles({
+    const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
       idCliente,
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
       estado: ESTADO_PENDIENTE,
       subtotal: 0,
+      descuentoTotal: 0,
       costosAdicionales: 0,
       total: 0,
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
+
+    return this.formatearCotizacion(cotizacion);
   }
 
   async listarCotizaciones(usuarioAuth: any, query: PaginationQuery = {}) {
@@ -283,7 +332,11 @@ export class CotizacionService {
         pagination,
       );
 
-      return paginatedResponse(resultado.data, pagination, resultado.total);
+      return paginatedResponse(
+        this.formatearCotizaciones(resultado.data),
+        pagination,
+        resultado.total,
+      );
     }
 
     const cotizaciones = esCliente(usuarioAuth)
@@ -294,7 +347,7 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return { data: cotizaciones };
+    return { data: this.formatearCotizaciones(cotizaciones) };
   }
 
   async buscarPorId(idCotizacion: number, usuarioAuth: any) {
@@ -310,7 +363,7 @@ export class CotizacionService {
       throw new Error("No tienes permisos para ver esta cotizacion.");
     }
 
-    return cotizacion;
+    return this.formatearCotizacion(cotizacion);
   }
 
   async buscarParcial(termino: string, usuarioAuth: any) {
@@ -330,7 +383,7 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return cotizaciones;
+    return this.formatearCotizaciones(cotizaciones);
   }
 
   // Cliente: puede editar su solicitud mientras siga pendiente y aun no tenga
@@ -387,7 +440,8 @@ export class CotizacionService {
 
     const detalles = this.prepararDetallesSolicitud(data.detalles, true);
 
-    return await cotizacionRepository.actualizarSolicitudCliente(
+    const cotizacionActualizada =
+      await cotizacionRepository.actualizarSolicitudCliente(
       idCotizacion,
       {
         observaciones: limpiarTextoOpcional(data.observaciones),
@@ -397,6 +451,8 @@ export class CotizacionService {
       },
       detalles,
     );
+
+    return this.formatearCotizacion(cotizacionActualizada);
   }
 
   // Empleado: asigna precios al detalle existente. La cotizacion permanece
@@ -467,6 +523,10 @@ export class CotizacionService {
         precioUnitario,
         costoDiseno,
         subtotal,
+        subtotalBruto: subtotal,
+        descuentoValorUnitario: 0,
+        descuentoTotal: 0,
+        subtotalConDescuento: subtotal,
         observaciones:
           detalle.observaciones !== undefined
             ? limpiarTextoOpcional(detalle.observaciones)
@@ -481,17 +541,20 @@ export class CotizacionService {
     const costosAdicionales = aNumero(data.costosAdicionales);
     const total = subtotal + costosAdicionales;
 
-    return await cotizacionRepository.cotizarCotizacion(
+    const cotizacionCotizada = await cotizacionRepository.cotizarCotizacion(
       idCotizacion,
       {
         estado: ESTADO_PENDIENTE,
         subtotal,
+        descuentoTotal: 0,
         costosAdicionales,
         total,
         observaciones: limpiarTextoOpcional(data.observaciones),
       },
       detallesCotizados,
     );
+
+    return this.formatearCotizacion(cotizacionCotizada);
   }
 
   // Admin/Secretaria: actualizacion limitada. No cambia detalles ni estado.
@@ -524,13 +587,18 @@ export class CotizacionService {
       const costosAdicionales = Number(data.costosAdicionales);
 
       dataActualizar.costosAdicionales = costosAdicionales;
-      dataActualizar.total = aNumero(cotizacion.subtotal) + costosAdicionales;
+      dataActualizar.total =
+        aNumero(cotizacion.subtotal) -
+        aNumero(cotizacion.descuentoTotal) +
+        costosAdicionales;
     }
 
-    return await cotizacionRepository.actualizarCotizacion(
+    const cotizacionActualizada = await cotizacionRepository.actualizarCotizacion(
       idCotizacion,
       dataActualizar,
     );
+
+    return this.formatearCotizacion(cotizacionActualizada);
   }
 
   async anularCotizacion(idCotizacion: number, usuarioAuth: any) {
@@ -540,10 +608,12 @@ export class CotizacionService {
       throw new Error("Solo se pueden anular cotizaciones en estado PENDIENTE.");
     }
 
-    return await cotizacionRepository.cambiarEstado(
+    const cotizacionAnulada = await cotizacionRepository.cambiarEstado(
       idCotizacion,
       ESTADO_ANULADA,
     );
+
+    return this.formatearCotizacion(cotizacionAnulada);
   }
 
   async aprobarCotizacion(idCotizacion: number, usuarioAuth: any) {
@@ -578,6 +648,7 @@ export class CotizacionService {
 
     return {
       ...resultado,
+      cotizacion: this.formatearCotizacion(resultado.cotizacion),
       pedido: pedidoService.formatearPedido(resultado.pedido),
     };
   }
@@ -593,7 +664,7 @@ export class CotizacionService {
 
     await cotizacionRepository.eliminarCotizacion(idCotizacion);
 
-    return cotizacion;
+    return this.formatearCotizacion(cotizacion);
   }
 
 }

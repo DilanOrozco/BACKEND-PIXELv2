@@ -1,26 +1,14 @@
 import crypto from "node:crypto";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
-import { RolRepository } from "../../infrastructure/repositories/rol.repository";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { PasswordResetTokenRepository } from "../../infrastructure/repositories/password-reset-token.repository";
 import { encriptarContrasena } from "../../utils/password.util";
 import { PermisoService } from "./permiso.service";
 
 const usuarioRepository = new UsuarioRepository();
-const rolRepository = new RolRepository();
 const clienteRepository = new ClienteRepository();
 const passwordResetTokenRepository = new PasswordResetTokenRepository();
 const permisoService = new PermisoService();
-
-const PERMISOS_ROL_CLIENTE = [
-  "dashboard.cliente",
-  "cotizaciones.cliente.ver",
-  "pedidos.cliente.ver",
-  "abonos.cliente.ver",
-  "disenos.cliente.ver",
-  "perfil.ver",
-  "perfil.editar",
-];
 
 const hashToken = (token: string) =>
   crypto.createHash("sha256").update(token).digest("hex");
@@ -47,13 +35,7 @@ export class ClienteAccessService {
       return null;
     }
 
-    await permisoService.sincronizarPermisosSistema();
-
-    const rolCliente = await rolRepository.asegurarRolConPermisos(
-      "Cliente",
-      "Cliente externo con acceso a su propio dashboard",
-      PERMISOS_ROL_CLIENTE,
-    );
+    const rolCliente = await permisoService.asegurarRolCliente();
 
     const usuarioExistente =
       await usuarioRepository.buscarPorCorreoConRolYCliente(correo);

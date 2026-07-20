@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DashboardService } from "./dashboard.service";
+import {
+  DashboardForbiddenError,
+  DashboardNotFoundError,
+  DashboardService,
+} from "./dashboard.service";
 import { ClienteAccessService } from "./cliente-access.service";
 import { DashboardRepository } from "../../infrastructure/repositories/dashboard.repository";
 
@@ -51,8 +55,29 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
   );
   t.mock.method(
     DashboardRepository.prototype,
-    "obtenerPedidoActivoCliente",
-    async () => ({ idPedido: 5, idCliente: 10 }),
+    "obtenerPedidosActivosCliente",
+    async () => [
+      {
+        idPedido: 5,
+        idCliente: 10,
+        estadoPedido: "PENDIENTE",
+        fechaCreacion: new Date("2026-07-18"),
+        total: 50000,
+        saldoPendiente: 25000,
+        abonos: [],
+        disenos: [],
+      },
+      {
+        idPedido: 4,
+        idCliente: 10,
+        estadoPedido: "EN_PROCESO",
+        fechaCreacion: new Date("2026-07-17"),
+        total: 70000,
+        saldoPendiente: 0,
+        abonos: [],
+        disenos: [],
+      },
+    ],
   );
   t.mock.method(
     DashboardRepository.prototype,
@@ -80,4 +105,37 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
   assert.equal(dashboard.kpis.totalPedidos, 2);
   assert.equal(dashboard.kpis.pedidosPendientes, 1);
   assert.equal(dashboard.kpis.pedidosFinalizados, 1);
+  assert.equal(dashboard.pedidoActivo?.idPedido, 5);
+  assert.equal(dashboard.pedidosActivos.length, 2);
+  assert.equal(dashboard.pedidosActivos[1]?.idPedido, 4);
+});
+
+test("DashboardService cliente rechaza usuarios no Cliente", async () => {
+  await assert.rejects(
+    () =>
+      new DashboardService().obtenerDashboardCliente(
+        { idUsuario: 1, rol: "Admin" },
+        {},
+      ),
+    DashboardForbiddenError,
+  );
+});
+
+test("DashboardService cliente responde claro si no hay Cliente vinculado", async (t) => {
+  t.mock.method(
+    ClienteAccessService.prototype,
+    "obtenerClienteDeUsuario",
+    async () => {
+      throw new Error("El usuario no tiene un cliente vinculado.");
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      new DashboardService().obtenerDashboardCliente(
+        { idUsuario: 77, rol: "Cliente" },
+        {},
+      ),
+    DashboardNotFoundError,
+  );
 });

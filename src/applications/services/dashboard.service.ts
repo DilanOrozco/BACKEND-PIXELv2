@@ -47,6 +47,22 @@ export class DashboardValidationError extends Error {
   }
 }
 
+export class DashboardForbiddenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DashboardForbiddenError";
+    Object.setPrototypeOf(this, DashboardForbiddenError.prototype);
+  }
+}
+
+export class DashboardNotFoundError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DashboardNotFoundError";
+    Object.setPrototypeOf(this, DashboardNotFoundError.prototype);
+  }
+}
+
 const aNumero = (valor: unknown) => {
   const numero = typeof valor === "bigint"
     ? Number(valor)
@@ -283,8 +299,25 @@ export class DashboardService {
     user: AuthUser | undefined,
     query: Record<string, unknown> = {},
   ) {
+    if (user?.rol !== "Cliente") {
+      throw new DashboardForbiddenError(
+        "Este dashboard solo esta disponible para clientes.",
+      );
+    }
+
     const idUsuario = obtenerIdUsuario(user);
-    const cliente = await clienteAccessService.obtenerClienteDeUsuario(idUsuario);
+    let cliente: any;
+
+    try {
+      cliente = await clienteAccessService.obtenerClienteDeUsuario(idUsuario);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "El usuario no tiene un cliente vinculado.";
+      throw new DashboardNotFoundError(message);
+    }
+
     const idCliente = cliente.idCliente;
     const limite = validarLimite(query.limite);
 
@@ -294,7 +327,7 @@ export class DashboardService {
       totalCotizacionesPendientes,
       totalGastado,
       saldoPendiente,
-      pedidoActivo,
+      pedidosActivos,
       historialPedidos,
       cotizacionesPendientes,
     ] = await Promise.all([
@@ -303,7 +336,7 @@ export class DashboardService {
       dashboardRepository.contarCotizacionesPendientesCliente(idCliente),
       dashboardRepository.sumarTotalGastadoCliente(idCliente),
       dashboardRepository.sumarSaldoPendienteCliente(idCliente),
-      dashboardRepository.obtenerPedidoActivoCliente(idCliente),
+      dashboardRepository.obtenerPedidosActivosCliente(idCliente),
       dashboardRepository.obtenerHistorialPedidosCliente(idCliente, limite),
       dashboardRepository.obtenerCotizacionesPendientesCliente(
         idCliente,
@@ -329,7 +362,8 @@ export class DashboardService {
         correo: cliente.correo,
         telefono: cliente.telefono,
       },
-      pedidoActivo,
+      pedidoActivo: pedidosActivos[0] ?? null,
+      pedidosActivos,
       historialPedidos,
       cotizacionesPendientes,
     };
