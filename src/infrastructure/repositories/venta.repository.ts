@@ -3,7 +3,7 @@ import type { Prisma } from "../../../generated/prisma/client";
 import type { EstadoPagoVenta } from "../../applications/validators/venta.validator";
 import { ventaSelect } from "../../utils/selects/venta.select";
 
-const ESTADO_PEDIDO_FINALIZADO = "FINALIZADO" as const;
+const ESTADOS_PEDIDO_VENTA = ["FINALIZADO", "ENTREGADO"] as const;
 
 export interface VentaFiltros {
   fechaInicio?: Date;
@@ -16,7 +16,7 @@ const redondearMoneda = (valor: number) => Math.round(valor * 100) / 100;
 
 const construirWhere = (filtros: VentaFiltros = {}): Prisma.PedidoWhereInput => {
   const where: Prisma.PedidoWhereInput = {
-    estadoPedido: ESTADO_PEDIDO_FINALIZADO,
+    estadoPedido: { in: [...ESTADOS_PEDIDO_VENTA] },
   };
 
   if (filtros.idCliente) {
@@ -66,7 +66,7 @@ export class VentaRepository {
 
     return await prisma.pedido.findMany({
       where: {
-        estadoPedido: ESTADO_PEDIDO_FINALIZADO,
+        estadoPedido: { in: [...ESTADOS_PEDIDO_VENTA] },
         OR: [
           ...filtrosId,
           {

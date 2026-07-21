@@ -197,6 +197,14 @@ export const validarCrearCotizacionPresencial = (data: any) => {
     return "Los costos adicionales no pueden ser negativos.";
   }
 
+  if (data.idCliente === undefined && data?.cliente) {
+    const telefono = data?.cliente?.telefono;
+
+    if (typeof telefono !== "string" || telefono.trim() === "") {
+      return "El telefono del cliente es obligatorio para cotizaciones presenciales.";
+    }
+  }
+
   for (const detalle of data.detalles) {
     if (detalle.idDetalleCotizacion !== undefined) {
       return "No se debe enviar idDetalleCotizacion al crear una cotizacion.";

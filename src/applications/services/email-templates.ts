@@ -8,6 +8,8 @@ export const EMAIL_EVENTS = {
   PRIMER_ABONO_CONFIRMADO: "PRIMER_ABONO_CONFIRMADO",
   PEDIDO_PENDIENTE_SALDO_FINAL: "PEDIDO_PENDIENTE_SALDO_FINAL",
   PEDIDO_FINALIZADO: "PEDIDO_FINALIZADO",
+  PEDIDO_EN_PRODUCCION: "PEDIDO_EN_PRODUCCION",
+  PEDIDO_ENTREGADO: "PEDIDO_ENTREGADO",
 } as const;
 
 export type EmailEvent = (typeof EMAIL_EVENTS)[keyof typeof EMAIL_EVENTS];
@@ -558,6 +560,62 @@ export const buildPedidoFinalizadoTemplate = (payload: any): MailData => {
       <p><strong>Estado actual:</strong> FINALIZADO.</p>
       <p><strong>Siguiente paso:</strong> ${escapeHtml(entrega)}</p>
       <p>Gracias por elegir PIXEL.</p>
+    `,
+  };
+};
+
+export const buildPedidoEnProduccionTemplate = (payload: any): MailData => {
+  const pedido = payload.pedido;
+  const items = normalizarItems(pedido);
+
+  return {
+    to: pedido.cliente.correo,
+    subject: "Tu diseno fue aprobado y tu pedido entro en produccion - PIXEL",
+    text: [
+      `Hola ${pedido.cliente.nombre}.`,
+      "",
+      "Tu diseno fue aprobado y tu pedido ya entro en produccion.",
+      `Numero de pedido: ${pedido.idPedido}`,
+      resumenPedidoTexto(items),
+      "",
+      "Cuando la produccion termine, te notificaremos el saldo final o segundo abono si aplica.",
+      "Un asesor de PIXEL se comunicara contigo si necesitamos confirmar algun detalle adicional.",
+      "",
+      "PIXEL",
+    ].join("\n"),
+    html: `
+      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
+      <p>Tu diseno fue aprobado y tu pedido ya entro en produccion.</p>
+      <p><strong>Numero de pedido:</strong> ${escapeHtml(pedido.idPedido)}</p>
+      ${tablaPedido(items)}
+      <p>Cuando la produccion termine, te notificaremos el saldo final o segundo abono si aplica.</p>
+      <p>Un asesor de PIXEL se comunicara contigo si necesitamos confirmar algun detalle adicional.</p>
+      <p>PIXEL</p>
+    `,
+  };
+};
+
+export const buildPedidoEntregadoTemplate = (payload: any): MailData => {
+  const pedido = payload.pedido;
+
+  return {
+    to: pedido.cliente.correo,
+    subject: "Tu pedido fue entregado - PIXEL",
+    text: [
+      `Hola ${pedido.cliente.nombre}.`,
+      "",
+      `Confirmamos que tu pedido #${pedido.idPedido} fue entregado o reclamado.`,
+      "Gracias por confiar en PIXEL.",
+      "Puedes contactarnos si necesitas soporte o quieres realizar un nuevo pedido.",
+      "",
+      "PIXEL",
+    ].join("\n"),
+    html: `
+      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
+      <p>Confirmamos que tu pedido #${escapeHtml(pedido.idPedido)} fue entregado o reclamado.</p>
+      <p>Gracias por confiar en PIXEL.</p>
+      <p>Puedes contactarnos si necesitas soporte o quieres realizar un nuevo pedido.</p>
+      <p>PIXEL</p>
     `,
   };
 };

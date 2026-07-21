@@ -200,6 +200,27 @@ export const validarMarcarPendienteSaldoFinal = (data: any) => {
   return null;
 };
 
+export const validarConfirmarEntregaPedido = (data: any) => {
+  const errorCampos = validarCamposPermitidos(data, [
+    "fechaEntregado",
+    "observaciones",
+  ]);
+
+  if (errorCampos) {
+    return errorCampos;
+  }
+
+  if (!esFechaOpcionalValida(data?.fechaEntregado)) {
+    return "La fecha de entrega no es valida.";
+  }
+
+  if (!esTextoOpcional(data?.observaciones)) {
+    return "Las observaciones deben ser texto, null u omitirse.";
+  }
+
+  return null;
+};
+
 export const validarAnularPedido = (data: any) => {
   const errorCampos = validarCamposPermitidos(data, ["observaciones"]);
 

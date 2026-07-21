@@ -394,6 +394,35 @@ test("NotificationService envia evento PEDIDO_FINALIZADO", async (t) => {
   assertContenidoLimpio(mail.text);
 });
 
+test("NotificationService envia eventos de produccion y entrega", async (t) => {
+  const sendMailMock = t.mock.method(
+    EmailService.prototype,
+    "sendMail",
+    async () => ({ sent: true, skipped: false }),
+  );
+
+  const enProduccion = await new NotificationService().pedidoEnProduccion({
+    ...pedido,
+    estadoPedido: "EN_PROCESO",
+  });
+  const entregado = await new NotificationService().pedidoEntregado({
+    ...pedido,
+    estadoPedido: "ENTREGADO",
+  });
+  const correoProduccion = sendMailMock.mock.calls[0]?.arguments[0];
+  const correoEntrega = sendMailMock.mock.calls[1]?.arguments[0];
+
+  assert.equal(enProduccion.event, "PEDIDO_EN_PRODUCCION");
+  assert.equal(entregado.event, "PEDIDO_ENTREGADO");
+  assert.ok(correoProduccion);
+  assert.ok(correoEntrega);
+  assert.match(correoProduccion.subject, /diseno fue aprobado.*produccion/i);
+  assert.match(correoProduccion.text, /Numero de pedido: 20/);
+  assert.match(correoEntrega.subject, /pedido fue entregado/i);
+  assertContenidoLimpio(correoProduccion.text);
+  assertContenidoLimpio(correoEntrega.text);
+});
+
 test("NotificationService envia evento PEDIDO_PENDIENTE_SALDO_FINAL", async (t) => {
   const sendMailMock = t.mock.method(
     EmailService.prototype,

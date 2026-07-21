@@ -39,6 +39,12 @@ router.patch(
 );
 
 router.patch(
+  "/:id/confirmar-entrega",
+  autorizarPermiso("pedidos.finalizar"),
+  pedidoController.confirmarEntrega,
+);
+
+router.patch(
   "/:id/anular",
   autorizarPermiso("pedidos.anular"),
   pedidoController.anularPedido,

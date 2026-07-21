@@ -5,6 +5,7 @@ const ESTADOS_PEDIDO = [
   "EN_PROCESO",
   "PENDIENTE_SALDO_FINAL",
   "FINALIZADO",
+  "ENTREGADO",
 ] as const;
 
 const clienteResumenSelect = {
@@ -401,7 +402,7 @@ export class DashboardRepository {
     return await prisma.pedido.findMany({
       where: {
         idCliente,
-        estadoPedido: "FINALIZADO",
+        estadoPedido: { in: ["FINALIZADO", "ENTREGADO"] },
       },
       take: limite,
       select: historialPedidoClienteSelect,

@@ -148,6 +148,26 @@ export class PedidoController {
     }
   }
 
+  async confirmarEntrega(req: AuthRequest, res: Response) {
+    try {
+      const idPedido = Number(req.params.id);
+      const pedido = await pedidoService.confirmarEntrega(
+        idPedido,
+        req.body,
+        req.user,
+      );
+
+      return res.status(200).json({
+        message: "Entrega del pedido confirmada correctamente.",
+        data: pedido,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
   async anularPedido(req: AuthRequest, res: Response) {
     try {
       const idPedido = Number(req.params.id);

@@ -109,8 +109,8 @@ export class DisenoRepository {
     });
   }
 
-  async crearDiseno(data: CrearDisenoData) {
-    return await prisma.diseno.create({
+  async crearDiseno(data: CrearDisenoData, tx?: Prisma.TransactionClient) {
+    return await db(tx).diseno.create({
       data,
       select: disenoSelect,
     });
@@ -259,7 +259,7 @@ export class DisenoRepository {
 
   async actualizarEstadoPedido(
     idPedido: number,
-    estadoPedido: "PENDIENTE" | "EN_PROCESO" | "FINALIZADO",
+    estadoPedido: "PENDIENTE" | "EN_PROCESO" | "PENDIENTE_SALDO_FINAL" | "FINALIZADO" | "ENTREGADO",
     tx?: Prisma.TransactionClient,
   ) {
     return await db(tx).pedido.update({

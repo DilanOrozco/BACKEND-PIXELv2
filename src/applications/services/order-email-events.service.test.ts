@@ -278,3 +278,107 @@ test("PedidoService no finaliza pedidos con saldo pendiente ni envia correo de f
   assert.equal(actualizarMock.mock.calls.length, 0);
   assert.equal(notificationMock.mock.calls.length, 0);
 });
+
+test("PedidoService confirma entrega de pedido finalizado sin crear una venta nueva", async (t) => {
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido: "FINALIZADO",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+    fechaFinalizado: new Date("2026-01-02"),
+  }));
+  const actualizarMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async (_idPedido: number, data: any) => ({
+      ...pedido,
+      ...data,
+      estadoPago: "COMPLETO",
+      totalPagado: 50000,
+      saldoPendiente: 0,
+    }),
+  );
+  const notificationMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEntregado",
+    async () => ({ event: "PEDIDO_ENTREGADO", cliente: "enviado" }),
+  );
+
+  const resultado = await new PedidoService().confirmarEntrega(
+    20,
+    { observaciones: "Cliente reclamo en tienda" },
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.equal(resultado.estadoPedido, "ENTREGADO");
+  assert.equal(actualizarMock.mock.calls.length, 1);
+  assert.equal(actualizarMock.mock.calls[0]?.arguments[1].estadoPedido, "ENTREGADO");
+  assert.equal(notificationMock.mock.calls.length, 1);
+});
+
+test("PedidoService bloquea entrega con saldo pendiente, estado invalido o entrega duplicada", async (t) => {
+  const actualizarMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async () => ({ ...pedido, estadoPedido: "ENTREGADO" }),
+  );
+  const notificationMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEntregado",
+    async () => ({ event: "PEDIDO_ENTREGADO", cliente: "enviado" }),
+  );
+
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido: "FINALIZADO",
+    estadoPago: "PARCIAL",
+    totalPagado: 25000,
+    saldoPendiente: 25000,
+  }));
+  await assert.rejects(
+    () => new PedidoService().confirmarEntrega(20, {}, { idUsuario: 99, rol: "Admin" }),
+    /saldo pendiente/,
+  );
+
+  t.mock.restoreAll();
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido: "EN_PROCESO",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+  }));
+  await assert.rejects(
+    () => new PedidoService().confirmarEntrega(20, {}, { idUsuario: 99, rol: "Admin" }),
+    /FINALIZADO/,
+  );
+
+  t.mock.restoreAll();
+  const actualizarDuplicadoMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async () => ({ ...pedido, estadoPedido: "ENTREGADO" }),
+  );
+  const notificationDuplicadoMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEntregado",
+    async () => ({ event: "PEDIDO_ENTREGADO", cliente: "enviado" }),
+  );
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido: "ENTREGADO",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+  }));
+  await assert.rejects(
+    () => new PedidoService().confirmarEntrega(20, {}, { idUsuario: 99, rol: "Admin" }),
+    /ya fue entregado/,
+  );
+
+  assert.equal(actualizarMock.mock.calls.length, 0);
+  assert.equal(notificationMock.mock.calls.length, 0);
+  assert.equal(actualizarDuplicadoMock.mock.calls.length, 0);
+  assert.equal(notificationDuplicadoMock.mock.calls.length, 0);
+});

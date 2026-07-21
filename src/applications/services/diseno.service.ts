@@ -3,6 +3,7 @@ import type { Prisma } from "../../../generated/prisma/client";
 import {
   DisenoRepository,
   type ActualizarDisenoData,
+  type CrearDisenoData,
   type DisenoFiltros,
 } from "../../infrastructure/repositories/diseno.repository";
 import {
@@ -14,9 +15,11 @@ import {
   validarRechazarDiseno,
 } from "../validators/diseno.validator";
 import { AbonoService } from "./abono.service";
+import { NotificationService } from "./notification.service";
 
 const disenoRepository = new DisenoRepository();
 const abonoService = new AbonoService();
+const notificationService = new NotificationService();
 
 const ESTADO_PEDIDO_PENDIENTE = "PENDIENTE" as const;
 const ESTADO_PEDIDO_EN_PROCESO = "EN_PROCESO" as const;
@@ -256,7 +259,7 @@ export class DisenoService {
     const fechaRespuesta =
       estado === ESTADO_APROBADO_DISENO ? new Date() : null;
 
-    return await disenoRepository.crearDiseno({
+    const dataCrear: CrearDisenoData = {
       idPedido,
       idDisenador,
       archivoUrl,
@@ -277,7 +280,37 @@ export class DisenoService {
           : null,
       respuestaRegistradaPorId:
         estado === ESTADO_APROBADO_DISENO ? Number(user.idUsuario) : null,
-    });
+    };
+
+    const disenoCreado = await this.ejecutarTransaccion(
+      async (tx: Prisma.TransactionClient) => {
+        const diseno = await disenoRepository.crearDiseno(dataCrear, tx);
+
+        if (estado === ESTADO_APROBADO_DISENO) {
+          await disenoRepository.actualizarEstadoPedido(
+            idPedido,
+            ESTADO_PEDIDO_EN_PROCESO,
+            tx,
+          );
+        }
+
+        return diseno;
+      },
+    );
+
+    if (estado === ESTADO_APROBADO_DISENO) {
+      const pedidoEnProduccion = await disenoRepository.buscarPedidoCompleto(idPedido);
+
+      if (pedidoEnProduccion) {
+        try {
+          await notificationService.pedidoEnProduccion(pedidoEnProduccion);
+        } catch (error) {
+          console.error("Error enviando correo de pedido en produccion:", error);
+        }
+      }
+    }
+
+    return disenoCreado;
   }
 
   async listarDisenos(
@@ -576,6 +609,14 @@ export class DisenoService {
       disenoRepository.buscarPorId(resultado.idDiseno),
       disenoRepository.buscarPedidoCompleto(resultado.idPedido),
     ]);
+
+    if (resultado.pasoAProduccion && pedido) {
+      try {
+        await notificationService.pedidoEnProduccion(pedido);
+      } catch (error) {
+        console.error("Error enviando correo de pedido en produccion:", error);
+      }
+    }
 
     return {
       diseno,

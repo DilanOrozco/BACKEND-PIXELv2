@@ -26,6 +26,7 @@ enum EstadoPedido {
   EN_PROCESO
   PENDIENTE_SALDO_FINAL
   FINALIZADO
+  ENTREGADO
 }
 
 enum EstadoPago {

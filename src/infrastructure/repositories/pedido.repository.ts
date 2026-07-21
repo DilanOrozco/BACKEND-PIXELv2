@@ -8,6 +8,7 @@ const estadosPedido = [
   "EN_PROCESO",
   "PENDIENTE_SALDO_FINAL",
   "FINALIZADO",
+  "ENTREGADO",
 ];
 type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 

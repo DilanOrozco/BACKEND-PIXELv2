@@ -6,6 +6,8 @@ import {
   buildCotizacionModificadaTemplate,
   buildPedidoCreadoTemplate,
   buildPedidoFinalizadoTemplate,
+  buildPedidoEnProduccionTemplate,
+  buildPedidoEntregadoTemplate,
   buildPedidoPendienteSaldoFinalTemplate,
   buildPrimerAbonoConfirmadoTemplate,
   EMAIL_EVENTS,
@@ -142,6 +144,28 @@ export class NotificationService {
         EMAIL_EVENTS.PEDIDO_FINALIZADO,
         pedido?.cliente,
         () => buildPedidoFinalizadoTemplate({ pedido }),
+      ),
+    };
+  }
+
+  async pedidoEnProduccion(pedido: any): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.PEDIDO_EN_PRODUCCION,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.PEDIDO_EN_PRODUCCION,
+        pedido?.cliente,
+        () => buildPedidoEnProduccionTemplate({ pedido }),
+      ),
+    };
+  }
+
+  async pedidoEntregado(pedido: any): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.PEDIDO_ENTREGADO,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.PEDIDO_ENTREGADO,
+        pedido?.cliente,
+        () => buildPedidoEntregadoTemplate({ pedido }),
       ),
     };
   }

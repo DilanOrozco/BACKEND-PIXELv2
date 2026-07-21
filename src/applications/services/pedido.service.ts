@@ -8,6 +8,7 @@ import {
   validarActualizarPedido,
   validarCrearPedido,
   validarFinalizarPedido,
+  validarConfirmarEntregaPedido,
   validarMarcarPendienteSaldoFinal,
   validarPasarPedidoEnProceso,
 } from "../validators/pedido.validator";
@@ -27,6 +28,7 @@ const ESTADO_PEDIDO_PENDIENTE = "PENDIENTE";
 const ESTADO_PEDIDO_EN_PROCESO = "EN_PROCESO";
 const ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL = "PENDIENTE_SALDO_FINAL";
 const ESTADO_PEDIDO_FINALIZADO = "FINALIZADO";
+const ESTADO_PEDIDO_ENTREGADO = "ENTREGADO";
 
 const ESTADO_PAGO_PENDIENTE = "PENDIENTE";
 const ESTADO_PAGO_COMPLETO = "COMPLETO";
@@ -147,6 +149,14 @@ const notificarPedidoFinalizado = async (pedido: any) => {
     await notificationService.pedidoFinalizado(pedido);
   } catch (error) {
     console.error("Error enviando correo de pedido finalizado:", error);
+  }
+};
+
+const notificarPedidoEntregado = async (pedido: any) => {
+  try {
+    await notificationService.pedidoEntregado(pedido);
+  } catch (error) {
+    console.error("Error enviando correo de pedido entregado:", error);
   }
 };
 
@@ -556,7 +566,6 @@ export class PedidoService {
     const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
       estadoPedido: ESTADO_PEDIDO_FINALIZADO,
       fechaFinalizado: new Date(),
-      fechaEntregado: prepararFechaOpcional(data?.fechaEntregado) ?? new Date(),
       observaciones: agregarObservacionAuditoria(
         pedido.observaciones,
         observacion,
@@ -570,11 +579,50 @@ export class PedidoService {
     return this.formatearPedido(pedidoActualizado);
   }
 
+  async confirmarEntrega(idPedido: number, data: any, usuarioAuth: any) {
+    validarId(idPedido);
+
+    const error = validarConfirmarEntregaPedido(data);
+
+    if (error) {
+      throw new Error(error);
+    }
+
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
+
+    if (pedido.estadoPedido === ESTADO_PEDIDO_ENTREGADO) {
+      throw new Error("El pedido ya fue entregado o reclamado.");
+    }
+
+    if (pedido.estadoPedido !== ESTADO_PEDIDO_FINALIZADO) {
+      throw new Error("Solo se pueden entregar pedidos FINALIZADO.");
+    }
+
+    if (!pedidoPagadoCompleto(pedido)) {
+      throw new Error("No se puede entregar el pedido porque aun tiene saldo pendiente.");
+    }
+
+    const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
+      estadoPedido: ESTADO_PEDIDO_ENTREGADO,
+      fechaEntregado: prepararFechaOpcional(data?.fechaEntregado) ?? new Date(),
+      observaciones: agregarObservacionAuditoria(
+        pedido.observaciones,
+        limpiarTextoOpcional(data?.observaciones) ?? "Pedido entregado o reclamado por el cliente.",
+        usuarioAuth,
+        "Confirmacion de entrega",
+      ),
+    });
+
+    await notificarPedidoEntregado(pedidoActualizado);
+
+    return this.formatearPedido(pedidoActualizado);
+  }
+
   async anularPedido(idPedido: number, data: any, usuarioAuth: any) {
     validarId(idPedido);
     await this.buscarPorIdInterno(idPedido, usuarioAuth);
     void data;
 
-    throw new Error("La anulacion de pedidos esta deshabilitada porque EstadoPedido solo permite PENDIENTE, EN_PROCESO, PENDIENTE_SALDO_FINAL y FINALIZADO.");
+    throw new Error("La anulacion de pedidos esta deshabilitada porque EstadoPedido solo permite PENDIENTE, EN_PROCESO, PENDIENTE_SALDO_FINAL, FINALIZADO y ENTREGADO.");
   }
 }

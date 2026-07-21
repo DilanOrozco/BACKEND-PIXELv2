@@ -12,6 +12,7 @@ const ESTADOS_PEDIDO = [
   "EN_PROCESO",
   "PENDIENTE_SALDO_FINAL",
   "FINALIZADO",
+  "ENTREGADO",
 ] as const;
 const MESES = [
   "Enero",
@@ -172,6 +173,7 @@ const crearConteosVacios = (): ConteosPorEstado => ({
   EN_PROCESO: 0,
   PENDIENTE_SALDO_FINAL: 0,
   FINALIZADO: 0,
+  ENTREGADO: 0,
 });
 
 const esEstadoPedido = (estado: unknown): estado is EstadoPedidoDashboard =>
@@ -282,7 +284,8 @@ export class DashboardService {
         totalPedidos,
         pedidosPendientes: distribucionPedidos.PENDIENTE,
         pedidosEnProceso: distribucionPedidos.EN_PROCESO,
-        pedidosFinalizados: distribucionPedidos.FINALIZADO,
+        pedidosFinalizados:
+          distribucionPedidos.FINALIZADO + distribucionPedidos.ENTREGADO,
         totalClientes,
         cotizacionesPendientes: totalCotizacionesPendientes,
         ingresosDia: ingresosDiaNormalizado,
@@ -357,7 +360,7 @@ export class DashboardService {
         totalPedidos,
         pedidosPendientes: conteos.PENDIENTE,
         pedidosEnProceso: conteos.EN_PROCESO,
-        pedidosFinalizados: conteos.FINALIZADO,
+        pedidosFinalizados: conteos.FINALIZADO + conteos.ENTREGADO,
         cotizacionesPendientes: totalCotizacionesPendientes,
         totalGastado: redondearMoneda(totalGastado),
         saldoPendiente: redondearMoneda(saldoPendiente),

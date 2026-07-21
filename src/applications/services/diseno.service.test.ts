@@ -4,6 +4,7 @@ import type { Prisma } from "../../../generated/prisma/client";
 import { DisenoService } from "./diseno.service";
 import { DisenoRepository } from "../../infrastructure/repositories/diseno.repository";
 import { AbonoService } from "./abono.service";
+import { NotificationService } from "./notification.service";
 
 const transaccionFake = async <T>(
   handler: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -120,6 +121,11 @@ test("DisenoService cliente aprueba diseno propio y permite avanzar a produccion
       estadoPedido,
     }),
   );
+  const notificacionMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEnProduccion",
+    async () => ({ event: "PEDIDO_EN_PRODUCCION", cliente: "enviado" }),
+  );
 
   const resultado = await new DisenoService(transaccionControlada).aprobarDiseno(
     1,
@@ -135,6 +141,8 @@ test("DisenoService cliente aprueba diseno propio y permite avanzar a produccion
   assert.equal(data.respuestaRegistradaPorId, null);
   assert.equal(actualizarPedidoMock.mock.calls.length, 1);
   assert.equal(resultado.pasoAProduccion, true);
+  assert.equal(notificacionMock.mock.calls.length, 1);
+  assert.equal(notificacionMock.mock.calls[0]?.arguments[0].idPedido, 100);
 });
 
 test("DisenoService cliente rechaza diseno propio con observacion", async (t) => {
@@ -217,6 +225,11 @@ test("DisenoService admin aprueba diseno en nombre del cliente", async (t) => {
     "buscarDisenoAprobadoPorPedido",
     async () => null,
   );
+  const notificacionMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEnProduccion",
+    async () => ({ event: "PEDIDO_EN_PRODUCCION", cliente: "enviado" }),
+  );
   const actualizarDisenoMock = t.mock.method(
     DisenoRepository.prototype,
     "actualizarDisenoOperacion",
@@ -252,6 +265,7 @@ test("DisenoService admin aprueba diseno en nombre del cliente", async (t) => {
   assert.equal(data.estado, "APROBADO");
   assert.equal(data.medioRespuestaCliente, "WHATSAPP");
   assert.equal(data.respuestaRegistradaPorId, 99);
+  assert.equal(notificacionMock.mock.calls.length, 1);
 });
 
 test("DisenoService admin rechaza diseno en nombre del cliente", async (t) => {
@@ -326,6 +340,25 @@ test("DisenoService no aprueba dos veces el mismo diseno", async (t) => {
     /Solo se pueden responder disenos pendientes o enviados/,
   );
   assert.equal(actualizarDisenoMock.mock.calls.length, 0);
+});
+
+test("DisenoService no reenvia correo de produccion si el pedido ya esta en proceso", async (t) => {
+  t.mock.method(DisenoRepository.prototype, "buscarPorIdOperacion", async () => ({
+    ...disenoBase,
+    pedido: { ...pedidoBase, estadoPedido: "EN_PROCESO" },
+  }));
+  const notificacionMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEnProduccion",
+    async () => ({ event: "PEDIDO_EN_PRODUCCION", cliente: "enviado" }),
+  );
+
+  await assert.rejects(
+    () => servicio().aprobarDiseno(1, { idUsuario: 99, rol: "Admin" }, {}),
+    /pedido debe estar PENDIENTE/,
+  );
+
+  assert.equal(notificacionMock.mock.calls.length, 0);
 });
 
 test("DisenoService crea diseno de origen DISENADOR asignando disenador autenticado", async (t) => {
@@ -436,6 +469,24 @@ test("DisenoService admin puede crear diseno recibido por WhatsApp ya aprobado",
       ...data,
     }),
   );
+  const actualizarPedidoMock = t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarEstadoPedido",
+    async (_idPedido: number, estadoPedido: string) => ({
+      ...pedidoCompleto,
+      estadoPedido,
+    }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoCompleto",
+    async () => ({ ...pedidoCompleto, estadoPedido: "EN_PROCESO" }),
+  );
+  const notificacionMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEnProduccion",
+    async () => ({ event: "PEDIDO_EN_PRODUCCION", cliente: "enviado" }),
+  );
 
   await servicio().crearDiseno(
     {
@@ -453,6 +504,8 @@ test("DisenoService admin puede crear diseno recibido por WhatsApp ya aprobado",
   assert.equal(data.medioRespuestaCliente, "WHATSAPP");
   assert.equal(data.respuestaRegistradaPorId, 99);
   assert.ok(data.fechaAprobacion);
+  assert.equal(actualizarPedidoMock.mock.calls.length, 1);
+  assert.equal(notificacionMock.mock.calls.length, 1);
 });
 
 test("DisenoService cliente puede ver diseno recibido por WhatsApp si es de su pedido", async (t) => {

@@ -215,8 +215,18 @@ export class CotizacionService {
     const correo = limpiarCorreo(clienteEntrada.correo);
     const telefono = limpiarTextoOpcional(clienteEntrada.telefono);
 
+    if (!telefono) {
+      throw new Error("El telefono del cliente es obligatorio para cotizaciones presenciales.");
+    }
+
     if (!correo && !telefono) {
       throw new Error("Debes enviar correo o telefono del cliente.");
+    }
+  }
+
+  private validarTelefonoClientePresencial(cliente: any) {
+    if (typeof cliente?.telefono !== "string" || cliente.telefono.trim() === "") {
+      throw new Error("El telefono del cliente es obligatorio para cotizaciones presenciales.");
     }
   }
 
@@ -292,6 +302,7 @@ export class CotizacionService {
 
     await this.asegurarTecnicasExisten(data.detalles);
     const cliente = await this.resolverClientePresencial(data);
+    this.validarTelefonoClientePresencial(cliente);
     const detalleEntrada = data.detalles[0];
     const idProducto = detalleEntrada.idProducto === undefined
       ? null

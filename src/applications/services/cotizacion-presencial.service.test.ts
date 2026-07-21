@@ -228,6 +228,37 @@ test("CotizacionService exige idCliente o cliente valido", async () => {
         { cliente: { nombre: "Juan" }, detalles: [detalle] },
         usuarioAuth,
       ),
-    /Debes enviar correo o telefono del cliente/,
+    /telefono del cliente es obligatorio para cotizaciones presenciales/,
+  );
+});
+
+test("CotizacionService exige telefono para cotizacion presencial", async () => {
+  await assert.rejects(
+    () =>
+      new CotizacionService().crearCotizacionNormal(
+        {
+          cliente: { nombre: "Juan", correo: "juan@pixel.test" },
+          detalles: [detalle],
+        },
+        usuarioAuth,
+      ),
+    /telefono del cliente es obligatorio para cotizaciones presenciales/,
+  );
+});
+
+test("CotizacionService exige telefono en Cliente existente para cotizacion presencial", async (t) => {
+  t.mock.method(ClienteRepository.prototype, "buscarPorId", async () => ({
+    ...cliente,
+    telefono: null,
+  }));
+  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+
+  await assert.rejects(
+    () =>
+      new CotizacionService().crearCotizacionNormal(
+        { idCliente: 7, detalles: [detalle] },
+        usuarioAuth,
+      ),
+    /telefono del cliente es obligatorio para cotizaciones presenciales/,
   );
 });
