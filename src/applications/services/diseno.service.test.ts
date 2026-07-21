@@ -380,6 +380,11 @@ test("DisenoService crea diseno de origen DISENADOR asignando disenador autentic
       ...data,
     }),
   );
+  const notificacionMock = t.mock.method(
+    NotificationService.prototype,
+    "disenoEnviadoParaRevision",
+    async () => ({ event: "DISENO_ENVIADO_PARA_REVISION", cliente: "enviado" }),
+  );
 
   const diseno = await servicio().crearDiseno(
     {
@@ -394,6 +399,7 @@ test("DisenoService crea diseno de origen DISENADOR asignando disenador autentic
   assert.equal(data.idDisenador, 55);
   assert.equal(data.origenDiseno, "DISENADOR");
   assert.equal(diseno.idPedido, 100);
+  assert.equal(notificacionMock.mock.calls.length, 1);
 });
 
 test("DisenoService crea diseno de origen CLIENTE sin exigir disenador", async (t) => {
@@ -415,6 +421,11 @@ test("DisenoService crea diseno de origen CLIENTE sin exigir disenador", async (
       ...data,
     }),
   );
+  const notificacionMock = t.mock.method(
+    NotificationService.prototype,
+    "disenoEnviadoParaRevision",
+    async () => ({ event: "DISENO_ENVIADO_PARA_REVISION", cliente: "enviado" }),
+  );
 
   await servicio().crearDiseno(
     {
@@ -433,6 +444,7 @@ test("DisenoService crea diseno de origen CLIENTE sin exigir disenador", async (
   assert.equal(data.medioRecepcion, "WHATSAPP");
   assert.equal(data.recibidoPorId, 99);
   assert.ok(data.fechaRecepcion);
+  assert.equal(notificacionMock.mock.calls.length, 1);
 });
 
 test("DisenoService exige archivo o descripcion suficiente para origen CLIENTE", async () => {

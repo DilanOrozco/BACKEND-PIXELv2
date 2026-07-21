@@ -222,7 +222,10 @@ export const validarConfirmarEntregaPedido = (data: any) => {
 };
 
 export const validarAnularPedido = (data: any) => {
-  const errorCampos = validarCamposPermitidos(data, ["observaciones"]);
+  const errorCampos = validarCamposPermitidos(data, [
+    "observaciones",
+    "motivoAnulacion",
+  ]);
 
   if (errorCampos) {
     return errorCampos;
@@ -230,6 +233,10 @@ export const validarAnularPedido = (data: any) => {
 
   if (!esTextoOpcional(data?.observaciones)) {
     return "Las observaciones deben ser texto, null u omitirse.";
+  }
+
+  if (!esTextoOpcional(data?.motivoAnulacion)) {
+    return "El motivo de anulacion debe ser texto, null u omitirse.";
   }
 
   return null;

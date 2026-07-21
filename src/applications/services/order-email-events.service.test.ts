@@ -317,6 +317,56 @@ test("PedidoService confirma entrega de pedido finalizado sin crear una venta nu
   assert.equal(notificationMock.mock.calls.length, 1);
 });
 
+test("PedidoService actualiza fecha estimada y anula sin eliminar relaciones", async (t) => {
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => pedido);
+  const actualizarMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async (_idPedido: number, data: any) => ({ ...pedido, ...data }),
+  );
+  const notificationMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoAnulado",
+    async () => ({ event: "PEDIDO_ANULADO", cliente: "enviado" }),
+  );
+  const service = new PedidoService();
+
+  const conFecha = await service.actualizarFechaEntregaEstimada(
+    20,
+    { fechaEntregaEstimada: "2026-07-23" },
+    { idUsuario: 99, rol: "Admin" },
+  );
+  const anulado = await service.anularPedido(
+    20,
+    { motivoAnulacion: "Cancelacion solicitada por el cliente" },
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.ok(conFecha.fechaEntregaEstimada);
+  assert.equal(anulado.estadoPedido, "ANULADO");
+  assert.equal(actualizarMock.mock.calls[1]?.arguments[1].estadoPedido, "ANULADO");
+  assert.equal(notificationMock.mock.calls.length, 1);
+});
+
+test("PedidoService no permite a un cliente anular un pedido", async (t) => {
+  const actualizarMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async () => ({ ...pedido, estadoPedido: "ANULADO" }),
+  );
+
+  await assert.rejects(
+    () =>
+      new PedidoService().anularPedido(
+        20,
+        {},
+        { idUsuario: 7, idCliente: 1, rol: "Cliente" },
+      ),
+    /clientes no pueden anular/,
+  );
+  assert.equal(actualizarMock.mock.calls.length, 0);
+});
+
 test("PedidoService bloquea entrega con saldo pendiente, estado invalido o entrega duplicada", async (t) => {
   const actualizarMock = t.mock.method(
     PedidoRepository.prototype,

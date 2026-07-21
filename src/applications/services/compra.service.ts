@@ -242,7 +242,7 @@ export class CompraService {
       throw new Error("Pedido no encontrado.");
     }
 
-    if ([ESTADO_PEDIDO_FINALIZADO, "ENTREGADO"].includes(pedido.estadoPedido)) {
+    if ([ESTADO_PEDIDO_FINALIZADO, "ENTREGADO", "ANULADO"].includes(pedido.estadoPedido)) {
       throw new Error("No se pueden registrar compras para pedidos finalizados.");
     }
 

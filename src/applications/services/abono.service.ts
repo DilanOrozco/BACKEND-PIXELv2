@@ -228,6 +228,25 @@ export class AbonoService {
     };
   }
 
+  private prepararRespuestaAbono(abono: any) {
+    if (!abono?.pedido) {
+      return abono;
+    }
+
+    const totalPedido = redondearMoneda(aNumero(abono.pedido.total));
+    const totalConfirmado = redondearMoneda(aNumero(abono.pedido.totalPagado));
+    const saldoPendiente = redondearMoneda(aNumero(abono.pedido.saldoPendiente));
+
+    return {
+      ...abono,
+      totalPedido,
+      totalConfirmado,
+      saldoPendiente,
+      montoMinimoPrimerAbono: redondearMoneda(totalPedido * 0.5),
+      estadoPago: abono.pedido.estadoPago,
+    };
+  }
+
   async recalcularPagoPedido(idPedido: number, tx?: Prisma.TransactionClient) {
     const pedido = await abonoRepository.buscarPedidoPorId(idPedido, tx);
 
@@ -375,10 +394,10 @@ export class AbonoService {
     if (esCliente(user)) {
       this.validarAccesoClienteAlPedido(pedido, user);
 
-      return await abonoRepository.crearAbono({
+      return this.prepararRespuestaAbono(await abonoRepository.crearAbono({
         ...datosBase,
         estado: ESTADO_ABONO_PENDIENTE,
-      });
+      }));
     }
 
     if (!puedeGestionarAbonos(user)) {
@@ -400,13 +419,13 @@ export class AbonoService {
         await notificarPrimerAbonoConfirmado(abonoCompleto);
       }
 
-      return abonoCompleto;
+      return this.prepararRespuestaAbono(abonoCompleto);
     }
 
-    return await abonoRepository.crearAbono({
+    return this.prepararRespuestaAbono(await abonoRepository.crearAbono({
       ...datosBase,
       estado: ESTADO_ABONO_PENDIENTE,
-    });
+    }));
   }
 
   async confirmarAbono(
@@ -488,7 +507,7 @@ export class AbonoService {
       await notificarPrimerAbonoConfirmado(abono);
     }
 
-    return abono;
+    return this.prepararRespuestaAbono(abono);
   }
 
   async rechazarAbono(
@@ -572,7 +591,7 @@ export class AbonoService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return abonos;
+    return abonos.map((abono) => this.prepararRespuestaAbono(abono));
   }
 
   async listarPorPedido(idPedido: number, usuarioAuth: AuthUser | undefined) {
@@ -591,7 +610,8 @@ export class AbonoService {
       "No tienes permiso para consultar este abono.",
     );
 
-    return await abonoRepository.listarPorPedido(idPedido);
+    const abonos = await abonoRepository.listarPorPedido(idPedido);
+    return abonos.map((abono) => this.prepararRespuestaAbono(abono));
   }
 
   async buscarPorId(idAbono: number, usuarioAuth: AuthUser | undefined) {
@@ -606,7 +626,7 @@ export class AbonoService {
 
     this.validarAccesoConsultaAbono(abono, user);
 
-    return abono;
+    return this.prepararRespuestaAbono(abono);
   }
 
   async actualizarAbonoPendiente(idAbono: number, data: DatosEntrada) {

@@ -10,6 +10,8 @@ export const EMAIL_EVENTS = {
   PEDIDO_FINALIZADO: "PEDIDO_FINALIZADO",
   PEDIDO_EN_PRODUCCION: "PEDIDO_EN_PRODUCCION",
   PEDIDO_ENTREGADO: "PEDIDO_ENTREGADO",
+  DISENO_ENVIADO_PARA_REVISION: "DISENO_ENVIADO_PARA_REVISION",
+  PEDIDO_ANULADO: "PEDIDO_ANULADO",
 } as const;
 
 export type EmailEvent = (typeof EMAIL_EVENTS)[keyof typeof EMAIL_EVENTS];
@@ -567,6 +569,7 @@ export const buildPedidoFinalizadoTemplate = (payload: any): MailData => {
 export const buildPedidoEnProduccionTemplate = (payload: any): MailData => {
   const pedido = payload.pedido;
   const items = normalizarItems(pedido);
+  const resumen = calcularResumen(pedido, items);
 
   return {
     to: pedido.cliente.correo,
@@ -577,6 +580,7 @@ export const buildPedidoEnProduccionTemplate = (payload: any): MailData => {
       "Tu diseno fue aprobado y tu pedido ya entro en produccion.",
       `Numero de pedido: ${pedido.idPedido}`,
       resumenPedidoTexto(items),
+      `Total del pedido: ${moneda(resumen.total)}`,
       "",
       "Cuando la produccion termine, te notificaremos el saldo final o segundo abono si aplica.",
       "Un asesor de PIXEL se comunicara contigo si necesitamos confirmar algun detalle adicional.",
@@ -588,8 +592,65 @@ export const buildPedidoEnProduccionTemplate = (payload: any): MailData => {
       <p>Tu diseno fue aprobado y tu pedido ya entro en produccion.</p>
       <p><strong>Numero de pedido:</strong> ${escapeHtml(pedido.idPedido)}</p>
       ${tablaPedido(items)}
+      <p><strong>Total del pedido:</strong> ${escapeHtml(moneda(resumen.total))}</p>
       <p>Cuando la produccion termine, te notificaremos el saldo final o segundo abono si aplica.</p>
       <p>Un asesor de PIXEL se comunicara contigo si necesitamos confirmar algun detalle adicional.</p>
+      <p>PIXEL</p>
+    `,
+  };
+};
+
+export const buildDisenoEnviadoParaRevisionTemplate = (payload: any): MailData => {
+  const diseno = payload.diseno;
+  const pedido = diseno?.pedido;
+  const cliente = pedido?.cliente;
+  const descripcion = textoSeguro(diseno?.descripcion, "Diseno de tu pedido");
+
+  return {
+    to: cliente.correo,
+    subject: "Tu diseno esta listo para revision - PIXEL",
+    text: [
+      `Hola ${cliente.nombre}.`,
+      "",
+      `El diseno de tu pedido #${pedido.idPedido} esta listo para revision.`,
+      `Diseno: ${descripcion}`,
+      "Puedes revisarlo desde tu panel de cliente, si ya tienes acceso, y aprobarlo o solicitar ajustes.",
+      "Si recibes el diseno por otro medio, tambien puedes responder a nuestro equipo.",
+      "",
+      "PIXEL",
+    ].join("\n"),
+    html: `
+      <p>Hola ${escapeHtml(cliente.nombre)}.</p>
+      <p>El diseno de tu pedido #${escapeHtml(pedido.idPedido)} esta listo para revision.</p>
+      <p><strong>Diseno:</strong> ${escapeHtml(descripcion)}</p>
+      <p>Puedes revisarlo desde tu panel de cliente, si ya tienes acceso, y aprobarlo o solicitar ajustes.</p>
+      <p>Si recibes el diseno por otro medio, tambien puedes responder a nuestro equipo.</p>
+      <p>PIXEL</p>
+    `,
+  };
+};
+
+export const buildPedidoAnuladoTemplate = (payload: any): MailData => {
+  const pedido = payload.pedido;
+  const motivo = textoSeguro(payload.motivo, "Nuestro equipo registró la anulacion del pedido.");
+
+  return {
+    to: pedido.cliente.correo,
+    subject: "Actualizacion de tu pedido anulado - PIXEL",
+    text: [
+      `Hola ${pedido.cliente.nombre}.`,
+      "",
+      `Tu pedido #${pedido.idPedido} fue anulado.`,
+      `Motivo: ${motivo}`,
+      "Nuestro equipo puede orientarte si necesitas informacion adicional.",
+      "",
+      "PIXEL",
+    ].join("\n"),
+    html: `
+      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
+      <p>Tu pedido #${escapeHtml(pedido.idPedido)} fue anulado.</p>
+      <p><strong>Motivo:</strong> ${escapeHtml(motivo)}</p>
+      <p>Nuestro equipo puede orientarte si necesitas informacion adicional.</p>
       <p>PIXEL</p>
     `,
   };

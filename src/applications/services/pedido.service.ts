@@ -9,6 +9,7 @@ import {
   validarCrearPedido,
   validarFinalizarPedido,
   validarConfirmarEntregaPedido,
+  validarAnularPedido,
   validarMarcarPendienteSaldoFinal,
   validarPasarPedidoEnProceso,
 } from "../validators/pedido.validator";
@@ -29,6 +30,7 @@ const ESTADO_PEDIDO_EN_PROCESO = "EN_PROCESO";
 const ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL = "PENDIENTE_SALDO_FINAL";
 const ESTADO_PEDIDO_FINALIZADO = "FINALIZADO";
 const ESTADO_PEDIDO_ENTREGADO = "ENTREGADO";
+const ESTADO_PEDIDO_ANULADO = "ANULADO";
 
 const ESTADO_PAGO_PENDIENTE = "PENDIENTE";
 const ESTADO_PAGO_COMPLETO = "COMPLETO";
@@ -157,6 +159,14 @@ const notificarPedidoEntregado = async (pedido: any) => {
     await notificationService.pedidoEntregado(pedido);
   } catch (error) {
     console.error("Error enviando correo de pedido entregado:", error);
+  }
+};
+
+const notificarPedidoAnulado = async (pedido: any, motivo?: string | null) => {
+  try {
+    await notificationService.pedidoAnulado(pedido, motivo);
+  } catch (error) {
+    console.error("Error enviando correo de pedido anulado:", error);
   }
 };
 
@@ -495,6 +505,14 @@ export class PedidoService {
     return this.formatearPedido(pedidoActualizado);
   }
 
+  async actualizarFechaEntregaEstimada(
+    idPedido: number,
+    data: any,
+    usuarioAuth: any,
+  ) {
+    return await this.actualizarPedido(idPedido, data, usuarioAuth);
+  }
+
   async marcarPendienteSaldoFinal(idPedido: number, data: any, usuarioAuth: any) {
     validarId(idPedido);
 
@@ -620,9 +638,37 @@ export class PedidoService {
 
   async anularPedido(idPedido: number, data: any, usuarioAuth: any) {
     validarId(idPedido);
-    await this.buscarPorIdInterno(idPedido, usuarioAuth);
-    void data;
+    const error = validarAnularPedido(data);
 
-    throw new Error("La anulacion de pedidos esta deshabilitada porque EstadoPedido solo permite PENDIENTE, EN_PROCESO, PENDIENTE_SALDO_FINAL, FINALIZADO y ENTREGADO.");
+    if (error) {
+      throw new Error(error);
+    }
+
+    if (esCliente(usuarioAuth)) {
+      throw new Error("Los clientes no pueden anular pedidos.");
+    }
+
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
+
+    if (pedido.estadoPedido === ESTADO_PEDIDO_ANULADO) {
+      throw new Error("El pedido ya fue anulado.");
+    }
+
+    const motivo = limpiarTextoOpcional(
+      data?.motivoAnulacion ?? data?.observaciones,
+    );
+    const pedidoAnulado = await pedidoRepository.actualizarPedido(idPedido, {
+      estadoPedido: ESTADO_PEDIDO_ANULADO,
+      observaciones: agregarObservacionAuditoria(
+        pedido.observaciones,
+        motivo ?? "Pedido anulado por un usuario autorizado.",
+        usuarioAuth,
+        "Anulacion de pedido",
+      ),
+    });
+
+    await notificarPedidoAnulado(pedidoAnulado, motivo);
+
+    return this.formatearPedido(pedidoAnulado);
   }
 }

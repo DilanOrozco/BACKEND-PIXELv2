@@ -13,6 +13,7 @@ const ESTADOS_PEDIDO = [
   "PENDIENTE_SALDO_FINAL",
   "FINALIZADO",
   "ENTREGADO",
+  "ANULADO",
 ] as const;
 const MESES = [
   "Enero",
@@ -174,6 +175,7 @@ const crearConteosVacios = (): ConteosPorEstado => ({
   PENDIENTE_SALDO_FINAL: 0,
   FINALIZADO: 0,
   ENTREGADO: 0,
+  ANULADO: 0,
 });
 
 const esEstadoPedido = (estado: unknown): estado is EstadoPedidoDashboard =>

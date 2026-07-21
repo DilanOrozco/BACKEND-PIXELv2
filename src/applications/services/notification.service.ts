@@ -8,6 +8,8 @@ import {
   buildPedidoFinalizadoTemplate,
   buildPedidoEnProduccionTemplate,
   buildPedidoEntregadoTemplate,
+  buildDisenoEnviadoParaRevisionTemplate,
+  buildPedidoAnuladoTemplate,
   buildPedidoPendienteSaldoFinalTemplate,
   buildPrimerAbonoConfirmadoTemplate,
   EMAIL_EVENTS,
@@ -166,6 +168,28 @@ export class NotificationService {
         EMAIL_EVENTS.PEDIDO_ENTREGADO,
         pedido?.cliente,
         () => buildPedidoEntregadoTemplate({ pedido }),
+      ),
+    };
+  }
+
+  async disenoEnviadoParaRevision(diseno: any): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.DISENO_ENVIADO_PARA_REVISION,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.DISENO_ENVIADO_PARA_REVISION,
+        diseno?.pedido?.cliente,
+        () => buildDisenoEnviadoParaRevisionTemplate({ diseno }),
+      ),
+    };
+  }
+
+  async pedidoAnulado(pedido: any, motivo?: string | null): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.PEDIDO_ANULADO,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.PEDIDO_ANULADO,
+        pedido?.cliente,
+        () => buildPedidoAnuladoTemplate({ pedido, motivo }),
       ),
     };
   }

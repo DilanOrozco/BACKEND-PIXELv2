@@ -6,6 +6,7 @@ const ESTADOS_PEDIDO = [
   "PENDIENTE_SALDO_FINAL",
   "FINALIZADO",
   "ENTREGADO",
+  "ANULADO",
 ] as const;
 
 const clienteResumenSelect = {
@@ -96,6 +97,14 @@ const pedidoActivoClienteSelect = {
   saldoPendiente: true,
   fechaCreacion: true,
   fechaEntregaEstimada: true,
+  cotizacion: {
+    select: {
+      subtotal: true,
+      descuentoTotal: true,
+      costosAdicionales: true,
+      total: true,
+    },
+  },
   cliente: {
     select: clienteResumenSelect,
   },
@@ -128,6 +137,17 @@ const historialPedidoClienteSelect = {
   totalPagado: true,
   saldoPendiente: true,
   fechaCreacion: true,
+  fechaEntregaEstimada: true,
+  fechaFinalizado: true,
+  fechaEntregado: true,
+  cotizacion: {
+    select: {
+      subtotal: true,
+      descuentoTotal: true,
+      costosAdicionales: true,
+      total: true,
+    },
+  },
   cliente: {
     select: clienteResumenSelect,
   },
@@ -402,7 +422,7 @@ export class DashboardRepository {
     return await prisma.pedido.findMany({
       where: {
         idCliente,
-        estadoPedido: { in: ["FINALIZADO", "ENTREGADO"] },
+        estadoPedido: { in: ["FINALIZADO", "ENTREGADO", "ANULADO"] },
       },
       take: limite,
       select: historialPedidoClienteSelect,

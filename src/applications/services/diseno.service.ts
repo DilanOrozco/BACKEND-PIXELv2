@@ -310,6 +310,14 @@ export class DisenoService {
       }
     }
 
+    if (estado === ESTADO_DISENO_ENVIADO) {
+      try {
+        await notificationService.disenoEnviadoParaRevision(disenoCreado);
+      } catch (error) {
+        console.error("Error enviando correo de diseno para revision:", error);
+      }
+    }
+
     return disenoCreado;
   }
 
@@ -461,7 +469,23 @@ export class DisenoService {
       );
     }
 
-    return await disenoRepository.actualizarDiseno(idDiseno, dataActualizar);
+    const disenoActualizado = await disenoRepository.actualizarDiseno(
+      idDiseno,
+      dataActualizar,
+    );
+
+    if (
+      dataActualizar.estado === ESTADO_DISENO_ENVIADO &&
+      diseno.estado !== ESTADO_DISENO_ENVIADO
+    ) {
+      try {
+        await notificationService.disenoEnviadoParaRevision(disenoActualizado);
+      } catch (error) {
+        console.error("Error enviando correo de diseno para revision:", error);
+      }
+    }
+
+    return disenoActualizado;
   }
 
   async aprobarDiseno(

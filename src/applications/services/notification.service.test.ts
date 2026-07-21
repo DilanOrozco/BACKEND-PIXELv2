@@ -423,6 +423,40 @@ test("NotificationService envia eventos de produccion y entrega", async (t) => {
   assertContenidoLimpio(correoEntrega.text);
 });
 
+test("NotificationService envia evento de diseno enviado para revision y pedido anulado", async (t) => {
+  const sendMailMock = t.mock.method(
+    EmailService.prototype,
+    "sendMail",
+    async () => ({ sent: true, skipped: false }),
+  );
+  const diseno = {
+    idDiseno: 8,
+    descripcion: "Propuesta camiseta negra",
+    pedido,
+  };
+
+  const revision = await new NotificationService().disenoEnviadoParaRevision(diseno);
+  const anulacion = await new NotificationService().pedidoAnulado(
+    pedido,
+    "El cliente solicito cancelar.",
+  );
+  const correoRevision = sendMailMock.mock.calls[0]?.arguments[0];
+  const correoAnulacion = sendMailMock.mock.calls[1]?.arguments[0];
+
+  if (!correoRevision || !correoAnulacion) {
+    throw new Error("Se esperaban los correos de revision y anulacion.");
+  }
+
+  assert.equal(revision.event, "DISENO_ENVIADO_PARA_REVISION");
+  assert.equal(anulacion.event, "PEDIDO_ANULADO");
+  assert.match(correoRevision.subject, /diseno esta listo para revision/i);
+  assert.match(correoRevision.text, /pedido #20/i);
+  assert.match(correoAnulacion.subject, /pedido anulado/i);
+  assert.match(correoAnulacion.text, /cliente solicito cancelar/i);
+  assertContenidoLimpio(correoRevision.text);
+  assertContenidoLimpio(correoAnulacion.text);
+});
+
 test("NotificationService envia evento PEDIDO_PENDIENTE_SALDO_FINAL", async (t) => {
   const sendMailMock = t.mock.method(
     EmailService.prototype,

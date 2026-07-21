@@ -79,6 +79,11 @@ test("AbonoService registra abono sin confirmar", async (t) => {
   assert.equal(abono?.estado, "PENDIENTE");
   assert.equal(crearMock.mock.calls.length, 1);
   assert.equal((crearMock.mock.calls[0]?.arguments[0] as any).estado, "PENDIENTE");
+  assert.equal((abono as any).totalPedido, 100000);
+  assert.equal((abono as any).totalConfirmado, 0);
+  assert.equal((abono as any).saldoPendiente, 100000);
+  assert.equal((abono as any).montoMinimoPrimerAbono, 50000);
+  assert.equal((abono as any).estadoPago, "PENDIENTE");
 });
 
 test("AbonoService registra abono confirmado y envia evento despues de DB", async (t) => {

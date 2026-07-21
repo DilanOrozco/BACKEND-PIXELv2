@@ -128,6 +128,26 @@ export class PedidoController {
     }
   }
 
+  async actualizarFechaEntregaEstimada(req: AuthRequest, res: Response) {
+    try {
+      const idPedido = Number(req.params.id);
+      const pedido = await pedidoService.actualizarFechaEntregaEstimada(
+        idPedido,
+        req.body,
+        req.user,
+      );
+
+      return res.status(200).json({
+        message: "Fecha estimada de entrega actualizada correctamente.",
+        data: pedido,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
   async marcarPendienteSaldoFinal(req: AuthRequest, res: Response) {
     try {
       const idPedido = Number(req.params.id);

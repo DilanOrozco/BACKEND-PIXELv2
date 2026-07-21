@@ -26,6 +26,14 @@ export const disenoSelect = {
       total: true,
       totalPagado: true,
       saldoPendiente: true,
+      cotizacion: {
+        select: {
+          subtotal: true,
+          descuentoTotal: true,
+          costosAdicionales: true,
+          total: true,
+        },
+      },
       cliente: {
         select: {
           idCliente: true,

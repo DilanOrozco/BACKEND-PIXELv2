@@ -51,6 +51,12 @@ router.patch(
 );
 
 router.patch(
+  "/:id/fecha-entrega-estimada",
+  autorizarPermiso("pedidos.editar"),
+  pedidoController.actualizarFechaEntregaEstimada,
+);
+
+router.patch(
   "/:id",
   autorizarPermiso("pedidos.editar"),
   pedidoController.actualizarPedido,
