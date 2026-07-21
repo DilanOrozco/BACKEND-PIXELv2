@@ -4,6 +4,9 @@ import { CotizacionService } from "./cotizacion.service";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
+import { ProductoService } from "./producto.service";
+import { ClienteAccessService } from "./cliente-access.service";
+import { NotificationService } from "./notification.service";
 
 const usuarioAuth = { idUsuario: 99, rol: "Admin" };
 const detalle = {
@@ -26,6 +29,28 @@ const tecnica = {
   nombre: "DTF",
   descripcion: null,
   estado: true,
+};
+
+const calculoProducto = {
+  items: [
+    {
+      snapshot: {
+        idProducto: 3,
+        cantidad: 12,
+        precioBase: 28000,
+        descuentoPorcentaje: 7.14,
+        descuentoValorUnitario: 1999,
+        precioUnitario: 26001,
+        subtotal: 336000,
+        subtotalBruto: 336000,
+        descuentoTotal: 23990,
+        subtotalConDescuento: 312010,
+      },
+    },
+  ],
+  subtotal: 336000,
+  descuentoTotal: 23990,
+  total: 312010,
 };
 
 const mockCotizacionCreada = (t: any) =>
@@ -59,6 +84,65 @@ test("CotizacionService mantiene compatibilidad usando idCliente", async (t) => 
   assert.equal(payload.creadoPorId, 99);
   assert.equal(payload.detalles[0].idTecnica, 1);
   assert.equal(buscarClienteMock.mock.calls.length, 0);
+});
+
+test("CotizacionService calcula y notifica cotizacion presencial con producto", async (t) => {
+  t.mock.method(ClienteRepository.prototype, "buscarPorId", async () => cliente);
+  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  t.mock.method(ProductoService.prototype, "calcularItems", async () => calculoProducto);
+  t.mock.method(ClienteAccessService.prototype, "asegurarAccesoCliente", async () => ({
+    usuarioCreado: true,
+    usuarioExistente: false,
+    linkCrearPassword: "https://pixel.test/crear-password-cliente/token",
+  }));
+  const notificarMock = t.mock.method(
+    NotificationService.prototype,
+    "cotizacionPresencialCreada",
+    async () => ({ event: "COTIZACION_PRESENCIAL_CREADA", cliente: "enviado" as const }),
+  );
+  const crearCotizacionMock = mockCotizacionCreada(t);
+
+  const respuesta = await new CotizacionService().crearCotizacionNormal(
+    {
+      idCliente: 7,
+      costosAdicionales: 5000,
+      detalles: [{ ...detalle, idProducto: 3, cantidad: 12, costoDiseno: 10000 }],
+    },
+    usuarioAuth,
+  );
+  const payload = crearCotizacionMock.mock.calls[0]?.arguments[0];
+
+  assert.equal(respuesta.estado, "PENDIENTE");
+  assert.equal(respuesta.total, 327010);
+  assert.equal(payload.subtotal, 336000);
+  assert.equal(payload.descuentoTotal, 23990);
+  assert.equal(payload.total, 327010);
+  assert.equal(payload.detalles[0].idProducto, 3);
+  assert.equal(payload.detalles[0].precioBase, 28000);
+  assert.equal(payload.detalles[0].descuentoPorcentaje, 7.14);
+  assert.equal(payload.detalles[0].precioUnitario, 26001);
+  assert.equal(payload.detalles[0].subtotalBruto, 336000);
+  assert.equal(payload.detalles[0].descuentoTotal, 23990);
+  assert.equal(payload.detalles[0].subtotalConDescuento, 312010);
+  assert.equal(payload.detalles[0].costoDiseno, 10000);
+  assert.equal(notificarMock.mock.calls.length, 1);
+});
+
+test("CotizacionService conserva solicitud por cotizar cuando no llega idProducto", async (t) => {
+  t.mock.method(ClienteRepository.prototype, "buscarPorId", async () => cliente);
+  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  const calcularMock = t.mock.method(ProductoService.prototype, "calcularItems", async () => calculoProducto);
+  const crearCotizacionMock = mockCotizacionCreada(t);
+
+  const respuesta = await new CotizacionService().crearCotizacionNormal(
+    { idCliente: 7, detalles: [detalle] },
+    usuarioAuth,
+  );
+  const payload = crearCotizacionMock.mock.calls[0]?.arguments[0];
+
+  assert.equal(respuesta.total, 0);
+  assert.equal(payload.detalles[0].precioUnitario, null);
+  assert.equal(calcularMock.mock.calls.length, 0);
 });
 
 test("CotizacionService crea Cliente externo si no viene idCliente", async (t) => {

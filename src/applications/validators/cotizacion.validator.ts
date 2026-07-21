@@ -109,6 +109,10 @@ export const validarCotizar = (data: any) => {
     return "Los costos adicionales no pueden ser negativos.";
   }
 
+  if (!esTextoOpcional(data.motivoCambio)) {
+    return "El motivo de cambio debe ser texto, null u omitirse.";
+  }
+
   const idsDetalle = new Set<number>();
 
   for (const detalle of data.detalles) {
@@ -139,7 +143,7 @@ export const validarCotizar = (data: any) => {
 // Regla de actualizacion administrativa: no modifica detalles ni cambia estado;
 // solo permite observaciones de empresa y costos adicionales.
 export const validarActualizarCotizacion = (data: any) => {
-  const camposPermitidos = ["observaciones", "costosAdicionales"];
+  const camposPermitidos = ["observaciones", "costosAdicionales", "motivoCambio"];
   const campos = Object.keys(data || {});
 
   if (campos.length === 0) {
@@ -166,6 +170,61 @@ export const validarActualizarCotizacion = (data: any) => {
     !esMontoValido(data.costosAdicionales)
   ) {
     return "Los costos adicionales no pueden ser negativos.";
+  }
+
+  if (!esTextoOpcional(data.motivoCambio)) {
+    return "El motivo de cambio debe ser texto, null u omitirse.";
+  }
+
+  return null;
+};
+
+// Regla presencial: el empleado puede registrar costos operativos, pero los
+// precios del producto siempre se calculan en el backend cuando llega idProducto.
+// Se conserva idProducto opcional para no invalidar solicitudes antiguas que aun
+// deben ser cotizadas manualmente.
+export const validarCrearCotizacionPresencial = (data: any) => {
+  const errorDetalleUnico = validarUnicoDetalle(data);
+
+  if (errorDetalleUnico) {
+    return errorDetalleUnico;
+  }
+
+  if (
+    data.costosAdicionales !== undefined &&
+    !esMontoValido(data.costosAdicionales)
+  ) {
+    return "Los costos adicionales no pueden ser negativos.";
+  }
+
+  for (const detalle of data.detalles) {
+    if (detalle.idDetalleCotizacion !== undefined) {
+      return "No se debe enviar idDetalleCotizacion al crear una cotizacion.";
+    }
+
+    if (!esEnteroPositivo(detalle.idTecnica)) {
+      return "La tecnica es obligatoria en cada detalle.";
+    }
+
+    if (!esTextoNoVacio(detalle.descripcion)) {
+      return "La descripcion del detalle no puede estar vacia.";
+    }
+
+    if (!esEnteroPositivo(detalle.cantidad)) {
+      return "La cantidad debe ser mayor a 0.";
+    }
+
+    if (detalle.idProducto !== undefined && !esEnteroPositivo(detalle.idProducto)) {
+      return "El producto debe ser valido.";
+    }
+
+    if (!esMontoValido(detalle.costoDiseno ?? 0)) {
+      return "El costo de diseno no puede ser negativo.";
+    }
+
+    if (!esTextoOpcional(detalle.imagenReferencia)) {
+      return "La imagen de referencia debe ser texto, null u omitirse.";
+    }
   }
 
   return null;

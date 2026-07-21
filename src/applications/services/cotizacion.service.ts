@@ -1,11 +1,14 @@
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
+import { ProductoService } from "./producto.service";
+import { ClienteAccessService } from "./cliente-access.service";
 import { PedidoService } from "./pedido.service";
 import { NotificationService } from "./notification.service";
 import {
   validarActualizarCotizacion,
   validarCotizar,
+  validarCrearCotizacionPresencial,
   validarSolicitudCliente,
 } from "../validators/cotizacion.validator";
 import {
@@ -19,6 +22,8 @@ const clienteRepository = new ClienteRepository();
 const tecnicaRepository = new TecnicaRepository();
 const pedidoService = new PedidoService();
 const notificationService = new NotificationService();
+const productoService = new ProductoService();
+const clienteAccessService = new ClienteAccessService();
 
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
@@ -52,11 +57,8 @@ const limpiarCorreo = (valor: any) => {
   return texto ? texto.toLowerCase() : null;
 };
 
-const calcularSubtotalDetalle = (
-  cantidad: number,
-  precioUnitario: number,
-  costoDiseno: number,
-) => cantidad * precioUnitario + costoDiseno;
+const motivoCambioCotizacion = (valor: any) =>
+  limpiarTextoOpcional(valor) ?? "Se realizaron ajustes en la cotizacion.";
 
 const detalleTienePrecios = (detalle: any) => {
   return (
@@ -139,8 +141,7 @@ export class CotizacionService {
 
   private async resolverClientePresencial(data: any) {
     if (data.idCliente) {
-      const cliente = await this.asegurarClienteExiste(Number(data.idCliente));
-      return cliente.idCliente;
+      return await this.asegurarClienteExiste(Number(data.idCliente));
     }
 
     const clienteEntrada = data.cliente;
@@ -186,7 +187,7 @@ export class CotizacionService {
           direccion: limpiarTextoOpcional(clienteEntrada.direccion),
         });
 
-    return cliente.idCliente;
+    return cliente;
   }
 
   private validarDatosClientePresencial(data: any) {
@@ -277,10 +278,11 @@ export class CotizacionService {
     return this.formatearCotizacion(cotizacion);
   }
 
-  // Empleado: crea una solicitud presencial para un cliente elegido por la
-  // empresa. Tambien inicia sin precios y queda lista para cotizar.
+  // Empleado: crea una cotizacion presencial. Si llega idProducto, se valora
+  // con el catalogo; las solicitudes antiguas sin producto conservan el flujo
+  // pendiente de cotizar.
   async crearCotizacionNormal(data: any, usuarioAuth: any) {
-    const error = validarSolicitudCliente(data);
+    const error = validarCrearCotizacionPresencial(data);
 
     if (error) {
       throw new Error(error);
@@ -288,32 +290,79 @@ export class CotizacionService {
 
     this.validarDatosClientePresencial(data);
 
-    let idCliente: number;
+    await this.asegurarTecnicasExisten(data.detalles);
+    const cliente = await this.resolverClientePresencial(data);
+    const detalleEntrada = data.detalles[0];
+    const idProducto = detalleEntrada.idProducto === undefined
+      ? null
+      : Number(detalleEntrada.idProducto);
+    const costoDiseno = Math.round(aNumero(detalleEntrada.costoDiseno));
+    const costosAdicionales = Math.round(aNumero(data.costosAdicionales));
 
-    if (data.idCliente) {
-      idCliente = await this.resolverClientePresencial(data);
-      await this.asegurarTecnicasExisten(data.detalles);
-    } else {
-      await this.asegurarTecnicasExisten(data.detalles);
-      idCliente = await this.resolverClientePresencial(data);
-    }
+    const calculo = idProducto
+      ? await productoService.calcularItems([
+          {
+            idProducto,
+            cantidad: Number(detalleEntrada.cantidad),
+            observaciones: limpiarTextoOpcional(detalleEntrada.observaciones),
+          },
+        ])
+      : null;
 
-    const detalles = this.prepararDetallesSolicitud(data.detalles);
+    const detalles = calculo
+      ? calculo.items.map((item: any) => ({
+          idProducto: item.snapshot.idProducto,
+          idTecnica: Number(detalleEntrada.idTecnica),
+          descripcion: detalleEntrada.descripcion.trim(),
+          cantidad: item.snapshot.cantidad,
+          precioBase: item.snapshot.precioBase,
+          descuentoPorcentaje: item.snapshot.descuentoPorcentaje,
+          descuentoValorUnitario: item.snapshot.descuentoValorUnitario,
+          precioUnitario: item.snapshot.precioUnitario,
+          costoDiseno,
+          subtotal: item.snapshot.subtotal,
+          subtotalBruto: item.snapshot.subtotalBruto,
+          descuentoTotal: item.snapshot.descuentoTotal,
+          subtotalConDescuento: item.snapshot.subtotalConDescuento,
+          imagenReferencia: limpiarTextoOpcional(detalleEntrada.imagenReferencia),
+          observaciones: limpiarTextoOpcional(detalleEntrada.observaciones),
+        }))
+      : this.prepararDetallesSolicitud(data.detalles);
+
+    const subtotal = calculo ? calculo.subtotal : 0;
+    const descuentoTotal = calculo ? calculo.descuentoTotal : 0;
+    const total = calculo
+      ? Math.round(calculo.total + costoDiseno + costosAdicionales)
+      : 0;
+    const accesoCliente = calculo
+      ? await clienteAccessService.asegurarAccesoCliente(cliente)
+      : null;
 
     const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente,
+      idCliente: cliente.idCliente,
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
       estado: ESTADO_PENDIENTE,
-      subtotal: 0,
-      descuentoTotal: 0,
-      costosAdicionales: 0,
-      total: 0,
+      subtotal,
+      descuentoTotal,
+      costosAdicionales: calculo ? costosAdicionales : 0,
+      total,
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
 
-    return this.formatearCotizacion(cotizacion);
+    const cotizacionFormateada = this.formatearCotizacion(cotizacion);
+
+    if (calculo) {
+      await notificationService.cotizacionPresencialCreada({
+        ...cotizacionFormateada,
+        cliente,
+        detalles: cotizacionFormateada.detalles ?? detalles,
+        accesoCliente,
+      });
+    }
+
+    return cotizacionFormateada;
   }
 
   async listarCotizaciones(usuarioAuth: any, query: PaginationQuery = {}) {
@@ -476,6 +525,9 @@ export class CotizacionService {
       throw new Error("Solo se pueden cotizar solicitudes en estado PENDIENTE.");
     }
 
+    const teniaPrecios = cotizacionTienePrecios(cotizacion);
+    const totalAnterior = cotizacion.total;
+
     if (cotizacion.detalles.length !== 1) {
       throw new Error(
         "Esta solicitud no cumple la regla de un unico detalle por cotizacion.",
@@ -512,21 +564,26 @@ export class CotizacionService {
       const cantidad = Number(detalleActual.cantidad);
       const precioUnitario = Number(detalle.precioUnitario);
       const costoDiseno = Number(detalle.costoDiseno);
-      const subtotal = calcularSubtotalDetalle(
-        cantidad,
-        precioUnitario,
-        costoDiseno,
+      const subtotalBruto = aNumero(
+        detalleActual.subtotalBruto ??
+          detalleActual.subtotal ??
+          cantidad * precioUnitario,
+      );
+      const descuentoTotal = aNumero(detalleActual.descuentoTotal);
+      const subtotalConDescuento = aNumero(
+        detalleActual.subtotalConDescuento ??
+          Math.max(subtotalBruto - descuentoTotal, 0),
       );
 
       return {
         idDetalleCotizacion: Number(detalle.idDetalleCotizacion),
         precioUnitario,
         costoDiseno,
-        subtotal,
-        subtotalBruto: subtotal,
-        descuentoValorUnitario: 0,
-        descuentoTotal: 0,
-        subtotalConDescuento: subtotal,
+        subtotal: subtotalBruto,
+        subtotalBruto,
+        descuentoValorUnitario: aNumero(detalleActual.descuentoValorUnitario),
+        descuentoTotal,
+        subtotalConDescuento,
         observaciones:
           detalle.observaciones !== undefined
             ? limpiarTextoOpcional(detalle.observaciones)
@@ -538,15 +595,24 @@ export class CotizacionService {
       (acc: number, item: any) => acc + item.subtotal,
       0,
     );
+    const descuentoTotal = detallesCotizados.reduce(
+      (acc: number, item: any) => acc + item.descuentoTotal,
+      0,
+    );
+    const subtotalConDescuento = detallesCotizados.reduce(
+      (acc: number, item: any) =>
+        acc + item.subtotalConDescuento + item.costoDiseno,
+      0,
+    );
     const costosAdicionales = aNumero(data.costosAdicionales);
-    const total = subtotal + costosAdicionales;
+    const total = subtotalConDescuento + costosAdicionales;
 
     const cotizacionCotizada = await cotizacionRepository.cotizarCotizacion(
       idCotizacion,
       {
         estado: ESTADO_PENDIENTE,
         subtotal,
-        descuentoTotal: 0,
+        descuentoTotal,
         costosAdicionales,
         total,
         observaciones: limpiarTextoOpcional(data.observaciones),
@@ -554,7 +620,16 @@ export class CotizacionService {
       detallesCotizados,
     );
 
-    return this.formatearCotizacion(cotizacionCotizada);
+    const cotizacionFormateada = this.formatearCotizacion(cotizacionCotizada);
+
+    if (teniaPrecios) {
+      await notificationService.cotizacionModificada(cotizacionFormateada, {
+        motivoCambio: motivoCambioCotizacion(data.motivoCambio),
+        totalAnterior,
+      });
+    }
+
+    return cotizacionFormateada;
   }
 
   // Admin/Secretaria: actualizacion limitada. No cambia detalles ni estado.
@@ -593,12 +668,23 @@ export class CotizacionService {
         costosAdicionales;
     }
 
+    if (Object.keys(dataActualizar).length === 0) {
+      throw new Error("Debe enviar al menos un campo visible para actualizar.");
+    }
+
     const cotizacionActualizada = await cotizacionRepository.actualizarCotizacion(
       idCotizacion,
       dataActualizar,
     );
 
-    return this.formatearCotizacion(cotizacionActualizada);
+    const cotizacionFormateada = this.formatearCotizacion(cotizacionActualizada);
+
+    await notificationService.cotizacionModificada(cotizacionFormateada, {
+      motivoCambio: motivoCambioCotizacion(data.motivoCambio),
+      totalAnterior: cotizacion.total,
+    });
+
+    return cotizacionFormateada;
   }
 
   async anularCotizacion(idCotizacion: number, usuarioAuth: any) {

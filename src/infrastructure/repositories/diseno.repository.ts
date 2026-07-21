@@ -1,6 +1,9 @@
 import { prisma } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
-import type { EstadoDisenoPermitido } from "../../applications/validators/diseno.validator";
+import type {
+  EstadoDisenoPermitido,
+  OrigenDisenoPermitido,
+} from "../../applications/validators/diseno.validator";
 import { disenoSelect } from "../../utils/selects/diseno.select";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
 
@@ -18,15 +21,32 @@ export interface CrearDisenoData {
   archivoUrl: string | null;
   descripcion: string | null;
   observaciones: string | null;
-  estado: "PENDIENTE" | "ENVIADO";
+  origenDiseno: OrigenDisenoPermitido;
+  medioRecepcion: string | null;
+  recibidoPorId: number | null;
+  fechaRecepcion: Date | null;
+  observacionesCliente?: string | null;
+  estado: "PENDIENTE" | "ENVIADO" | "APROBADO";
   fechaEnvio: Date | null;
+  fechaAprobacion?: Date | null;
+  medioRespuestaCliente?: string | null;
+  fechaRespuestaCliente?: Date | null;
+  respuestaRegistradaPorId?: number | null;
 }
 
 export interface ActualizarDisenoData {
   archivoUrl?: string | null;
   descripcion?: string | null;
   observaciones?: string | null;
-  estado?: "PENDIENTE" | "ENVIADO" | "APROBADO";
+  estado?: "PENDIENTE" | "ENVIADO" | "APROBADO" | "RECHAZADO";
+  origenDiseno?: OrigenDisenoPermitido;
+  medioRecepcion?: string | null;
+  recibidoPorId?: number | null;
+  fechaRecepcion?: Date | null;
+  medioRespuestaCliente?: string | null;
+  observacionesCliente?: string | null;
+  fechaRespuestaCliente?: Date | null;
+  respuestaRegistradaPorId?: number | null;
   fechaEnvio?: Date | null;
   fechaAprobacion?: Date | null;
 }
@@ -51,6 +71,34 @@ const pedidoResumenSelect = {
       direccion: true,
     },
   },
+} as const;
+
+const disenoOperacionSelect = {
+  idDiseno: true,
+  idPedido: true,
+  idDisenador: true,
+  estado: true,
+  pedido: {
+    select: {
+      idPedido: true,
+      idCliente: true,
+      estadoPedido: true,
+      estadoPago: true,
+      total: true,
+      totalPagado: true,
+      saldoPendiente: true,
+      cliente: {
+        select: {
+          idCliente: true,
+        },
+      },
+    },
+  },
+} as const;
+
+const pedidoEstadoSelect = {
+  idPedido: true,
+  estadoPedido: true,
 } as const;
 
 export class DisenoRepository {
@@ -118,10 +166,34 @@ export class DisenoRepository {
     });
   }
 
+  async listarPorCliente(idCliente: number) {
+    return await prisma.diseno.findMany({
+      where: {
+        pedido: {
+          idCliente,
+        },
+      },
+      select: disenoSelect,
+      orderBy: {
+        fechaCreacion: "desc",
+      },
+    });
+  }
+
   async buscarPorId(idDiseno: number, tx?: Prisma.TransactionClient) {
     return await db(tx).diseno.findUnique({
       where: { idDiseno },
       select: disenoSelect,
+    });
+  }
+
+  async buscarPorIdOperacion(
+    idDiseno: number,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).diseno.findUnique({
+      where: { idDiseno },
+      select: disenoOperacionSelect,
     });
   }
 
@@ -166,6 +238,18 @@ export class DisenoRepository {
     });
   }
 
+  async actualizarDisenoOperacion(
+    idDiseno: number,
+    data: ActualizarDisenoData,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).diseno.update({
+      where: { idDiseno },
+      data,
+      select: disenoOperacionSelect,
+    });
+  }
+
   async buscarPedidoCompleto(idPedido: number, tx?: Prisma.TransactionClient) {
     return await db(tx).pedido.findUnique({
       where: { idPedido },
@@ -181,7 +265,7 @@ export class DisenoRepository {
     return await db(tx).pedido.update({
       where: { idPedido },
       data: { estadoPedido },
-      select: pedidoSelect,
+      select: pedidoEstadoSelect,
     });
   }
 

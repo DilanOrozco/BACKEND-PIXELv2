@@ -11,6 +11,7 @@ import {
   validarAprobarDiseno,
   validarCrearDiseno,
   validarFiltrosDiseno,
+  validarRechazarDiseno,
 } from "../validators/diseno.validator";
 import { AbonoService } from "./abono.service";
 
@@ -23,6 +24,14 @@ const ESTADO_PEDIDO_EN_PROCESO = "EN_PROCESO" as const;
 const ESTADO_DISENO_PENDIENTE = "PENDIENTE" as const;
 const ESTADO_DISENO_ENVIADO = "ENVIADO" as const;
 const ESTADO_APROBADO_DISENO = "APROBADO" as const;
+const ESTADO_RECHAZADO_DISENO = "RECHAZADO" as const;
+const ORIGEN_DISENO_DISENADOR = "DISENADOR" as const;
+const ORIGEN_DISENO_CLIENTE = "CLIENTE" as const;
+const ORIGEN_DISENO_ADMIN = "ADMIN" as const;
+const ESTADOS_RESPONDIBLES_CLIENTE = [
+  ESTADO_DISENO_PENDIENTE,
+  ESTADO_DISENO_ENVIADO,
+] as const;
 
 interface AuthUser {
   idUsuario: number;
@@ -33,11 +42,20 @@ interface AuthUser {
 type DatosEntrada = Record<string, unknown>;
 
 const esCliente = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Cliente";
-const idClienteAutenticado = (usuarioAuth: AuthUser) =>
-  Number(usuarioAuth.idCliente ?? usuarioAuth.idUsuario);
-const esDisenador = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Diseñador";
+const esDisenador = (usuarioAuth: AuthUser) =>
+  ["Disenador", "Diseñador", "DiseÃ±ador"].includes(usuarioAuth.rol);
 const puedeGestionarDisenos = (usuarioAuth: AuthUser) =>
   ["Admin", "Secretaria"].includes(usuarioAuth.rol);
+
+const idClienteAutenticado = (usuarioAuth: AuthUser) => {
+  const idCliente = Number(usuarioAuth.idCliente);
+
+  if (!Number.isInteger(idCliente) || idCliente <= 0) {
+    throw new Error("El usuario cliente no tiene un cliente vinculado.");
+  }
+
+  return idCliente;
+};
 
 const limpiarTextoOpcional = (valor: unknown) => {
   if (typeof valor !== "string") {
@@ -46,6 +64,40 @@ const limpiarTextoOpcional = (valor: unknown) => {
 
   const texto = valor.trim();
   return texto === "" ? null : texto;
+};
+
+const limpiarMedioRespuesta = (data: DatosEntrada) => {
+  const medio = data.medioAprobacion ?? data.medioRespuesta;
+
+  if (typeof medio !== "string") {
+    return "SISTEMA";
+  }
+
+  const texto = medio.trim().toUpperCase();
+  return texto === "" ? "SISTEMA" : texto;
+};
+
+const normalizarMayusculaOpcional = (valor: unknown) => {
+  if (typeof valor !== "string") {
+    return null;
+  }
+
+  const texto = valor.trim().toUpperCase();
+  return texto === "" ? null : texto;
+};
+
+const limpiarOrigenDiseno = (valor: unknown, user: AuthUser) => {
+  const origen = normalizarMayusculaOpcional(valor);
+
+  if (origen) {
+    return origen as "DISENADOR" | "CLIENTE" | "ADMIN" | "OTRO";
+  }
+
+  if (esDisenador(user)) {
+    return ORIGEN_DISENO_DISENADOR;
+  }
+
+  return ORIGEN_DISENO_ADMIN;
 };
 
 const aNumero = (valor: unknown) => Number(valor ?? 0);
@@ -70,6 +122,10 @@ const validarId = (id: number, mensaje: string) => {
 };
 
 export class DisenoService {
+  constructor(
+    private readonly ejecutarTransaccion = runPrismaTransaction,
+  ) {}
+
   private obtenerUsuario(usuarioAuth: AuthUser | undefined) {
     if (!usuarioAuth) {
       throw new Error("Usuario no autenticado.");
@@ -81,7 +137,7 @@ export class DisenoService {
   validarAccesoClienteAlPedido(
     pedido: { idCliente: number },
     user: AuthUser,
-    mensaje = "No tienes permiso para consultar este diseño.",
+    mensaje = "No tienes permiso para consultar este diseno.",
   ) {
     if (esCliente(user) && Number(pedido.idCliente) !== idClienteAutenticado(user)) {
       throw new Error(mensaje);
@@ -99,7 +155,7 @@ export class DisenoService {
       esCliente(user) &&
       Number(diseno.pedido.cliente.idCliente) !== idClienteAutenticado(user)
     ) {
-      throw new Error("No tienes permiso para consultar este diseño.");
+      throw new Error("No tienes permiso para consultar este diseno.");
     }
 
     if (
@@ -107,7 +163,7 @@ export class DisenoService {
       diseno.idDisenador !== null &&
       Number(diseno.idDisenador) !== Number(user.idUsuario)
     ) {
-      throw new Error("No tienes permiso para consultar este diseño.");
+      throw new Error("No tienes permiso para consultar este diseno.");
     }
   }
 
@@ -115,20 +171,26 @@ export class DisenoService {
     diseno: { idDisenador: number | null },
     user: AuthUser,
   ) {
+    if (puedeGestionarDisenos(user)) {
+      return;
+    }
+
     if (
       esDisenador(user) &&
-      diseno.idDisenador !== null &&
-      Number(diseno.idDisenador) !== Number(user.idUsuario)
+      (diseno.idDisenador === null ||
+        Number(diseno.idDisenador) === Number(user.idUsuario))
     ) {
-      throw new Error("No tienes permiso para consultar este diseño.");
+      return;
     }
+
+    throw new Error("No tienes permiso para gestionar este diseno.");
   }
 
   async validarDisenador(idUsuario: number) {
     const disenador = await disenoRepository.buscarUsuarioDisenador(idUsuario);
 
     if (!disenador) {
-      throw new Error("El diseñador indicado no existe o no tiene rol Diseñador.");
+      throw new Error("El disenador indicado no existe o no tiene rol Disenador.");
     }
 
     return disenador;
@@ -150,30 +212,49 @@ export class DisenoService {
     }
 
     if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
-      throw new Error("Solo se pueden crear diseños para pedidos PENDIENTE.");
+      throw new Error("Solo se pueden crear disenos para pedidos PENDIENTE.");
     }
 
-    const tienePagoInicial = await abonoService.pedidoTienePagoInicialValido(
-      idPedido,
-    );
+    const tienePagoInicial =
+      await abonoService.pedidoTienePagoInicialValido(idPedido);
 
     if (!tienePagoInicial) {
-      throw new Error("El pedido requiere un abono confirmado mínimo del 50% o pago completo antes de crear el diseño.");
+      throw new Error(
+        "El pedido requiere un abono confirmado minimo del 50% o pago completo antes de crear el diseno.",
+      );
     }
 
+    const origenDiseno = limpiarOrigenDiseno(data.origenDiseno, user);
     let idDisenador: number | null = null;
 
-    if (esDisenador(user)) {
+    if (origenDiseno === ORIGEN_DISENO_CLIENTE) {
+      idDisenador = null;
+    } else if (esDisenador(user)) {
       idDisenador = Number(user.idUsuario);
     }
 
-    if (puedeGestionarDisenos(user) && data.idDisenador !== undefined) {
+    if (
+      origenDiseno !== ORIGEN_DISENO_CLIENTE &&
+      puedeGestionarDisenos(user) &&
+      data.idDisenador !== undefined
+    ) {
       idDisenador = Number(data.idDisenador);
       await this.validarDisenador(idDisenador);
     }
 
     const archivoUrl = limpiarTextoOpcional(data.archivoUrl);
-    const estado = archivoUrl ? ESTADO_DISENO_ENVIADO : ESTADO_DISENO_PENDIENTE;
+    const estadoSolicitado = normalizarMayusculaOpcional(data.estado);
+    const estado =
+      estadoSolicitado === ESTADO_APROBADO_DISENO && puedeGestionarDisenos(user)
+        ? ESTADO_APROBADO_DISENO
+        : archivoUrl
+          ? ESTADO_DISENO_ENVIADO
+          : ESTADO_DISENO_PENDIENTE;
+    const medioRecepcion = normalizarMayusculaOpcional(data.medioRecepcion);
+    const fechaRecepcion =
+      origenDiseno === ORIGEN_DISENO_CLIENTE || medioRecepcion ? new Date() : null;
+    const fechaRespuesta =
+      estado === ESTADO_APROBADO_DISENO ? new Date() : null;
 
     return await disenoRepository.crearDiseno({
       idPedido,
@@ -181,8 +262,21 @@ export class DisenoService {
       archivoUrl,
       descripcion: limpiarTextoOpcional(data.descripcion),
       observaciones: limpiarTextoOpcional(data.observaciones),
+      origenDiseno,
+      medioRecepcion,
+      recibidoPorId: origenDiseno === ORIGEN_DISENO_CLIENTE ? Number(user.idUsuario) : null,
+      fechaRecepcion,
+      observacionesCliente: limpiarTextoOpcional(data.observacionesCliente),
       estado,
       fechaEnvio: archivoUrl ? new Date() : null,
+      fechaAprobacion: fechaRespuesta,
+      fechaRespuestaCliente: fechaRespuesta,
+      medioRespuestaCliente:
+        estado === ESTADO_APROBADO_DISENO
+          ? (medioRecepcion ?? "PRESENCIAL")
+          : null,
+      respuestaRegistradaPorId:
+        estado === ESTADO_APROBADO_DISENO ? Number(user.idUsuario) : null,
     });
   }
 
@@ -241,14 +335,24 @@ export class DisenoService {
     );
   }
 
+  async listarDisenosCliente(usuarioAuth: AuthUser | undefined) {
+    const user = this.obtenerUsuario(usuarioAuth);
+
+    if (!esCliente(user)) {
+      throw new Error("Solo clientes pueden consultar sus disenos en este endpoint.");
+    }
+
+    return await disenoRepository.listarPorCliente(idClienteAutenticado(user));
+  }
+
   async buscarPorId(idDiseno: number, usuarioAuth: AuthUser | undefined) {
     const user = this.obtenerUsuario(usuarioAuth);
-    validarId(idDiseno, "El ID del diseño no es valido.");
+    validarId(idDiseno, "El ID del diseno no es valido.");
 
     const diseno = await disenoRepository.buscarPorId(idDiseno);
 
     if (!diseno) {
-      throw new Error("Diseño no encontrado.");
+      throw new Error("Diseno no encontrado.");
     }
 
     this.validarAccesoConsultaDiseno(diseno, user);
@@ -262,7 +366,7 @@ export class DisenoService {
     usuarioAuth: AuthUser | undefined,
   ) {
     const user = this.obtenerUsuario(usuarioAuth);
-    validarId(idDiseno, "El ID del diseño no es valido.");
+    validarId(idDiseno, "El ID del diseno no es valido.");
 
     const error = validarActualizarDiseno(data);
 
@@ -273,13 +377,13 @@ export class DisenoService {
     const diseno = await disenoRepository.buscarPorId(idDiseno);
 
     if (!diseno) {
-      throw new Error("Diseño no encontrado.");
+      throw new Error("Diseno no encontrado.");
     }
 
     this.validarAccesoEdicionDiseno(diseno, user);
 
     if (diseno.estado === ESTADO_APROBADO_DISENO) {
-      throw new Error("Solo se pueden editar diseños no aprobados.");
+      throw new Error("Solo se pueden editar disenos no aprobados.");
     }
 
     const dataActualizar: ActualizarDisenoData = {};
@@ -302,6 +406,28 @@ export class DisenoService {
       dataActualizar.observaciones = limpiarTextoOpcional(data.observaciones);
     }
 
+    if (data.origenDiseno !== undefined) {
+      dataActualizar.origenDiseno = limpiarOrigenDiseno(data.origenDiseno, user);
+    }
+
+    if (data.medioRecepcion !== undefined) {
+      dataActualizar.medioRecepcion = normalizarMayusculaOpcional(
+        data.medioRecepcion,
+      );
+      dataActualizar.fechaRecepcion = dataActualizar.medioRecepcion
+        ? (diseno.fechaRecepcion ?? new Date())
+        : null;
+      dataActualizar.recibidoPorId = dataActualizar.medioRecepcion
+        ? Number(user.idUsuario)
+        : null;
+    }
+
+    if (data.observacionesCliente !== undefined) {
+      dataActualizar.observacionesCliente = limpiarTextoOpcional(
+        data.observacionesCliente,
+      );
+    }
+
     return await disenoRepository.actualizarDiseno(idDiseno, dataActualizar);
   }
 
@@ -310,102 +436,166 @@ export class DisenoService {
     usuarioAuth: AuthUser | undefined,
     data: DatosEntrada = {},
   ) {
-    const user = this.obtenerUsuario(usuarioAuth);
-    validarId(idDiseno, "El ID del diseño no es valido.");
+    return await this.responderDisenoCliente(
+      idDiseno,
+      usuarioAuth,
+      data,
+      "APROBAR",
+    );
+  }
 
-    const error = validarAprobarDiseno(data);
+  async rechazarDiseno(
+    idDiseno: number,
+    usuarioAuth: AuthUser | undefined,
+    data: DatosEntrada = {},
+  ) {
+    return await this.responderDisenoCliente(
+      idDiseno,
+      usuarioAuth,
+      data,
+      "RECHAZAR",
+    );
+  }
+
+  private async responderDisenoCliente(
+    idDiseno: number,
+    usuarioAuth: AuthUser | undefined,
+    data: DatosEntrada,
+    decision: "APROBAR" | "RECHAZAR",
+  ) {
+    const user = this.obtenerUsuario(usuarioAuth);
+    validarId(idDiseno, "El ID del diseno no es valido.");
+
+    const error =
+      decision === "APROBAR"
+        ? validarAprobarDiseno(data)
+        : validarRechazarDiseno(data);
 
     if (error) {
       throw new Error(error);
     }
 
-    return await runPrismaTransaction(async (tx: Prisma.TransactionClient) => {
-      const diseno = await disenoRepository.buscarPorId(idDiseno, tx);
+    const resultado = await this.ejecutarTransaccion(async (tx: Prisma.TransactionClient) => {
+      const diseno = await disenoRepository.buscarPorIdOperacion(idDiseno, tx);
 
       if (!diseno) {
-        throw new Error("Diseño no encontrado.");
+        throw new Error("Diseno no encontrado.");
       }
 
       if (
         esCliente(user) &&
         Number(diseno.pedido.cliente.idCliente) !== idClienteAutenticado(user)
       ) {
-        throw new Error("No tienes permiso para aprobar este diseño.");
+        throw new Error("No tienes permiso para responder este diseno.");
       }
 
-      if (diseno.estado !== ESTADO_DISENO_ENVIADO) {
-        throw new Error("Solo se pueden aprobar diseños enviados.");
+      if (!esCliente(user)) {
+        this.validarAccesoEdicionDiseno(diseno, user);
       }
-
-      if (diseno.pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
-        throw new Error("El pedido debe estar PENDIENTE para aprobar diseño.");
-      }
-
-      const disenoAprobadoExistente =
-        await disenoRepository.buscarDisenoAprobadoPorPedido(
-          diseno.idPedido,
-          tx,
-        );
 
       if (
-        disenoAprobadoExistente &&
-        disenoAprobadoExistente.idDiseno !== idDiseno
+        !ESTADOS_RESPONDIBLES_CLIENTE.includes(
+          diseno.estado as (typeof ESTADOS_RESPONDIBLES_CLIENTE)[number],
+        )
       ) {
-        throw new Error("El pedido ya tiene un diseño aprobado.");
+        throw new Error("Solo se pueden responder disenos pendientes o enviados.");
       }
 
+      if (
+        decision === "APROBAR" &&
+        diseno.pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE
+      ) {
+        throw new Error("El pedido debe estar PENDIENTE para aprobar diseno.");
+      }
+
+      if (decision === "APROBAR") {
+        const disenoAprobadoExistente =
+          await disenoRepository.buscarDisenoAprobadoPorPedido(
+            diseno.idPedido,
+            tx,
+          );
+
+        if (
+          disenoAprobadoExistente &&
+          disenoAprobadoExistente.idDiseno !== idDiseno
+        ) {
+          throw new Error("El pedido ya tiene un diseno aprobado.");
+        }
+      }
+
+      const fechaRespuestaCliente = new Date();
       const dataActualizar: ActualizarDisenoData = {
-        estado: ESTADO_APROBADO_DISENO,
-        fechaAprobacion: new Date(),
+        estado:
+          decision === "APROBAR"
+            ? ESTADO_APROBADO_DISENO
+            : ESTADO_RECHAZADO_DISENO,
+        fechaAprobacion:
+          decision === "APROBAR" ? fechaRespuestaCliente : null,
+        fechaRespuestaCliente,
+        medioRespuestaCliente: limpiarMedioRespuesta(data),
+        observacionesCliente:
+          limpiarTextoOpcional(data.observacionesCliente) ??
+          limpiarTextoOpcional(data.observaciones),
+        respuestaRegistradaPorId: esCliente(user) ? null : Number(user.idUsuario),
       };
 
       if (data.observaciones !== undefined) {
         dataActualizar.observaciones = limpiarTextoOpcional(data.observaciones);
       }
 
-      const disenoActualizado = await disenoRepository.actualizarDiseno(
+      const disenoActualizado = await disenoRepository.actualizarDisenoOperacion(
         idDiseno,
         dataActualizar,
         tx,
       );
 
-      const tienePagoInicial = pedidoTienePagoInicial(diseno.pedido);
+      const tienePagoInicial =
+        decision === "APROBAR" && pedidoTienePagoInicial(diseno.pedido);
 
-      let pedido = await disenoRepository.buscarPedidoCompleto(
-        diseno.idPedido,
-        tx,
-      );
+      let estadoPedido = diseno.pedido.estadoPedido;
 
-      if (tienePagoInicial && pedido?.estadoPedido === ESTADO_PEDIDO_PENDIENTE) {
-        pedido = await disenoRepository.actualizarEstadoPedido(
+      if (tienePagoInicial && estadoPedido === ESTADO_PEDIDO_PENDIENTE) {
+        const pedidoActualizado = await disenoRepository.actualizarEstadoPedido(
           diseno.idPedido,
           ESTADO_PEDIDO_EN_PROCESO,
           tx,
         );
+        estadoPedido = pedidoActualizado.estadoPedido;
       }
 
       return {
-        diseno: disenoActualizado,
-        pedido,
+        idDiseno: disenoActualizado.idDiseno,
+        idPedido: diseno.idPedido,
         pasoAProduccion: Boolean(
-          tienePagoInicial && pedido?.estadoPedido === ESTADO_PEDIDO_EN_PROCESO,
+          tienePagoInicial && estadoPedido === ESTADO_PEDIDO_EN_PROCESO,
         ),
       };
     });
+
+    const [diseno, pedido] = await Promise.all([
+      disenoRepository.buscarPorId(resultado.idDiseno),
+      disenoRepository.buscarPedidoCompleto(resultado.idPedido),
+    ]);
+
+    return {
+      diseno,
+      pedido,
+      pasoAProduccion: resultado.pasoAProduccion,
+    };
   }
 
   async eliminarDiseno(idDiseno: number, usuarioAuth: AuthUser | undefined) {
     this.obtenerUsuario(usuarioAuth);
-    validarId(idDiseno, "El ID del diseño no es valido.");
+    validarId(idDiseno, "El ID del diseno no es valido.");
 
     const diseno = await disenoRepository.buscarPorId(idDiseno);
 
     if (!diseno) {
-      throw new Error("Diseño no encontrado.");
+      throw new Error("Diseno no encontrado.");
     }
 
     if (diseno.estado === ESTADO_APROBADO_DISENO) {
-      throw new Error("Solo se pueden eliminar diseños no aprobados.");
+      throw new Error("Solo se pueden eliminar disenos no aprobados.");
     }
 
     await disenoRepository.eliminarDiseno(idDiseno);

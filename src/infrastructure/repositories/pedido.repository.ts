@@ -3,7 +3,12 @@ import type { Prisma } from "../../../generated/prisma/client";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
 import { looksNumeric, type ParsedPagination } from "../../utils/pagination.util";
 
-const estadosPedido = ["PENDIENTE", "EN_PROCESO", "FINALIZADO"];
+const estadosPedido = [
+  "PENDIENTE",
+  "EN_PROCESO",
+  "PENDIENTE_SALDO_FINAL",
+  "FINALIZADO",
+];
 type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 
 const db = (tx?: Prisma.TransactionClient): PrismaExecutor => tx ?? prisma;

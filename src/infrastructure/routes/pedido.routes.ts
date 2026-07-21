@@ -33,6 +33,12 @@ router.patch(
 );
 
 router.patch(
+  "/:id/pendiente-saldo",
+  autorizarPermiso("pedidos.finalizar"),
+  pedidoController.marcarPendienteSaldoFinal,
+);
+
+router.patch(
   "/:id/anular",
   autorizarPermiso("pedidos.anular"),
   pedidoController.anularPedido,

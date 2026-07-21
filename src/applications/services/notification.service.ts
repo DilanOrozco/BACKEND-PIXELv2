@@ -2,8 +2,11 @@ import { EmailService, type MailData } from "./email.service";
 import {
   buildCotizacionCreadaClienteTemplate,
   buildCotizacionCreadaStaffTemplate,
+  buildCotizacionPresencialCreadaClienteTemplate,
+  buildCotizacionModificadaTemplate,
   buildPedidoCreadoTemplate,
   buildPedidoFinalizadoTemplate,
+  buildPedidoPendienteSaldoFinalTemplate,
   buildPrimerAbonoConfirmadoTemplate,
   EMAIL_EVENTS,
   type EmailEvent,
@@ -66,6 +69,36 @@ export class NotificationService {
     return estado;
   }
 
+  async cotizacionPresencialCreada(payload: any): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.COTIZACION_PRESENCIAL_CREADA,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.COTIZACION_PRESENCIAL_CREADA,
+        payload.cliente,
+        () => buildCotizacionPresencialCreadaClienteTemplate(payload),
+      ),
+    };
+  }
+
+  async cotizacionModificada(
+    cotizacion: any,
+    opciones: { motivoCambio?: string | null; totalAnterior?: unknown } = {},
+  ): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.COTIZACION_MODIFICADA,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.COTIZACION_MODIFICADA,
+        cotizacion?.cliente,
+        () =>
+          buildCotizacionModificadaTemplate({
+            cotizacion,
+            motivoCambio: opciones.motivoCambio,
+            totalAnterior: opciones.totalAnterior,
+          }),
+      ),
+    };
+  }
+
   async pedidoCreadoDesdeCotizacion(pedido: any): Promise<ResultadoEvento> {
     return {
       event: EMAIL_EVENTS.PEDIDO_CREADO_DESDE_COTIZACION,
@@ -87,6 +120,17 @@ export class NotificationService {
           pedido: abono.pedido,
           abono,
         }),
+      ),
+    };
+  }
+
+  async pedidoPendienteSaldoFinal(pedido: any): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.PEDIDO_PENDIENTE_SALDO_FINAL,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.PEDIDO_PENDIENTE_SALDO_FINAL,
+        pedido?.cliente,
+        () => buildPedidoPendienteSaldoFinalTemplate({ pedido }),
       ),
     };
   }

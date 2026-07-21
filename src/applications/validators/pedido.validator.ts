@@ -186,6 +186,20 @@ export const validarFinalizarPedido = (data: any) => {
   return null;
 };
 
+export const validarMarcarPendienteSaldoFinal = (data: any) => {
+  const errorCampos = validarCamposPermitidos(data, ["observaciones"]);
+
+  if (errorCampos) {
+    return errorCampos;
+  }
+
+  if (!esTextoOpcional(data?.observaciones)) {
+    return "Las observaciones deben ser texto, null u omitirse.";
+  }
+
+  return null;
+};
+
 export const validarAnularPedido = (data: any) => {
   const errorCampos = validarCamposPermitidos(data, ["observaciones"]);
 

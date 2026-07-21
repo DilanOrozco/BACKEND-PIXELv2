@@ -2,8 +2,11 @@ import { escapeHtml, type MailData } from "./email.service";
 
 export const EMAIL_EVENTS = {
   COTIZACION_CREADA: "COTIZACION_CREADA",
+  COTIZACION_PRESENCIAL_CREADA: "COTIZACION_PRESENCIAL_CREADA",
+  COTIZACION_MODIFICADA: "COTIZACION_MODIFICADA",
   PEDIDO_CREADO_DESDE_COTIZACION: "PEDIDO_CREADO_DESDE_COTIZACION",
   PRIMER_ABONO_CONFIRMADO: "PRIMER_ABONO_CONFIRMADO",
+  PEDIDO_PENDIENTE_SALDO_FINAL: "PEDIDO_PENDIENTE_SALDO_FINAL",
   PEDIDO_FINALIZADO: "PEDIDO_FINALIZADO",
 } as const;
 
@@ -44,7 +47,8 @@ const porcentaje = (valor: unknown) => {
 };
 
 const normalizarItems = (entidad: any) => {
-  const detalles = entidad?.detalles ?? entidad?.items ?? [];
+  const detalles =
+    entidad?.cotizacion?.detalles ?? entidad?.detalles ?? entidad?.items ?? [];
 
   return detalles.map((detalle: any) => {
     const cantidad = numeroSeguro(detalle?.cantidad);
@@ -54,10 +58,16 @@ const normalizarItems = (entidad: any) => {
     const precioUnitario = numeroSeguro(
       detalle?.precioUnitario ?? detalle?.precioBase,
     );
+    const subtotalBrutoCalculado = precioBase * cantidad;
     const subtotalBruto = numeroSeguro(
-      detalle?.subtotalBruto ?? detalle?.subtotal ?? precioBase * cantidad,
+      detalle?.subtotalBruto ?? detalle?.subtotal ?? subtotalBrutoCalculado,
     );
-    const descuentoTotal = numeroSeguro(detalle?.descuentoTotal);
+    const descuentoTotal = numeroSeguro(
+      detalle?.descuentoTotal ??
+        (detalle?.descuentoPorcentaje !== undefined
+          ? subtotalBruto * (numeroSeguro(detalle.descuentoPorcentaje) / 100)
+          : 0),
+    );
     const subtotalConDescuento = numeroSeguro(
       detalle?.subtotalConDescuento ??
         detalle?.subtotalFinal ??
@@ -69,15 +79,13 @@ const normalizarItems = (entidad: any) => {
         detalle?.producto?.nombre ?? detalle?.descripcion,
         "Producto cotizable",
       ),
-      categoria: textoSeguro(
-        detalle?.producto?.categoriaProducto?.nombre,
-        "Sin categoria",
-      ),
+      categoria: textoSeguro(detalle?.producto?.categoriaProducto?.nombre, ""),
       cantidad,
       precioBase,
       descuentoPorcentaje: numeroSeguro(detalle?.descuentoPorcentaje),
       descuentoValorUnitario: numeroSeguro(detalle?.descuentoValorUnitario),
       precioUnitario,
+      costoDiseno: numeroSeguro(detalle?.costoDiseno),
       subtotalBruto,
       descuentoTotal,
       subtotalConDescuento,
@@ -86,28 +94,31 @@ const normalizarItems = (entidad: any) => {
 };
 
 const calcularResumen = (entidad: any, items: any[]) => {
+  const fuenteResumen = entidad?.cotizacion ?? entidad;
   const subtotalBruto = numeroSeguro(
-    entidad?.subtotalBruto ??
-      entidad?.subtotal ??
+    fuenteResumen?.subtotalBruto ??
+      fuenteResumen?.subtotal ??
       items.reduce((acc, item) => acc + item.subtotalBruto, 0),
   );
   const descuentoTotal = numeroSeguro(
-    entidad?.descuentoTotal ??
+    fuenteResumen?.descuentoTotal ??
       items.reduce((acc, item) => acc + item.descuentoTotal, 0),
   );
-  const costosAdicionales = numeroSeguro(entidad?.costosAdicionales);
+  const costoDiseno = items.reduce((acc, item) => acc + item.costoDiseno, 0);
+  const costosAdicionales = numeroSeguro(fuenteResumen?.costosAdicionales);
   const total = numeroSeguro(
-    entidad?.total ?? subtotalBruto - descuentoTotal + costosAdicionales,
+    entidad?.total ?? fuenteResumen?.total ?? subtotalBruto - descuentoTotal + costoDiseno + costosAdicionales,
   );
   const subtotalConDescuento = numeroSeguro(
-    entidad?.subtotalConDescuento ??
-      entidad?.subtotalFinal ??
+    fuenteResumen?.subtotalConDescuento ??
+      fuenteResumen?.subtotalFinal ??
       subtotalBruto - descuentoTotal,
   );
 
   return {
     subtotalBruto,
     descuentoTotal,
+    costoDiseno,
     costosAdicionales,
     subtotalConDescuento,
     total,
@@ -120,7 +131,7 @@ const resumenTexto = (items: any[]) =>
     .map(
       (item) =>
         [
-          `- ${item.producto} (${item.categoria})`,
+          item.categoria ? `- ${item.producto} (${item.categoria})` : `- ${item.producto}`,
           `  Cantidad: ${item.cantidad}`,
           `  Precio base unitario: ${moneda(item.precioBase)}`,
           `  Descuento aplicado: ${porcentaje(item.descuentoPorcentaje)}`,
@@ -128,6 +139,7 @@ const resumenTexto = (items: any[]) =>
           `  Subtotal bruto: ${moneda(item.subtotalBruto)}`,
           `  Valor descontado: -${moneda(item.descuentoTotal)}`,
           `  Subtotal con descuento: ${moneda(item.subtotalConDescuento)}`,
+          `  Costo de diseno: ${item.costoDiseno > 0 ? moneda(item.costoDiseno) : "No aplica"}`,
         ].join("\n"),
     )
     .join("\n");
@@ -138,7 +150,7 @@ const resumenHtml = (items: any[]) =>
       (item) => `
         <tr>
           <td>${escapeHtml(item.producto)}</td>
-          <td>${escapeHtml(item.categoria)}</td>
+          <td>${escapeHtml(item.categoria || "No especificada")}</td>
           <td>${escapeHtml(item.cantidad)}</td>
           <td>${escapeHtml(moneda(item.precioBase))}</td>
           <td>${escapeHtml(porcentaje(item.descuentoPorcentaje))}</td>
@@ -146,6 +158,7 @@ const resumenHtml = (items: any[]) =>
           <td>${escapeHtml(moneda(item.subtotalBruto))}</td>
           <td>-${escapeHtml(moneda(item.descuentoTotal))}</td>
           <td>${escapeHtml(moneda(item.subtotalConDescuento))}</td>
+          <td>${escapeHtml(item.costoDiseno > 0 ? moneda(item.costoDiseno) : "No aplica")}</td>
         </tr>
       `,
     )
@@ -164,40 +177,99 @@ const tablaItems = (items: any[]) => `
         <th>Subtotal bruto</th>
         <th>Valor descontado</th>
         <th>Subtotal con descuento</th>
+        <th>Costo de diseno</th>
       </tr>
     </thead>
     <tbody>${resumenHtml(items)}</tbody>
   </table>
 `;
 
+const resumenPedidoHtml = (items: any[]) =>
+  items
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.producto)}</td>
+          <td>${escapeHtml(item.cantidad)}</td>
+          <td>${escapeHtml(item.costoDiseno > 0 ? moneda(item.costoDiseno) : "No aplica")}</td>
+          <td>${escapeHtml(moneda(item.subtotalConDescuento + item.costoDiseno))}</td>
+        </tr>
+      `,
+    )
+    .join("");
+
+const tablaPedido = (items: any[]) => `
+  <table border="1" cellpadding="6" cellspacing="0">
+    <thead>
+      <tr>
+        <th>Producto</th>
+        <th>Cantidad</th>
+        <th>Costo de diseno</th>
+        <th>Total item</th>
+      </tr>
+    </thead>
+    <tbody>${resumenPedidoHtml(items)}</tbody>
+  </table>
+`;
+
+const resumenPedidoTexto = (items: any[]) =>
+  items
+    .map(
+      (item) =>
+        [
+          `- ${item.producto}`,
+          `  Cantidad: ${item.cantidad}`,
+          `  Costo de diseno: ${item.costoDiseno > 0 ? moneda(item.costoDiseno) : "No aplica"}`,
+          `  Total item: ${moneda(item.subtotalConDescuento + item.costoDiseno)}`,
+        ].join("\n"),
+    )
+    .join("\n");
+
 const resumenTotalesTexto = (resumen: any) =>
   resumen.tieneDescuento
     ? [
         `Subtotal antes de descuento: ${moneda(resumen.subtotalBruto)}`,
+        `Descuento aplicado: ${porcentaje((resumen.descuentoTotal / Math.max(resumen.subtotalBruto, 1)) * 100)}`,
         `Valor descontado: -${moneda(resumen.descuentoTotal)}`,
         `Subtotal con descuento: ${moneda(resumen.subtotalConDescuento)}`,
+        `Costo de diseno: ${moneda(resumen.costoDiseno)}`,
         `Costos adicionales: ${moneda(resumen.costosAdicionales)}`,
         `Total final: ${moneda(resumen.total)}`,
       ].join("\n")
     : [
         `Subtotal: ${moneda(resumen.subtotalBruto)}`,
         "Descuento aplicado: Sin descuento / 0%",
+        `Costo de diseno: ${resumen.costoDiseno > 0 ? moneda(resumen.costoDiseno) : "No aplica"}`,
         `Costos adicionales: ${moneda(resumen.costosAdicionales)}`,
         `Total final: ${moneda(resumen.total)}`,
       ].join("\n");
+
+const resumenFinalCotizacionTexto = (resumen: any) =>
+  [
+    `Costos adicionales: ${moneda(resumen.costosAdicionales)}`,
+    `Total final: ${moneda(resumen.total)}`,
+  ].join("\n");
+
+const resumenFinalCotizacionHtml = (resumen: any) => `
+  <p><strong>Costos adicionales:</strong> ${escapeHtml(moneda(resumen.costosAdicionales))}</p>
+  <p><strong>Total final:</strong> ${escapeHtml(moneda(resumen.total))}</p>
+`;
 
 const resumenTotalesHtml = (resumen: any) =>
   resumen.tieneDescuento
     ? `
       <p><strong>Subtotal antes de descuento:</strong> ${escapeHtml(moneda(resumen.subtotalBruto))}</p>
+      <p><strong>Descuento aplicado:</strong> ${escapeHtml(porcentaje((resumen.descuentoTotal / Math.max(resumen.subtotalBruto, 1)) * 100))}</p>
       <p><strong>Valor descontado:</strong> -${escapeHtml(moneda(resumen.descuentoTotal))}</p>
       <p><strong>Subtotal con descuento:</strong> ${escapeHtml(moneda(resumen.subtotalConDescuento))}</p>
+      <p><strong>Costo de diseno:</strong> ${escapeHtml(moneda(resumen.costoDiseno))}</p>
       <p><strong>Costos adicionales:</strong> ${escapeHtml(moneda(resumen.costosAdicionales))}</p>
       <p><strong>Total final:</strong> ${escapeHtml(moneda(resumen.total))}</p>
     `
     : `
       <p><strong>Subtotal:</strong> ${escapeHtml(moneda(resumen.subtotalBruto))}</p>
       <p><strong>Descuento aplicado:</strong> Sin descuento / 0%</p>
+      <p><strong>Costo de diseno:</strong> ${escapeHtml(resumen.costoDiseno > 0 ? moneda(resumen.costoDiseno) : "No aplica")}</p>
       <p><strong>Costos adicionales:</strong> ${escapeHtml(moneda(resumen.costosAdicionales))}</p>
       <p><strong>Total final:</strong> ${escapeHtml(moneda(resumen.total))}</p>
     `;
@@ -231,31 +303,138 @@ export const buildCotizacionCreadaClienteTemplate = (payload: any): MailData => 
 
   return {
     to: payload.cliente.correo,
-    subject: `Cotizacion PIXEL #${payload.idCotizacion}`,
+    subject: "Recibimos tu solicitud de cotizacion - PIXEL",
     text: [
       `Hola ${payload.cliente.nombre}.`,
       "",
-      `Recibimos tu cotizacion #${payload.idCotizacion}.`,
+      "Recibimos tu solicitud de cotizacion.",
       resumenTexto(items),
       "",
-      resumenTotalesTexto(resumen),
+      resumenFinalCotizacionTexto(resumen),
       `Observaciones: ${textoSeguro(payload.observaciones, "Sin observaciones")}`,
       "",
+      "Un asesor de PIXEL se comunicara contigo por telefono o correo para confirmar detalles como diseno, referencias, abonos, tiempos de entrega y cualquier ajuste necesario.",
       "El valor final sera confirmado por nuestro equipo.",
-      "Por este mismo correo te notificaremos si la cotizacion avanza a pedido.",
+      "Por este mismo correo te notificaremos si la solicitud avanza a pedido.",
       ...mensajeAccesoTexto,
       "",
       "PIXEL",
     ].join("\n"),
     html: `
       <p>Hola ${escapeHtml(payload.cliente.nombre)}.</p>
-      <p>Recibimos tu cotizacion #${escapeHtml(payload.idCotizacion)}.</p>
+      <p>Recibimos tu solicitud de cotizacion.</p>
+      ${tablaItems(items)}
+      ${resumenFinalCotizacionHtml(resumen)}
+      <p><strong>Observaciones:</strong> ${escapeHtml(textoSeguro(payload.observaciones, "Sin observaciones"))}</p>
+      <p>Un asesor de PIXEL se comunicara contigo por telefono o correo para confirmar detalles como diseno, referencias, abonos, tiempos de entrega y cualquier ajuste necesario.</p>
+      <p>El valor final sera confirmado por nuestro equipo.</p>
+      <p>Por este mismo correo te notificaremos si la solicitud avanza a pedido.</p>
+      ${mensajeAccesoHtml}
+      <p>PIXEL</p>
+    `,
+  };
+};
+
+export const buildCotizacionPresencialCreadaClienteTemplate = (
+  payload: any,
+): MailData => {
+  const items = normalizarItems(payload);
+  const resumen = calcularResumen(payload, items);
+  const acceso = payload.accesoCliente;
+  const mensajeAccesoTexto = acceso?.linkCrearPassword
+    ? [
+        "Creamos un acceso para que puedas consultar el seguimiento si tu pedido avanza.",
+        `Crea tu contrasena aqui: ${acceso.linkCrearPassword}`,
+      ]
+    : acceso?.usuarioExistente
+      ? [
+          "Puedes iniciar sesion con tu correo para consultar el seguimiento si tu pedido avanza.",
+        ]
+      : [];
+  const mensajeAccesoHtml = acceso?.linkCrearPassword
+    ? `<p>Creamos un acceso para que puedas consultar el seguimiento si tu pedido avanza.</p>
+       <p><a href="${escapeHtml(acceso.linkCrearPassword)}">Crear contrasena de acceso</a></p>`
+    : acceso?.usuarioExistente
+      ? "<p>Puedes iniciar sesion con tu correo para consultar el seguimiento si tu pedido avanza.</p>"
+      : "";
+
+  return {
+    to: payload.cliente.correo,
+    subject: "Registramos tu cotizacion presencial - PIXEL",
+    text: [
+      `Hola ${payload.cliente.nombre}.`,
+      "",
+      "Registramos tu cotizacion presencial.",
+      resumenTexto(items),
+      "",
+      resumenTotalesTexto(resumen),
+      `Observaciones: ${textoSeguro(payload.observaciones, "Sin observaciones")}`,
+      "",
+      "Un asesor de PIXEL se comunicara contigo para confirmar detalles, abonos y tiempos de entrega.",
+      ...mensajeAccesoTexto,
+      "",
+      "PIXEL",
+    ].join("\n"),
+    html: `
+      <p>Hola ${escapeHtml(payload.cliente.nombre)}.</p>
+      <p>Registramos tu cotizacion presencial.</p>
       ${tablaItems(items)}
       ${resumenTotalesHtml(resumen)}
       <p><strong>Observaciones:</strong> ${escapeHtml(textoSeguro(payload.observaciones, "Sin observaciones"))}</p>
-      <p>El valor final sera confirmado por nuestro equipo.</p>
-      <p>Por este mismo correo te notificaremos si la cotizacion avanza a pedido.</p>
+      <p>Un asesor de PIXEL se comunicara contigo para confirmar detalles, abonos y tiempos de entrega.</p>
       ${mensajeAccesoHtml}
+      <p>PIXEL</p>
+    `,
+  };
+};
+
+export const buildCotizacionModificadaTemplate = (payload: any): MailData => {
+  const cotizacion = payload.cotizacion;
+  const items = normalizarItems(cotizacion);
+  const resumen = calcularResumen(cotizacion, items);
+  const motivo = textoSeguro(
+    payload.motivoCambio,
+    "Se realizaron ajustes en la cotizacion.",
+  );
+
+  return {
+    to: cotizacion.cliente.correo,
+    subject: "Tu cotizacion fue modificada - PIXEL",
+    text: [
+      `Hola ${cotizacion.cliente.nombre}.`,
+      "",
+      "Tu cotizacion fue modificada.",
+      `Motivo del cambio: ${motivo}`,
+      payload.totalAnterior !== undefined
+        ? `Total anterior: ${moneda(payload.totalAnterior)}`
+        : "",
+      "",
+      resumenTexto(items),
+      "",
+      resumenFinalCotizacionTexto(resumen),
+      `Observaciones: ${textoSeguro(cotizacion.observaciones, "Sin observaciones")}`,
+      "",
+      "Un asesor de PIXEL se comunicara contigo para confirmar detalles del diseno, forma de pago, abonos y tiempos de entrega.",
+      "El valor final sera confirmado por nuestro equipo.",
+      "",
+      "PIXEL",
+    ]
+      .filter((linea) => linea !== "")
+      .join("\n"),
+    html: `
+      <p>Hola ${escapeHtml(cotizacion.cliente.nombre)}.</p>
+      <p>Tu cotizacion fue modificada.</p>
+      <p><strong>Motivo del cambio:</strong> ${escapeHtml(motivo)}</p>
+      ${
+        payload.totalAnterior !== undefined
+          ? `<p><strong>Total anterior:</strong> ${escapeHtml(moneda(payload.totalAnterior))}</p>`
+          : ""
+      }
+      ${tablaItems(items)}
+      ${resumenFinalCotizacionHtml(resumen)}
+      <p><strong>Observaciones:</strong> ${escapeHtml(textoSeguro(cotizacion.observaciones, "Sin observaciones"))}</p>
+      <p>Un asesor de PIXEL se comunicara contigo para confirmar detalles del diseno, forma de pago, abonos y tiempos de entrega.</p>
+      <p>El valor final sera confirmado por nuestro equipo.</p>
       <p>PIXEL</p>
     `,
   };
@@ -292,24 +471,28 @@ export const buildPedidoCreadoTemplate = (payload: any): MailData => {
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
-      `Tu cotizacion #${pedido.idCotizacion} fue aprobada y se creo el pedido #${pedido.idPedido}.`,
-      resumenTexto(items),
+      "Tu pedido fue creado correctamente.",
+      `Numero de pedido: ${pedido.idPedido}.`,
+      resumenPedidoTexto(items),
       "",
       resumenTotalesTexto(resumen),
       "Estado actual: PENDIENTE.",
-      "Siguiente paso: realiza el primer abono para iniciar el proceso.",
-      "El pedido empezara cuando el abono sea registrado y confirmado por nuestro equipo.",
+      "Siguiente paso: realizar el primer abono.",
+      "Para iniciar el proceso, debes realizar el primer abono. Nuestro equipo te indicara los pasos por telefono o correo.",
+      "Un asesor de PIXEL se comunicara contigo para confirmar detalles del diseno, forma de pago, abonos y tiempos de entrega.",
       "",
       "Gracias por confiar en PIXEL.",
     ].join("\n"),
     html: `
       <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Tu cotizacion #${escapeHtml(pedido.idCotizacion)} fue aprobada y se creo el pedido #${escapeHtml(pedido.idPedido)}.</p>
-      ${tablaItems(items)}
+      <p>Tu pedido fue creado correctamente.</p>
+      <p><strong>Numero de pedido:</strong> ${escapeHtml(pedido.idPedido)}</p>
+      ${tablaPedido(items)}
       ${resumenTotalesHtml(resumen)}
       <p><strong>Estado actual:</strong> PENDIENTE.</p>
-      <p><strong>Siguiente paso:</strong> realiza el primer abono para iniciar el proceso.</p>
-      <p>El pedido empezara cuando el abono sea registrado y confirmado por nuestro equipo.</p>
+      <p><strong>Siguiente paso:</strong> realizar el primer abono.</p>
+      <p>Para iniciar el proceso, debes realizar el primer abono. Nuestro equipo te indicara los pasos por telefono o correo.</p>
+      <p>Un asesor de PIXEL se comunicara contigo para confirmar detalles del diseno, forma de pago, abonos y tiempos de entrega.</p>
       <p>Gracias por confiar en PIXEL.</p>
     `,
   };
@@ -375,6 +558,36 @@ export const buildPedidoFinalizadoTemplate = (payload: any): MailData => {
       <p><strong>Estado actual:</strong> FINALIZADO.</p>
       <p><strong>Siguiente paso:</strong> ${escapeHtml(entrega)}</p>
       <p>Gracias por elegir PIXEL.</p>
+    `,
+  };
+};
+
+export const buildPedidoPendienteSaldoFinalTemplate = (payload: any): MailData => {
+  const pedido = payload.pedido;
+  const saldoPendiente = numeroSeguro(
+    pedido?.saldoPendiente ?? numeroSeguro(pedido?.total) - numeroSeguro(pedido?.totalPagado),
+  );
+
+  return {
+    to: pedido.cliente.correo,
+    subject: "Tu pedido termino produccion y falta el saldo final - PIXEL",
+    text: [
+      `Hola ${pedido.cliente.nombre}.`,
+      "",
+      `Tu pedido #${pedido.idPedido} ya termino produccion.`,
+      `Saldo pendiente: ${moneda(saldoPendiente)}`,
+      "Para poder reclamar o recibir tu pedido, primero debemos confirmar el pago del saldo final.",
+      "Un asesor de PIXEL se comunicara contigo para coordinar el pago y la entrega.",
+      "",
+      "Gracias por confiar en PIXEL.",
+    ].join("\n"),
+    html: `
+      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
+      <p>Tu pedido #${escapeHtml(pedido.idPedido)} ya termino produccion.</p>
+      <p><strong>Saldo pendiente:</strong> ${escapeHtml(moneda(saldoPendiente))}</p>
+      <p>Para poder reclamar o recibir tu pedido, primero debemos confirmar el pago del saldo final.</p>
+      <p>Un asesor de PIXEL se comunicara contigo para coordinar el pago y la entrega.</p>
+      <p>Gracias por confiar en PIXEL.</p>
     `,
   };
 };

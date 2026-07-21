@@ -44,6 +44,8 @@ export const PERMISOS_SISTEMA = [
   { codigo: "disenos.crear", modulo: "disenos", accion: "crear", descripcion: "Crear disenos" },
   { codigo: "disenos.editar", modulo: "disenos", accion: "editar", descripcion: "Editar disenos" },
   { codigo: "disenos.aprobar", modulo: "disenos", accion: "aprobar", descripcion: "Aprobar disenos" },
+  { codigo: "disenos.aprobar_cliente", modulo: "disenos", accion: "aprobar_cliente", descripcion: "Registrar aprobacion de diseno por cliente" },
+  { codigo: "disenos.rechazar_cliente", modulo: "disenos", accion: "rechazar_cliente", descripcion: "Registrar rechazo de diseno por cliente" },
   { codigo: "disenos.eliminar", modulo: "disenos", accion: "eliminar", descripcion: "Eliminar disenos" },
   { codigo: "disenos.produccion", modulo: "disenos", accion: "produccion", descripcion: "Consultar produccion pendiente" },
   { codigo: "proveedores.ver", modulo: "proveedores", accion: "ver", descripcion: "Consultar proveedores" },
@@ -77,6 +79,8 @@ export const PERMISOS_SISTEMA = [
   { codigo: "pedidos.cliente.ver", modulo: "pedidos", accion: "cliente_ver", descripcion: "Consultar pedidos propios como cliente" },
   { codigo: "abonos.cliente.ver", modulo: "abonos", accion: "cliente_ver", descripcion: "Consultar abonos propios como cliente" },
   { codigo: "disenos.cliente.ver", modulo: "disenos", accion: "cliente_ver", descripcion: "Consultar disenos propios como cliente" },
+  { codigo: "disenos.cliente.aprobar", modulo: "disenos", accion: "cliente_aprobar", descripcion: "Aprobar disenos propios como cliente" },
+  { codigo: "disenos.cliente.rechazar", modulo: "disenos", accion: "cliente_rechazar", descripcion: "Rechazar disenos propios como cliente" },
   { codigo: "perfil.ver", modulo: "perfil", accion: "ver", descripcion: "Consultar perfil propio" },
   { codigo: "perfil.editar", modulo: "perfil", accion: "editar", descripcion: "Editar perfil propio" },
 ] as const;

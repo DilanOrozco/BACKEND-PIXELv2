@@ -27,6 +27,10 @@ test("catalogo incluye permisos de categorias_producto", () => {
   assert.equal(PERMISOS_VALIDOS.has("categorias_producto.editar"), true);
   assert.equal(PERMISOS_VALIDOS.has("categorias_producto.desactivar"), true);
   assert.equal(PERMISOS_VALIDOS.has("categorias_producto.eliminar"), true);
+  assert.equal(PERMISOS_VALIDOS.has("disenos.cliente.aprobar"), true);
+  assert.equal(PERMISOS_VALIDOS.has("disenos.cliente.rechazar"), true);
+  assert.equal(PERMISOS_VALIDOS.has("disenos.aprobar_cliente"), true);
+  assert.equal(PERMISOS_VALIDOS.has("disenos.rechazar_cliente"), true);
 });
 
 test("autorizarPermiso permite Admin por bypass sin consultar permisos", async (t) => {

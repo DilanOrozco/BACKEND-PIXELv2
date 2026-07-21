@@ -24,6 +24,7 @@ enum EstadoCotizacion {
 enum EstadoPedido {
   PENDIENTE
   EN_PROCESO
+  PENDIENTE_SALDO_FINAL
   FINALIZADO
 }
 
@@ -49,6 +50,7 @@ enum EstadoDiseno {
   PENDIENTE
   ENVIADO
   APROBADO
+  RECHAZADO
 }
 
 enum EstadoCompra {
@@ -118,6 +120,8 @@ model Usuario {
   abonosConfirmados   Abonos[]             @relation("AbonosConfirmados")
   abonosRechazados    Abonos[]             @relation("AbonosRechazados")
   disenos             Diseno[]
+  disenosRespondidos  Diseno[]             @relation("DisenosRespuestaRegistrada")
+  disenosRecibidos    Diseno[]             @relation("DisenosRecibidos")
   comprasRealizadas   Compra[]
   passwordResetTokens PasswordResetToken[]
   cliente             Cliente?
@@ -348,13 +352,23 @@ model Diseno {
   descripcion        String?
   observaciones      String?
   estado             EstadoDiseno @default(PENDIENTE)
+  origenDiseno       String       @default("DISENADOR") @map("origen_diseno") @db.VarChar(30)
+  medioRecepcion     String?      @map("medio_recepcion") @db.VarChar(30)
+  recibidoPorId      Int?         @map("recibido_por_id")
+  fechaRecepcion     DateTime?    @map("fecha_recepcion")
+  medioRespuestaCliente String?      @map("medio_respuesta_cliente") @db.VarChar(30)
+  observacionesCliente  String?      @map("observaciones_cliente")
+  fechaRespuestaCliente DateTime?    @map("fecha_respuesta_cliente")
+  respuestaRegistradaPorId Int?      @map("respuesta_registrada_por_id")
   fechaCreacion      DateTime     @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime     @updatedAt @map("fecha_actualizacion")
   fechaEnvio         DateTime?    @map("fecha_envio")
   fechaAprobacion    DateTime?    @map("fecha_aprobacion")
 
-  pedido    Pedido   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
-  disenador Usuario? @relation(fields: [idDisenador], references: [idUsuario], onDelete: SetNull)
+  pedido                  Pedido   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  disenador               Usuario? @relation(fields: [idDisenador], references: [idUsuario], onDelete: SetNull)
+  respuestaRegistradaPor  Usuario? @relation("DisenosRespuestaRegistrada", fields: [respuestaRegistradaPorId], references: [idUsuario], onDelete: SetNull)
+  recibidoPor             Usuario? @relation("DisenosRecibidos", fields: [recibidoPorId], references: [idUsuario], onDelete: SetNull)
 
   @@map("disenos")
 }

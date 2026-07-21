@@ -1,6 +1,11 @@
 import { prisma } from "../../config/prisma";
 
-const ESTADOS_PEDIDO = ["PENDIENTE", "EN_PROCESO", "FINALIZADO"] as const;
+const ESTADOS_PEDIDO = [
+  "PENDIENTE",
+  "EN_PROCESO",
+  "PENDIENTE_SALDO_FINAL",
+  "FINALIZADO",
+] as const;
 
 const clienteResumenSelect = {
   idCliente: true,
@@ -82,6 +87,7 @@ const disenoClienteSelect = {
 
 const pedidoActivoClienteSelect = {
   idPedido: true,
+  idCliente: true,
   estadoPedido: true,
   estadoPago: true,
   total: true,
@@ -89,6 +95,9 @@ const pedidoActivoClienteSelect = {
   saldoPendiente: true,
   fechaCreacion: true,
   fechaEntregaEstimada: true,
+  cliente: {
+    select: clienteResumenSelect,
+  },
   detalles: {
     select: detallePedidoClienteSelect,
     orderBy: {
@@ -111,12 +120,16 @@ const pedidoActivoClienteSelect = {
 
 const historialPedidoClienteSelect = {
   idPedido: true,
+  idCliente: true,
   estadoPedido: true,
   estadoPago: true,
   total: true,
   totalPagado: true,
   saldoPendiente: true,
   fechaCreacion: true,
+  cliente: {
+    select: clienteResumenSelect,
+  },
 } as const;
 
 const detalleCotizacionClienteSelect = {
@@ -337,7 +350,7 @@ export class DashboardRepository {
       where: {
         idCliente,
         estadoPedido: {
-          in: ["PENDIENTE", "EN_PROCESO"],
+          in: ["PENDIENTE", "EN_PROCESO", "PENDIENTE_SALDO_FINAL"],
         },
       },
       select: pedidoActivoClienteSelect,
@@ -354,7 +367,7 @@ export class DashboardRepository {
         OR: [
           {
             estadoPedido: {
-              in: ["PENDIENTE", "EN_PROCESO"],
+              in: ["PENDIENTE", "EN_PROCESO", "PENDIENTE_SALDO_FINAL"],
             },
           },
           {

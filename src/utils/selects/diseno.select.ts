@@ -6,6 +6,14 @@ export const disenoSelect = {
   descripcion: true,
   observaciones: true,
   estado: true,
+  origenDiseno: true,
+  medioRecepcion: true,
+  recibidoPorId: true,
+  fechaRecepcion: true,
+  medioRespuestaCliente: true,
+  observacionesCliente: true,
+  fechaRespuestaCliente: true,
+  respuestaRegistradaPorId: true,
   fechaCreacion: true,
   fechaActualizacion: true,
   fechaEnvio: true,
@@ -26,6 +34,32 @@ export const disenoSelect = {
           correo: true,
           telefono: true,
           direccion: true,
+        },
+      },
+    },
+  },
+  respuestaRegistradaPor: {
+    select: {
+      idUsuario: true,
+      nombre: true,
+      correo: true,
+      rol: {
+        select: {
+          idRol: true,
+          nombre: true,
+        },
+      },
+    },
+  },
+  recibidoPor: {
+    select: {
+      idUsuario: true,
+      nombre: true,
+      correo: true,
+      rol: {
+        select: {
+          idRol: true,
+          nombre: true,
         },
       },
     },

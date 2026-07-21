@@ -46,9 +46,22 @@ interface ResumenConfirmacionPago {
   primerAbonoConfirmado: boolean;
 }
 
+interface ResultadoAbonoConfirmadoTransaccion {
+  idAbono: number;
+  pagoInicialValido: boolean;
+  primerAbonoConfirmado: boolean;
+}
+
 const esCliente = (usuarioAuth: AuthUser) => usuarioAuth.rol === "Cliente";
-const idClienteAutenticado = (usuarioAuth: AuthUser) =>
-  Number(usuarioAuth.idCliente ?? usuarioAuth.idUsuario);
+const idClienteAutenticado = (usuarioAuth: AuthUser) => {
+  const idCliente = Number(usuarioAuth.idCliente);
+
+  if (!Number.isInteger(idCliente) || idCliente <= 0) {
+    throw new Error("El usuario cliente no tiene un cliente vinculado.");
+  }
+
+  return idCliente;
+};
 const puedeGestionarAbonos = (usuarioAuth: AuthUser) =>
   ["Admin", "Secretaria"].includes(usuarioAuth.rol);
 
@@ -71,7 +84,19 @@ const validarId = (id: number, mensaje: string) => {
   }
 };
 
+const notificarPrimerAbonoConfirmado = async (abono: unknown) => {
+  try {
+    await notificationService.primerAbonoConfirmado(abono);
+  } catch (error) {
+    console.error("Error enviando correo de primer abono confirmado:", error);
+  }
+};
+
 export class AbonoService {
+  constructor(
+    private readonly ejecutarTransaccion = runPrismaTransaction,
+  ) {}
+
   private obtenerUsuario(usuarioAuth: AuthUser | undefined) {
     if (!usuarioAuth) {
       throw new Error("Usuario no autenticado.");
@@ -282,14 +307,14 @@ export class AbonoService {
     data: CrearAbonoData,
     user: AuthUser,
     tx: Prisma.TransactionClient,
-  ) {
+  ): Promise<ResultadoAbonoConfirmadoTransaccion> {
     const resumenConfirmacion = await this.validarConfirmacionDeMonto(
       data.idPedido,
       data.monto,
       tx,
     );
 
-    const abonoCreado = await abonoRepository.crearAbono(
+    const abonoCreado = await abonoRepository.crearAbonoOperacion(
       {
         ...data,
         estado: ESTADO_ABONO_CONFIRMADO,
@@ -311,10 +336,8 @@ export class AbonoService {
       resumenConfirmacion.pagoInicialValido,
     );
 
-    const abono = await abonoRepository.buscarPorId(abonoCreado.idAbono, tx);
-
     return {
-      abono,
+      idAbono: abonoCreado.idAbono,
       pagoInicialValido: resumenConfirmacion.pagoInicialValido,
       primerAbonoConfirmado: resumenConfirmacion.primerAbonoConfirmado,
     };
@@ -331,7 +354,7 @@ export class AbonoService {
       tx,
     );
 
-    return resultado.abono;
+    return await abonoRepository.buscarPorIdOperacion(resultado.idAbono, tx);
   }
 
   async crearAbono(data: DatosEntrada, usuarioAuth: AuthUser | undefined) {
@@ -363,7 +386,7 @@ export class AbonoService {
     }
 
     if (data.confirmar === true) {
-      const resultado = await runPrismaTransaction(async (tx) => {
+      const resultado = await this.ejecutarTransaccion(async (tx) => {
         return await this.crearAbonoConfirmadoConResumenEnTransaccion(
           datosBase,
           user,
@@ -371,11 +394,13 @@ export class AbonoService {
         );
       });
 
+      const abonoCompleto = await abonoRepository.buscarPorId(resultado.idAbono);
+
       if (resultado.primerAbonoConfirmado) {
-        await notificationService.primerAbonoConfirmado(resultado.abono);
+        await notificarPrimerAbonoConfirmado(abonoCompleto);
       }
 
-      return resultado.abono;
+      return abonoCompleto;
     }
 
     return await abonoRepository.crearAbono({
@@ -398,8 +423,8 @@ export class AbonoService {
       throw new Error(error);
     }
 
-    const resultado = await runPrismaTransaction(async (tx) => {
-      const abono = await abonoRepository.buscarPorId(idAbono, tx);
+    const resultado = await this.ejecutarTransaccion(async (tx) => {
+      const abono = await abonoRepository.buscarPorIdOperacion(idAbono, tx);
 
       if (!abono) {
         throw new Error("Abono no encontrado.");
@@ -433,7 +458,7 @@ export class AbonoService {
         dataActualizar.referencia = limpiarTextoOpcional(data.referencia);
       }
 
-      const abonoConfirmado = await abonoRepository.actualizarAbono(
+      const abonoConfirmado = await abonoRepository.actualizarAbonoOperacion(
         idAbono,
         dataActualizar,
         tx,
@@ -452,16 +477,18 @@ export class AbonoService {
       );
 
       return {
-        abono: await abonoRepository.buscarPorId(idAbono, tx),
+        idAbono,
         primerAbonoConfirmado: resumenConfirmacion.primerAbonoConfirmado,
       };
     });
 
+    const abono = await abonoRepository.buscarPorId(resultado.idAbono);
+
     if (resultado.primerAbonoConfirmado) {
-      await notificationService.primerAbonoConfirmado(resultado.abono);
+      await notificarPrimerAbonoConfirmado(abono);
     }
 
-    return resultado.abono;
+    return abono;
   }
 
   async rechazarAbono(
@@ -478,7 +505,7 @@ export class AbonoService {
       throw new Error(error);
     }
 
-    return await runPrismaTransaction(async (tx) => {
+    return await this.ejecutarTransaccion(async (tx) => {
       const abono = await abonoRepository.buscarPorId(idAbono, tx);
 
       if (!abono) {

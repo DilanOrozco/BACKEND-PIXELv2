@@ -30,6 +30,25 @@ export class PermisoRepository {
     });
   }
 
+  async listarPermisosActivosPorCodigos(codigos: string[]) {
+    if (codigos.length === 0) {
+      return [];
+    }
+
+    return await prisma.permiso.findMany({
+      where: {
+        codigo: {
+          in: codigos,
+        },
+        estado: true,
+      },
+      select: {
+        idPermiso: true,
+        codigo: true,
+      },
+    });
+  }
+
   async listarPermisosPorRol(idRol: number) {
     return await prisma.rolPermiso.findMany({
       where: {
@@ -89,6 +108,18 @@ export class PermisoRepository {
           codigo: true,
         },
       });
+      const codigosExistentes = new Set(
+        permisos.map((permiso) => permiso.codigo),
+      );
+      const codigosInexistentes = codigos.filter(
+        (codigo) => !codigosExistentes.has(codigo),
+      );
+
+      if (codigosInexistentes.length > 0) {
+        throw new Error(
+          `Permisos no existen o estan inactivos: ${codigosInexistentes.join(", ")}.`,
+        );
+      }
 
       await tx.rolPermiso.deleteMany({
         where: { idRol },

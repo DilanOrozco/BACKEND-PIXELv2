@@ -7,7 +7,12 @@ import { ClienteAccessService } from "./cliente-access.service";
 const dashboardRepository = new DashboardRepository();
 const clienteAccessService = new ClienteAccessService();
 
-const ESTADOS_PEDIDO = ["PENDIENTE", "EN_PROCESO", "FINALIZADO"] as const;
+const ESTADOS_PEDIDO = [
+  "PENDIENTE",
+  "EN_PROCESO",
+  "PENDIENTE_SALDO_FINAL",
+  "FINALIZADO",
+] as const;
 const MESES = [
   "Enero",
   "Febrero",
@@ -165,6 +170,7 @@ const crearRangoAnio = (anio: number): RangoFechas => ({
 const crearConteosVacios = (): ConteosPorEstado => ({
   PENDIENTE: 0,
   EN_PROCESO: 0,
+  PENDIENTE_SALDO_FINAL: 0,
   FINALIZADO: 0,
 });
 

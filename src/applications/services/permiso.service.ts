@@ -11,6 +11,8 @@ const PERMISOS_ROL_CLIENTE = [
   "pedidos.cliente.ver",
   "abonos.cliente.ver",
   "disenos.cliente.ver",
+  "disenos.cliente.aprobar",
+  "disenos.cliente.rechazar",
   "perfil.ver",
   "perfil.editar",
 ];
@@ -33,12 +35,24 @@ const normalizarCodigos = (codigos: unknown) => {
 
 export class PermisoService {
   async asegurarRolCliente() {
-    await permisoRepository.sincronizarPermisosSistema();
+    const rolExistente = await rolRepository.buscarPorNombreExacto("Cliente");
 
-    return await rolRepository.asegurarRolConPermisos(
+    if (rolExistente) {
+      if (rolExistente.estado) {
+        return rolExistente;
+      }
+
+      return await rolRepository.actualizarRol(rolExistente.idRol, {
+        descripcion:
+          rolExistente.descripcion ??
+          "Cliente externo con acceso a su propio dashboard",
+        estado: true,
+      });
+    }
+
+    return await rolRepository.crearRol(
       "Cliente",
       "Cliente externo con acceso a su propio dashboard",
-      PERMISOS_ROL_CLIENTE,
     );
   }
 
@@ -103,17 +117,20 @@ export class PermisoService {
     }
 
     const codigos = normalizarCodigos(codigosEntrada);
+    const permisosExistentes =
+      await permisoRepository.listarPermisosActivosPorCodigos(codigos);
+    const codigosExistentes = new Set(
+      permisosExistentes.map((permiso) => permiso.codigo),
+    );
     const codigosInvalidos = codigos.filter(
-      (codigo) => !PERMISOS_VALIDOS.has(codigo),
+      (codigo) => !codigosExistentes.has(codigo),
     );
 
     if (codigosInvalidos.length > 0) {
       throw new Error(
-        `Permisos no validos: ${codigosInvalidos.join(", ")}.`,
+        `Permisos no existen o estan inactivos: ${codigosInvalidos.join(", ")}.`,
       );
     }
-
-    await permisoRepository.sincronizarPermisosSistema();
 
     return await permisoRepository.asignarPermisosARol(idRol, codigos);
   }

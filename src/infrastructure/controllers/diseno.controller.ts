@@ -40,6 +40,20 @@ export class DisenoController {
     }
   }
 
+  async listarDisenosCliente(req: AuthRequest, res: Response) {
+    try {
+      const disenos = await disenoService.listarDisenosCliente(req.user);
+
+      return res.status(200).json({
+        data: disenos,
+      });
+    } catch (error: unknown) {
+      return res.status(404).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
   async listarPorPedido(req: AuthRequest, res: Response) {
     try {
       const idPedido = Number(req.params.idPedido);
@@ -57,7 +71,7 @@ export class DisenoController {
 
   async buscarPorId(req: AuthRequest, res: Response) {
     try {
-      const idDiseno = Number(req.params.id);
+      const idDiseno = Number(req.params.id ?? req.params.idDiseno);
       const diseno = await disenoService.buscarPorId(idDiseno, req.user);
 
       return res.status(200).json({
@@ -92,7 +106,7 @@ export class DisenoController {
 
   async aprobarDiseno(req: AuthRequest, res: Response) {
     try {
-      const idDiseno = Number(req.params.id);
+      const idDiseno = Number(req.params.id ?? req.params.idDiseno);
       const resultado = await disenoService.aprobarDiseno(
         idDiseno,
         req.user,
@@ -103,6 +117,29 @@ export class DisenoController {
         message: resultado.pasoAProduccion
           ? "Diseño aprobado correctamente. El pedido pasó a producción."
           : "Diseño aprobado correctamente, pero el pedido aún no puede pasar a producción porque falta el abono mínimo del 50%.",
+        data: {
+          diseno: resultado.diseno,
+          pedido: resultado.pedido,
+        },
+      });
+    } catch (error: unknown) {
+      return res.status(400).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
+  async rechazarDiseno(req: AuthRequest, res: Response) {
+    try {
+      const idDiseno = Number(req.params.id ?? req.params.idDiseno);
+      const resultado = await disenoService.rechazarDiseno(
+        idDiseno,
+        req.user,
+        req.body,
+      );
+
+      return res.status(200).json({
+        message: "DiseÃ±o rechazado correctamente.",
         data: {
           diseno: resultado.diseno,
           pedido: resultado.pedido,

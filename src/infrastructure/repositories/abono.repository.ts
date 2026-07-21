@@ -60,6 +60,22 @@ const pedidoResumenSelect = {
   },
 } as const;
 
+const abonoOperacionSelect = {
+  idAbono: true,
+  idPedido: true,
+  monto: true,
+  estado: true,
+} as const;
+
+const pedidoPagoSelect = {
+  idPedido: true,
+  estadoPedido: true,
+  estadoPago: true,
+  total: true,
+  totalPagado: true,
+  saldoPendiente: true,
+} as const;
+
 export class AbonoRepository {
   async buscarPedidoPorId(idPedido: number, tx?: Prisma.TransactionClient) {
     return await db(tx).pedido.findUnique({
@@ -82,10 +98,30 @@ export class AbonoRepository {
     });
   }
 
+  async crearAbonoOperacion(
+    data: CrearAbonoData,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).abonos.create({
+      data,
+      select: abonoOperacionSelect,
+    });
+  }
+
   async buscarPorId(idAbono: number, tx?: Prisma.TransactionClient) {
     return await db(tx).abonos.findUnique({
       where: { idAbono },
       select: abonoSelect,
+    });
+  }
+
+  async buscarPorIdOperacion(
+    idAbono: number,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).abonos.findUnique({
+      where: { idAbono },
+      select: abonoOperacionSelect,
     });
   }
 
@@ -142,6 +178,18 @@ export class AbonoRepository {
     });
   }
 
+  async actualizarAbonoOperacion(
+    idAbono: number,
+    data: ActualizarAbonoData,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).abonos.update({
+      where: { idAbono },
+      data,
+      select: abonoOperacionSelect,
+    });
+  }
+
   async eliminarAbono(idAbono: number) {
     return await prisma.abonos.delete({
       where: { idAbono },
@@ -189,7 +237,7 @@ export class AbonoRepository {
     return await db(tx).pedido.update({
       where: { idPedido },
       data,
-      select: pedidoSelect,
+      select: pedidoPagoSelect,
     });
   }
 
@@ -201,7 +249,7 @@ export class AbonoRepository {
     return await db(tx).pedido.update({
       where: { idPedido },
       data: { estadoPedido },
-      select: pedidoSelect,
+      select: pedidoPagoSelect,
     });
   }
 }

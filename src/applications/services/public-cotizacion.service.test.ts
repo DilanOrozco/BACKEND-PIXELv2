@@ -155,7 +155,9 @@ test("PublicCotizacionService no requiere login y crea cotizacion pendiente con 
   const correoStaff = sendMailMock.mock.calls[1]?.arguments[0];
   assert.ok(correoCliente);
   assert.ok(correoStaff);
-  assert.match(correoCliente.subject, /Cotizacion PIXEL #99/);
+  assert.match(correoCliente.subject, /Recibimos tu solicitud de cotizacion/);
+  assert.doesNotMatch(correoCliente.subject, /#99/);
+  assert.doesNotMatch(correoCliente.text, /cotizacion #99/i);
   assert.match(correoCliente.text, /Creamos un acceso/);
   assert.match(correoCliente.text, /crear-password-cliente\/token/);
   assert.match(correoStaff.subject, /Nueva cotizacion publica #99/);

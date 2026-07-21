@@ -8,6 +8,7 @@ import {
   validarActualizarPedido,
   validarCrearPedido,
   validarFinalizarPedido,
+  validarMarcarPendienteSaldoFinal,
   validarPasarPedidoEnProceso,
 } from "../validators/pedido.validator";
 import {
@@ -24,13 +25,22 @@ const ESTADO_COTIZACION_APROBADA = "APROBADA";
 
 const ESTADO_PEDIDO_PENDIENTE = "PENDIENTE";
 const ESTADO_PEDIDO_EN_PROCESO = "EN_PROCESO";
+const ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL = "PENDIENTE_SALDO_FINAL";
 const ESTADO_PEDIDO_FINALIZADO = "FINALIZADO";
 
 const ESTADO_PAGO_PENDIENTE = "PENDIENTE";
+const ESTADO_PAGO_COMPLETO = "COMPLETO";
 
 const esCliente = (usuarioAuth: any) => usuarioAuth?.rol === "Cliente";
-const idClienteAutenticado = (usuarioAuth: any) =>
-  Number(usuarioAuth?.idCliente ?? usuarioAuth?.idUsuario);
+const idClienteAutenticado = (usuarioAuth: any) => {
+  const idCliente = Number(usuarioAuth?.idCliente);
+
+  if (!Number.isInteger(idCliente) || idCliente <= 0) {
+    throw new Error("El usuario cliente no tiene un cliente vinculado.");
+  }
+
+  return idCliente;
+};
 const puedeGestionarPedido = (usuarioAuth: any) =>
   ["Admin", "Secretaria"].includes(usuarioAuth?.rol);
 
@@ -116,6 +126,28 @@ const prepararDetallePedido = (detalle: any) => {
     subtotal: aNumero(detalle.subtotalConDescuento ?? detalle.subtotal),
     observaciones: limpiarTextoOpcional(detalle.observaciones),
   };
+};
+
+const pedidoPagadoCompleto = (pedido: any) =>
+  redondearMoneda(aNumero(pedido?.saldoPendiente)) <= 0 &&
+  redondearMoneda(aNumero(pedido?.totalPagado)) >=
+    redondearMoneda(aNumero(pedido?.total)) &&
+  pedido?.estadoPago === ESTADO_PAGO_COMPLETO;
+
+const notificarSaldoFinalPendiente = async (pedido: any) => {
+  try {
+    await notificationService.pedidoPendienteSaldoFinal(pedido);
+  } catch (error) {
+    console.error("Error enviando correo de saldo final pendiente:", error);
+  }
+};
+
+const notificarPedidoFinalizado = async (pedido: any) => {
+  try {
+    await notificationService.pedidoFinalizado(pedido);
+  } catch (error) {
+    console.error("Error enviando correo de pedido finalizado:", error);
+  }
 };
 
 export class PedidoService {
@@ -453,6 +485,47 @@ export class PedidoService {
     return this.formatearPedido(pedidoActualizado);
   }
 
+  async marcarPendienteSaldoFinal(idPedido: number, data: any, usuarioAuth: any) {
+    validarId(idPedido);
+
+    const error = validarMarcarPendienteSaldoFinal(data);
+
+    if (error) {
+      throw new Error(error);
+    }
+
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
+
+    if (pedido.estadoPedido === ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL) {
+      return this.formatearPedido(pedido);
+    }
+
+    if (pedido.estadoPedido !== ESTADO_PEDIDO_EN_PROCESO) {
+      throw new Error("Solo pedidos EN_PROCESO pueden quedar pendientes de saldo final.");
+    }
+
+    if (pedidoPagadoCompleto(pedido)) {
+      throw new Error("El pedido ya esta pagado completo; puedes finalizarlo directamente.");
+    }
+
+    const observacion = limpiarTextoOpcional(data?.observaciones)
+      ?? "Produccion terminada. Pedido pendiente de saldo final.";
+
+    const pedidoActualizado = await pedidoRepository.actualizarPedido(idPedido, {
+      estadoPedido: ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL,
+      observaciones: agregarObservacionAuditoria(
+        pedido.observaciones,
+        observacion,
+        usuarioAuth,
+        "Produccion terminada pendiente de saldo",
+      ),
+    });
+
+    await notificarSaldoFinalPendiente(pedidoActualizado);
+
+    return this.formatearPedido(pedidoActualizado);
+  }
+
   async finalizarPedido(idPedido: number, data: any, usuarioAuth: any) {
     validarId(idPedido);
 
@@ -464,8 +537,17 @@ export class PedidoService {
 
     const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
-    if (pedido.estadoPedido !== ESTADO_PEDIDO_EN_PROCESO) {
-      throw new Error("Solo se pueden finalizar pedidos en proceso.");
+    if (
+      ![
+        ESTADO_PEDIDO_EN_PROCESO,
+        ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL,
+      ].includes(pedido.estadoPedido)
+    ) {
+      throw new Error("Solo se pueden finalizar pedidos en proceso o pendientes de saldo final.");
+    }
+
+    if (!pedidoPagadoCompleto(pedido)) {
+      throw new Error("No se puede finalizar el pedido porque aun tiene saldo pendiente.");
     }
 
     const observacion = limpiarTextoOpcional(data?.observaciones)
@@ -483,7 +565,7 @@ export class PedidoService {
       ),
     });
 
-    await notificationService.pedidoFinalizado(pedidoActualizado);
+    await notificarPedidoFinalizado(pedidoActualizado);
 
     return this.formatearPedido(pedidoActualizado);
   }
@@ -493,6 +575,6 @@ export class PedidoService {
     await this.buscarPorIdInterno(idPedido, usuarioAuth);
     void data;
 
-    throw new Error("La anulación de pedidos está deshabilitada porque EstadoPedido solo permite PENDIENTE, EN_PROCESO y FINALIZADO.");
+    throw new Error("La anulacion de pedidos esta deshabilitada porque EstadoPedido solo permite PENDIENTE, EN_PROCESO, PENDIENTE_SALDO_FINAL y FINALIZADO.");
   }
 }

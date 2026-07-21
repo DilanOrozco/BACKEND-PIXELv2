@@ -35,6 +35,7 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
     "contarPedidosClientePorEstado",
     async () => [
       { estadoPedido: "PENDIENTE", _count: { _all: 1 } },
+      { estadoPedido: "PENDIENTE_SALDO_FINAL", _count: { _all: 1 } },
       { estadoPedido: "FINALIZADO", _count: { _all: 1 } },
     ],
   );
@@ -60,6 +61,7 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
       {
         idPedido: 5,
         idCliente: 10,
+        cliente,
         estadoPedido: "PENDIENTE",
         fechaCreacion: new Date("2026-07-18"),
         total: 50000,
@@ -70,10 +72,11 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
       {
         idPedido: 4,
         idCliente: 10,
-        estadoPedido: "EN_PROCESO",
+        cliente,
+        estadoPedido: "PENDIENTE_SALDO_FINAL",
         fechaCreacion: new Date("2026-07-17"),
         total: 70000,
-        saldoPendiente: 0,
+        saldoPendiente: 20000,
         abonos: [],
         disenos: [],
       },
@@ -106,8 +109,94 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
   assert.equal(dashboard.kpis.pedidosPendientes, 1);
   assert.equal(dashboard.kpis.pedidosFinalizados, 1);
   assert.equal(dashboard.pedidoActivo?.idPedido, 5);
+  assert.equal(dashboard.pedidoActivo?.cliente.idCliente, 10);
   assert.equal(dashboard.pedidosActivos.length, 2);
   assert.equal(dashboard.pedidosActivos[1]?.idPedido, 4);
+  assert.equal(dashboard.pedidosActivos[1]?.estadoPedido, "PENDIENTE_SALDO_FINAL");
+  assert.ok(
+    dashboard.pedidosActivos.every((pedido: any) => pedido.cliente.idCliente === 10),
+  );
+});
+
+test("DashboardService cliente A y cliente B no mezclan ownership de pedidos", async (t) => {
+  const clienteA = {
+    idCliente: 10,
+    nombre: "Cliente A",
+    correo: "a@pixel.test",
+    telefono: "3000000001",
+    estado: true,
+  };
+  const clienteB = {
+    idCliente: 20,
+    nombre: "Cliente B",
+    correo: "b@pixel.test",
+    telefono: "3000000002",
+    estado: true,
+  };
+  t.mock.method(
+    ClienteAccessService.prototype,
+    "obtenerClienteDeUsuario",
+    async (idUsuario: number) => (idUsuario === 77 ? clienteA : clienteB),
+  );
+  t.mock.method(DashboardRepository.prototype, "contarPedidosCliente", async () => 1);
+  t.mock.method(
+    DashboardRepository.prototype,
+    "contarPedidosClientePorEstado",
+    async () => [{ estadoPedido: "PENDIENTE", _count: { _all: 1 } }],
+  );
+  t.mock.method(
+    DashboardRepository.prototype,
+    "contarCotizacionesPendientesCliente",
+    async () => 0,
+  );
+  t.mock.method(DashboardRepository.prototype, "sumarTotalGastadoCliente", async () => 0);
+  t.mock.method(DashboardRepository.prototype, "sumarSaldoPendienteCliente", async () => 0);
+  const pedidosActivosMock = t.mock.method(
+    DashboardRepository.prototype,
+    "obtenerPedidosActivosCliente",
+    async (idCliente: number) => [
+      {
+        idPedido: idCliente === 10 ? 1 : 2,
+        idCliente,
+        cliente: idCliente === 10 ? clienteA : clienteB,
+        estadoPedido: "PENDIENTE",
+        total: 10000,
+        saldoPendiente: 10000,
+        abonos: [],
+        disenos: [],
+      },
+    ],
+  );
+  t.mock.method(
+    DashboardRepository.prototype,
+    "obtenerHistorialPedidosCliente",
+    async () => [],
+  );
+  t.mock.method(
+    DashboardRepository.prototype,
+    "obtenerCotizacionesPendientesCliente",
+    async () => [],
+  );
+
+  const dashboardA = await new DashboardService().obtenerDashboardCliente(
+    { idUsuario: 77, rol: "Cliente" },
+    {},
+  );
+  const dashboardB = await new DashboardService().obtenerDashboardCliente(
+    { idUsuario: 88, rol: "Cliente" },
+    {},
+  );
+
+  assert.equal(pedidosActivosMock.mock.calls[0]?.arguments[0], 10);
+  assert.equal(pedidosActivosMock.mock.calls[1]?.arguments[0], 20);
+  const pedidoA = dashboardA.pedidosActivos[0];
+  const pedidoB = dashboardB.pedidosActivos[0];
+  assert.ok(pedidoA);
+  assert.ok(pedidoB);
+  assert.equal(pedidoA.cliente.idCliente, 10);
+  assert.equal(pedidoA.cliente.nombre, "Cliente A");
+  assert.equal(pedidoB.cliente.idCliente, 20);
+  assert.equal(pedidoB.cliente.nombre, "Cliente B");
 });
 
 test("DashboardService cliente rechaza usuarios no Cliente", async () => {
