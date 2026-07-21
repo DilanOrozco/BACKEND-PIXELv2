@@ -128,10 +128,13 @@ export class PermisoService {
 
     if (codigosInvalidos.length > 0) {
       throw new Error(
-        `Permisos no existen o estan inactivos: ${codigosInvalidos.join(", ")}.`,
+        "Algunos permisos no existen en el catálogo. Sincroniza permisos primero.",
       );
     }
 
-    return await permisoRepository.asignarPermisosARol(idRol, codigos);
+    return await permisoRepository.reemplazarPermisosARol(
+      idRol,
+      permisosExistentes,
+    );
   }
 }

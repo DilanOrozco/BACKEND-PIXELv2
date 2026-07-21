@@ -115,13 +115,15 @@ test("PermisoService asigna permisos a rol existente sin sincronizar catalogo", 
         codigo,
       })),
   );
-  const asignarMock = t.mock.method(
+  const reemplazarMock = t.mock.method(
     PermisoRepository.prototype,
-    "asignarPermisosARol",
-    async (idRol: number, codigos: string[]) => ({
+    "reemplazarPermisosARol",
+    async (idRol: number, permisos: { idPermiso: number; codigo: string }[]) => ({
       ...rolOperario,
       idRol,
-      permisos: codigos.map((codigo) => ({ permiso: { codigo } })),
+      permisos: permisos.map((permiso) => ({
+        permiso: { codigo: permiso.codigo },
+      })),
     }),
   );
 
@@ -139,10 +141,13 @@ test("PermisoService asigna permisos a rol existente sin sincronizar catalogo", 
     "pedidos.ver",
     "pedidos.editar",
   ]);
-  assert.equal(asignarMock.mock.calls.length, 1);
-  assert.deepEqual(asignarMock.mock.calls[0]?.arguments, [
+  assert.equal(reemplazarMock.mock.calls.length, 1);
+  assert.deepEqual(reemplazarMock.mock.calls[0]?.arguments, [
     8,
-    ["pedidos.ver", "pedidos.editar"],
+    [
+      { idPermiso: 1, codigo: "pedidos.ver" },
+      { idPermiso: 2, codigo: "pedidos.editar" },
+    ],
   ]);
   assert.equal(syncMock.mock.calls.length, 0);
 });
@@ -164,13 +169,15 @@ test("PermisoService asigna permisos a rol recien creado sin sincronizacion pesa
     "listarPermisosActivosPorCodigos",
     async () => [{ idPermiso: 3, codigo: "usuarios.ver" }],
   );
-  const asignarMock = t.mock.method(
+  const reemplazarMock = t.mock.method(
     PermisoRepository.prototype,
-    "asignarPermisosARol",
-    async (idRol: number, codigos: string[]) => ({
+    "reemplazarPermisosARol",
+    async (idRol: number, permisos: { idPermiso: number; codigo: string }[]) => ({
       ...rolOperario,
       idRol,
-      permisos: codigos.map((codigo) => ({ permiso: { codigo } })),
+      permisos: permisos.map((permiso) => ({
+        permiso: { codigo: permiso.codigo },
+      })),
     }),
   );
 
@@ -180,7 +187,7 @@ test("PermisoService asigna permisos a rol recien creado sin sincronizacion pesa
 
   assert.ok(rol);
   assert.equal(rol.idRol, 12);
-  assert.equal(asignarMock.mock.calls.length, 1);
+  assert.equal(reemplazarMock.mock.calls.length, 1);
   assert.equal(syncMock.mock.calls.length, 0);
 });
 
@@ -198,13 +205,13 @@ test("PermisoService permite permisos vacios y deja el rol sin permisos", async 
     "listarPermisosActivosPorCodigos",
     async () => [],
   );
-  const asignarMock = t.mock.method(
+  const reemplazarMock = t.mock.method(
     PermisoRepository.prototype,
-    "asignarPermisosARol",
-    async (idRol: number, codigos: string[]) => ({
+    "reemplazarPermisosARol",
+    async (idRol: number, permisos: { idPermiso: number }[]) => ({
       ...rolOperario,
       idRol,
-      permisos: codigos,
+      permisos,
     }),
   );
 
@@ -213,7 +220,7 @@ test("PermisoService permite permisos vacios y deja el rol sin permisos", async 
   assert.ok(rol);
   assert.equal(rol.idRol, 8);
   assert.equal(listarPermisosMock.mock.calls.length, 1);
-  assert.deepEqual(asignarMock.mock.calls[0]?.arguments, [8, []]);
+  assert.deepEqual(reemplazarMock.mock.calls[0]?.arguments, [8, []]);
   assert.equal(syncMock.mock.calls.length, 0);
 });
 
@@ -231,9 +238,9 @@ test("PermisoService rechaza codigos inexistentes sin reemplazar permisos", asyn
     "listarPermisosActivosPorCodigos",
     async () => [{ idPermiso: 1, codigo: "pedidos.ver" }],
   );
-  const asignarMock = t.mock.method(
+  const reemplazarMock = t.mock.method(
     PermisoRepository.prototype,
-    "asignarPermisosARol",
+    "reemplazarPermisosARol",
     async () => rolOperario,
   );
 
@@ -243,8 +250,8 @@ test("PermisoService rechaza codigos inexistentes sin reemplazar permisos", asyn
         "pedidos.ver",
         "permiso.inexistente",
       ]),
-    /Permisos no existen o estan inactivos: permiso\.inexistente\./,
+    /Algunos permisos no existen en el catálogo\. Sincroniza permisos primero\./,
   );
-  assert.equal(asignarMock.mock.calls.length, 0);
+  assert.equal(reemplazarMock.mock.calls.length, 0);
   assert.equal(syncMock.mock.calls.length, 0);
 });

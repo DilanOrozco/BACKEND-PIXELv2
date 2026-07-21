@@ -3,22 +3,67 @@ import { PERMISOS_SISTEMA } from "../../utils/permisos";
 
 export class PermisoRepository {
   async sincronizarPermisosSistema() {
+    await prisma.permiso.createMany({
+      data: PERMISOS_SISTEMA.map((permiso) => ({ ...permiso })),
+      skipDuplicates: true,
+    });
+
+    const batchSize = 25;
+    for (let index = 0; index < PERMISOS_SISTEMA.length; index += batchSize) {
+      const batch = PERMISOS_SISTEMA.slice(index, index + batchSize);
+      await Promise.all(
+        batch.map((permiso) =>
+          prisma.permiso.update({
+            where: { codigo: permiso.codigo },
+            data: {
+              modulo: permiso.modulo,
+              accion: permiso.accion,
+              descripcion: permiso.descripcion,
+              estado: true,
+            },
+          }),
+        ),
+      );
+    }
+
+    return await prisma.permiso.findMany({
+      orderBy: [{ modulo: "asc" }, { accion: "asc" }],
+    });
+  }
+
+  async reemplazarPermisosARol(
+    idRol: number,
+    permisos: { idPermiso: number }[],
+  ) {
     return await runPrismaTransaction(async (tx) => {
-      for (const permiso of PERMISOS_SISTEMA) {
-        await tx.permiso.upsert({
-          where: { codigo: permiso.codigo },
-          update: {
-            modulo: permiso.modulo,
-            accion: permiso.accion,
-            descripcion: permiso.descripcion,
-            estado: true,
-          },
-          create: permiso,
+      await tx.rolPermiso.deleteMany({
+        where: { idRol },
+      });
+
+      if (permisos.length > 0) {
+        await tx.rolPermiso.createMany({
+          data: permisos.map((permiso) => ({
+            idRol,
+            idPermiso: permiso.idPermiso,
+          })),
+          skipDuplicates: true,
         });
       }
 
-      return await tx.permiso.findMany({
-        orderBy: [{ modulo: "asc" }, { accion: "asc" }],
+      return await tx.rol.findUnique({
+        where: { idRol },
+        include: {
+          permisos: {
+            include: {
+              permiso: true,
+            },
+            orderBy: {
+              permiso: {
+                codigo: "asc",
+              },
+            },
+          },
+        },
       });
     });
   }
@@ -95,61 +140,20 @@ export class PermisoRepository {
   }
 
   async asignarPermisosARol(idRol: number, codigos: string[]) {
-    return await runPrismaTransaction(async (tx) => {
-      const permisos = await tx.permiso.findMany({
-        where: {
-          codigo: {
-            in: codigos,
-          },
-          estado: true,
-        },
-        select: {
-          idPermiso: true,
-          codigo: true,
-        },
-      });
-      const codigosExistentes = new Set(
-        permisos.map((permiso) => permiso.codigo),
+    const permisos = await this.listarPermisosActivosPorCodigos(codigos);
+    const codigosExistentes = new Set(
+      permisos.map((permiso) => permiso.codigo),
+    );
+    const codigosInexistentes = codigos.filter(
+      (codigo) => !codigosExistentes.has(codigo),
+    );
+
+    if (codigosInexistentes.length > 0) {
+      throw new Error(
+        "Algunos permisos no existen en el catálogo. Sincroniza permisos primero.",
       );
-      const codigosInexistentes = codigos.filter(
-        (codigo) => !codigosExistentes.has(codigo),
-      );
+    }
 
-      if (codigosInexistentes.length > 0) {
-        throw new Error(
-          `Permisos no existen o estan inactivos: ${codigosInexistentes.join(", ")}.`,
-        );
-      }
-
-      await tx.rolPermiso.deleteMany({
-        where: { idRol },
-      });
-
-      if (permisos.length > 0) {
-        await tx.rolPermiso.createMany({
-          data: permisos.map((permiso) => ({
-            idRol,
-            idPermiso: permiso.idPermiso,
-          })),
-          skipDuplicates: true,
-        });
-      }
-
-      return await tx.rol.findUnique({
-        where: { idRol },
-        include: {
-          permisos: {
-            include: {
-              permiso: true,
-            },
-            orderBy: {
-              permiso: {
-                codigo: "asc",
-              },
-            },
-          },
-        },
-      });
-    });
+    return await this.reemplazarPermisosARol(idRol, permisos);
   }
 }
