@@ -69,7 +69,7 @@ export class CotizacionRepository {
   async crearCotizacionConDetalles(data: any) {
     const { detalles, ...cotizacionData } = data;
 
-    return await runPrismaTransaction(async (tx) => {
+    const cotizacionCreada = await runPrismaTransaction(async (tx) => {
       return await tx.cotizacion.create({
         data: {
           ...cotizacionData,
@@ -77,9 +77,17 @@ export class CotizacionRepository {
             create: detalles,
           },
         },
-        select: cotizacionSelect,
+        select: { idCotizacion: true },
       });
     });
+
+    const cotizacion = await this.buscarPorId(cotizacionCreada.idCotizacion);
+
+    if (!cotizacion) {
+      throw new Error("No fue posible cargar la cotizacion creada.");
+    }
+
+    return cotizacion;
   }
 
   async buscarPorId(idCotizacion: number) {
@@ -173,7 +181,7 @@ export class CotizacionRepository {
     cotizacionData: any,
     detalles: any[],
   ) {
-    return await runPrismaTransaction(async (tx) => {
+    await runPrismaTransaction(async (tx) => {
       await tx.cotizacion.update({
         where: { idCotizacion },
         data: cotizacionData,
@@ -203,11 +211,9 @@ export class CotizacionRepository {
         }
       }
 
-      return await tx.cotizacion.findUnique({
-        where: { idCotizacion },
-        select: cotizacionSelect,
-      });
     });
+
+    return await this.buscarPorId(idCotizacion);
   }
 
   // Cotizar tambien es transaccional: primero actualiza todos los detalles y
@@ -217,7 +223,7 @@ export class CotizacionRepository {
     cotizacionData: any,
     detalles: any[],
   ) {
-    return await runPrismaTransaction(async (tx) => {
+    await runPrismaTransaction(async (tx) => {
       for (const detalle of detalles) {
         const { idDetalleCotizacion, ...detalleData } = detalle;
 
@@ -241,11 +247,9 @@ export class CotizacionRepository {
         data: cotizacionData,
       });
 
-      return await tx.cotizacion.findUnique({
-        where: { idCotizacion },
-        select: cotizacionSelect,
-      });
     });
+
+    return await this.buscarPorId(idCotizacion);
   }
 
   async actualizarCotizacion(idCotizacion: number, data: any) {
@@ -271,7 +275,7 @@ export class CotizacionRepository {
   ) {
     const { detalles, ...pedidoCabecera } = pedidoData;
 
-    return await runPrismaTransaction(async (tx) => {
+    const pedidoCreado = await runPrismaTransaction(async (tx) => {
       const pedidoExistente = await tx.pedido.findFirst({
         where: { idCotizacion },
         select: { idPedido: true },
@@ -293,19 +297,25 @@ export class CotizacionRepository {
             create: detalles,
           },
         },
-        select: pedidoSelect,
+        select: { idPedido: true },
       });
 
-      const cotizacion = await tx.cotizacion.findUnique({
-        where: { idCotizacion },
-        select: cotizacionSelect,
-      });
-
-      return {
-        cotizacion,
-        pedido,
-      };
+      return pedido;
     });
+
+    const [cotizacion, pedido] = await Promise.all([
+      this.buscarPorId(idCotizacion),
+      prisma.pedido.findUnique({
+        where: { idPedido: pedidoCreado.idPedido },
+        select: pedidoSelect,
+      }),
+    ]);
+
+    if (!cotizacion || !pedido) {
+      throw new Error("No fue posible cargar la cotizacion o el pedido creado.");
+    }
+
+    return { cotizacion, pedido };
   }
 
   async eliminarCotizacion(idCotizacion: number) {

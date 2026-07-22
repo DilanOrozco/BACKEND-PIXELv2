@@ -440,7 +440,7 @@ export class PedidoService {
       data?.montoPrimerAbono !== null &&
       data?.montoPrimerAbono !== "";
 
-    const pedidoActualizado = await runPrismaTransaction(
+    const resultado = await runPrismaTransaction(
       async (tx: Prisma.TransactionClient) => {
         let pagoInicialValidadoPorAbono = false;
 
@@ -479,13 +479,16 @@ export class PedidoService {
           throw new Error("El pedido requiere un diseño aprobado por el cliente antes de pasar a producción.");
         }
 
-        const pedidoActual = await pedidoRepository.buscarPorId(idPedido, tx);
+        const pedidoActual = await pedidoRepository.buscarOperacionPorId(
+          idPedido,
+          tx,
+        );
 
         if (pedidoActual?.estadoPedido === ESTADO_PEDIDO_EN_PROCESO) {
           return pedidoActual;
         }
 
-        return await pedidoRepository.actualizarPedido(
+        return await pedidoRepository.actualizarPedidoOperacion(
           idPedido,
           {
             estadoPedido: ESTADO_PEDIDO_EN_PROCESO,
@@ -501,6 +504,14 @@ export class PedidoService {
         );
       },
     );
+
+    const pedidoActualizado = await pedidoRepository.buscarPorId(
+      resultado.idPedido,
+    );
+
+    if (!pedidoActualizado) {
+      throw new Error("No fue posible cargar el pedido actualizado.");
+    }
 
     return this.formatearPedido(pedidoActualizado);
   }

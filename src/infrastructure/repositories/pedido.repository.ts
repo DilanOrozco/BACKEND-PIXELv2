@@ -15,6 +15,11 @@ type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 
 const db = (tx?: Prisma.TransactionClient): PrismaExecutor => tx ?? prisma;
 
+const pedidoOperacionSelect = {
+  idPedido: true,
+  estadoPedido: true,
+} as const;
+
 const buildPedidoWhere = (
   filtros: { idCliente?: number } = {},
   search?: string | null,
@@ -128,7 +133,7 @@ export class PedidoRepository {
   async crearDesdeCotizacion(data: any) {
     const { detalles, ...pedidoData } = data;
 
-    return await runPrismaTransaction(async (tx) => {
+    const pedidoCreado = await runPrismaTransaction(async (tx) => {
       const pedidoExistente = await tx.pedido.findFirst({
         where: { idCotizacion: pedidoData.idCotizacion },
         select: { idPedido: true },
@@ -145,9 +150,17 @@ export class PedidoRepository {
             create: detalles,
           },
         },
-        select: pedidoSelect,
+        select: { idPedido: true },
       });
     });
+
+    const pedido = await this.buscarPorId(pedidoCreado.idPedido);
+
+    if (!pedido) {
+      throw new Error("No fue posible cargar el pedido creado.");
+    }
+
+    return pedido;
   }
 
   async listarPedidos() {
@@ -192,6 +205,16 @@ export class PedidoRepository {
     return await db(tx).pedido.findUnique({
       where: { idPedido },
       select: pedidoSelect,
+    });
+  }
+
+  async buscarOperacionPorId(
+    idPedido: number,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).pedido.findUnique({
+      where: { idPedido },
+      select: pedidoOperacionSelect,
     });
   }
 
@@ -243,6 +266,18 @@ export class PedidoRepository {
       where: { idPedido },
       data,
       select: pedidoSelect,
+    });
+  }
+
+  async actualizarPedidoOperacion(
+    idPedido: number,
+    data: any,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).pedido.update({
+      where: { idPedido },
+      data,
+      select: pedidoOperacionSelect,
     });
   }
 }

@@ -98,7 +98,7 @@ export class CompraRepository {
   async crearCompra(data: CrearCompraData) {
     const { detalles, ...compraData } = data;
 
-    return await runPrismaTransaction(async (tx) => {
+    const compraCreada = await runPrismaTransaction(async (tx) => {
       return await tx.compra.create({
         data: {
           ...compraData,
@@ -106,9 +106,17 @@ export class CompraRepository {
             create: detalles,
           },
         },
-        select: compraSelect,
+        select: { idCompra: true },
       });
     });
+
+    const compra = await this.buscarPorId(compraCreada.idCompra);
+
+    if (!compra) {
+      throw new Error("No fue posible cargar la compra creada.");
+    }
+
+    return compra;
   }
 
   async listarCompras(filtros: CompraFiltros) {
@@ -142,7 +150,7 @@ export class CompraRepository {
     idCompra: number,
     data: ActualizarCompraData,
   ) {
-    return await runPrismaTransaction(async (tx) => {
+    await runPrismaTransaction(async (tx) => {
       const { detalles, ...compraData } = data;
 
       if (detalles) {
@@ -151,7 +159,7 @@ export class CompraRepository {
         });
       }
 
-      return await tx.compra.update({
+      await tx.compra.update({
         where: { idCompra },
         data: {
           ...compraData,
@@ -163,9 +171,17 @@ export class CompraRepository {
               }
             : {}),
         },
-        select: compraSelect,
+        select: { idCompra: true },
       });
     });
+
+    const compra = await this.buscarPorId(idCompra);
+
+    if (!compra) {
+      throw new Error("No fue posible cargar la compra actualizada.");
+    }
+
+    return compra;
   }
 
   async confirmarCompra(idCompra: number) {

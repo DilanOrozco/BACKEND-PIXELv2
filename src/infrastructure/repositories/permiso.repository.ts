@@ -35,7 +35,7 @@ export class PermisoRepository {
     idRol: number,
     permisos: { idPermiso: number }[],
   ) {
-    return await runPrismaTransaction(async (tx) => {
+    await runPrismaTransaction(async (tx) => {
       await tx.rolPermiso.deleteMany({
         where: { idRol },
       });
@@ -50,21 +50,22 @@ export class PermisoRepository {
         });
       }
 
-      return await tx.rol.findUnique({
-        where: { idRol },
-        include: {
-          permisos: {
-            include: {
-              permiso: true,
-            },
-            orderBy: {
-              permiso: {
-                codigo: "asc",
-              },
+    });
+
+    return await prisma.rol.findUnique({
+      where: { idRol },
+      include: {
+        permisos: {
+          include: {
+            permiso: true,
+          },
+          orderBy: {
+            permiso: {
+              codigo: "asc",
             },
           },
         },
-      });
+      },
     });
   }
 

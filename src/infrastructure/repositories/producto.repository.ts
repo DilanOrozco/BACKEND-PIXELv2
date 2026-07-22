@@ -143,7 +143,7 @@ export class ProductoRepository {
   }
 
   async reemplazarRangos(idProducto: number, rangos: RangoData[]) {
-    return await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await tx.precioProductoRango.deleteMany({
         where: { idProducto },
       });
@@ -160,10 +160,11 @@ export class ProductoRepository {
         });
       }
 
-      return await tx.productoCotizable.findUnique({
-        where: { idProducto },
-        select: productoSelect,
-      });
+    });
+
+    return await prisma.productoCotizable.findUnique({
+      where: { idProducto },
+      select: productoSelect,
     });
   }
 }
