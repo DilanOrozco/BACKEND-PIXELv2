@@ -1,19 +1,33 @@
+import "dotenv/config";
 import jwt from "jsonwebtoken";
 import type { SignOptions, Secret } from "jsonwebtoken";
 
-const JWT_SECRET: Secret = process.env.JWT_SECRET || "clave_temporal_pixel";
+type JwtExpiresIn = NonNullable<SignOptions["expiresIn"]>;
 
-const JWT_EXPIRES_IN: SignOptions["expiresIn"] =
-  (process.env.JWT_EXPIRES_IN as SignOptions["expiresIn"]) || "1d";
+const DEFAULT_JWT_EXPIRES_IN: JwtExpiresIn = "8h";
+
+export const obtenerJwtSecret = (): Secret => {
+  const secret = process.env.JWT_SECRET?.trim();
+
+  if (!secret) {
+    throw new Error("JWT_SECRET no configurado.");
+  }
+
+  return secret;
+};
+
+export const obtenerJwtExpiresIn = (): JwtExpiresIn =>
+  (process.env.JWT_EXPIRES_IN?.trim() as JwtExpiresIn | undefined) ||
+  DEFAULT_JWT_EXPIRES_IN;
 
 export const generarToken = (payload: object): string => {
   const options: SignOptions = {
-    expiresIn: JWT_EXPIRES_IN,
+    expiresIn: obtenerJwtExpiresIn(),
   };
 
-  return jwt.sign(payload, JWT_SECRET, options);
+  return jwt.sign(payload, obtenerJwtSecret(), options);
 };
 
 export const verificarToken = (token: string) => {
-  return jwt.verify(token, JWT_SECRET);
+  return jwt.verify(token, obtenerJwtSecret());
 };

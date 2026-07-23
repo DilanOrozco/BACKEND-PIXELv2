@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { autorizarPermiso } from "./permisos.middleware";
+import {
+  autorizarActualizacionUsuario,
+  autorizarPermiso,
+} from "./permisos.middleware";
 import { PermisoService } from "../../applications/services/permiso.service";
 import { PERMISOS_VALIDOS } from "../../utils/permisos";
 
@@ -87,4 +90,97 @@ test("autorizarPermiso bloquea rol sin permiso", async (t) => {
   assert.deepEqual(res.payload, {
     message: "No tienes permisos para realizar esta accion.",
   });
+});
+
+test("autorizarActualizacionUsuario permite Cliente editar su propio perfil con perfil.editar", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async () => true,
+  );
+  const req: any = {
+    params: { id: "10" },
+    user: { idUsuario: 10, idRol: 5, rol: "Cliente" },
+  };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarActualizacionUsuario()(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.deepEqual(rolTienePermisoMock.mock.calls[0]?.arguments, [
+    5,
+    "perfil.editar",
+  ]);
+});
+
+test("autorizarActualizacionUsuario bloquea Cliente sin perfil.editar", async (t) => {
+  t.mock.method(PermisoService.prototype, "rolTienePermiso", async () => false);
+  const req: any = {
+    params: { id: "10" },
+    user: { idUsuario: 10, idRol: 5, rol: "Cliente" },
+  };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarActualizacionUsuario()(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, false);
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.payload, {
+    message: "No tienes permisos para editar tu perfil.",
+  });
+});
+
+test("autorizarActualizacionUsuario bloquea Cliente editando otro usuario", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async () => true,
+  );
+  const req: any = {
+    params: { id: "99" },
+    user: { idUsuario: 10, idRol: 5, rol: "Cliente" },
+  };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarActualizacionUsuario()(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, false);
+  assert.equal(rolTienePermisoMock.mock.calls.length, 0);
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.payload, {
+    message: "No tienes permisos para editar otros usuarios.",
+  });
+});
+
+test("autorizarActualizacionUsuario mantiene usuarios.editar para empleados", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async () => true,
+  );
+  const req: any = {
+    params: { id: "99" },
+    user: { idUsuario: 20, idRol: 2, rol: "Vendedor" },
+  };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarActualizacionUsuario()(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.deepEqual(rolTienePermisoMock.mock.calls[0]?.arguments, [
+    2,
+    "usuarios.editar",
+  ]);
 });

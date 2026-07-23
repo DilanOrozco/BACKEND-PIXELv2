@@ -37,3 +37,64 @@ export const autorizarPermiso = (codigoPermiso: CodigoPermiso) => {
     }
   };
 };
+
+export const autorizarActualizacionUsuario = () => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          message: "Usuario no autenticado.",
+        });
+      }
+
+      if (req.user.rol === "Admin") {
+        return next();
+      }
+
+      const idUsuarioParametro = Number(req.params.id);
+      const idUsuarioAutenticado = Number(req.user.idUsuario);
+
+      if (
+        req.user.rol === "Cliente" &&
+        Number.isInteger(idUsuarioParametro) &&
+        idUsuarioParametro === idUsuarioAutenticado
+      ) {
+        const puedeEditarPerfil = await permisoService.rolTienePermiso(
+          Number(req.user.idRol),
+          "perfil.editar",
+        );
+
+        if (puedeEditarPerfil) {
+          return next();
+        }
+
+        return res.status(403).json({
+          message: "No tienes permisos para editar tu perfil.",
+        });
+      }
+
+      if (req.user.rol === "Cliente") {
+        return res.status(403).json({
+          message: "No tienes permisos para editar otros usuarios.",
+        });
+      }
+
+      const tienePermiso = await permisoService.rolTienePermiso(
+        Number(req.user.idRol),
+        "usuarios.editar",
+      );
+
+      if (!tienePermiso) {
+        return res.status(403).json({
+          message: "No tienes permisos para realizar esta accion.",
+        });
+      }
+
+      next();
+    } catch {
+      return res.status(403).json({
+        message: "No se pudo validar el permiso del usuario.",
+      });
+    }
+  };
+};

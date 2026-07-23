@@ -1,5 +1,5 @@
 // backend/src/infrastructure/repositories/usuario.repository.ts
-import { prisma } from "../../config/prisma";
+import { prisma, runPrismaTransaction } from "../../config/prisma";
 import { Prisma } from "../../../generated/prisma/client";
 import { usuarioSelect, usuarioAuthSelect } from "../../utils/selects/usuario.select";
 import {
@@ -132,21 +132,47 @@ export class UsuarioRepository {
     });
   }
 
-  async buscarPorCorreo(correo: string) {
+  async buscarUsuarioAuthPorId(idUsuario: number) {
     return await prisma.usuario.findUnique({
+      where: { idUsuario },
+      select: {
+        idUsuario: true,
+        correo: true,
+        idRol: true,
+        estado: true,
+        rol: {
+          select: {
+            nombre: true,
+            estado: true,
+          },
+        },
+        cliente: {
+          select: {
+            idCliente: true,
+            estado: true,
+          },
+        },
+      },
+    });
+  }
+
+  async buscarPorCorreo(correo: string) {
+    return await prisma.usuario.findFirst({
       where: { correo },
+      orderBy: { idUsuario: "asc" },
     });
   }
 
   async buscarPorCorreoConRol(correo: string) {
-    return await prisma.usuario.findUnique({
+    return await prisma.usuario.findFirst({
       where: { correo },
       select: usuarioAuthSelect,
+      orderBy: { idUsuario: "asc" },
     });
   }
 
   async buscarPorCorreoConRolYCliente(correo: string) {
-    return await prisma.usuario.findUnique({
+    return await prisma.usuario.findFirst({
       where: { correo },
       select: {
         ...usuarioAuthSelect,
@@ -160,6 +186,7 @@ export class UsuarioRepository {
           },
         },
       },
+      orderBy: { idUsuario: "asc" },
     });
   }
 
@@ -187,6 +214,43 @@ export class UsuarioRepository {
         where: { idUsuario },
         data,
         select: usuarioSelect,
+      });
+    } catch (error) {
+      manejarErrorPrismaUsuario(error);
+    }
+  }
+
+  async actualizarPerfilPropio(
+    idUsuario: number,
+    dataUsuario: any,
+    dataCliente: any,
+  ) {
+    try {
+      return await runPrismaTransaction(async (tx) => {
+        await tx.usuario.update({
+          where: { idUsuario },
+          data: dataUsuario,
+        });
+
+        const cliente = await tx.cliente.findUnique({
+          where: { idUsuario },
+          select: {
+            idCliente: true,
+            estado: true,
+          },
+        });
+
+        if (cliente?.estado) {
+          await tx.cliente.update({
+            where: { idCliente: cliente.idCliente },
+            data: dataCliente,
+          });
+        }
+
+        return await tx.usuario.findUnique({
+          where: { idUsuario },
+          select: usuarioSelect,
+        });
       });
     } catch (error) {
       manejarErrorPrismaUsuario(error);

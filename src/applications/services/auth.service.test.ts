@@ -2,9 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AuthService } from "./auth.service";
 import { EmailService } from "./email.service";
-import { compararContrasena } from "../../utils/password.util";
+import {
+  compararContrasena,
+  encriptarContrasena,
+} from "../../utils/password.util";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
 import { PasswordResetTokenRepository } from "../../infrastructure/repositories/password-reset-token.repository";
+import { PermisoService } from "./permiso.service";
 
 const usuario = {
   idUsuario: 1,
@@ -14,6 +18,148 @@ const usuario = {
   contrasenaHash: "hash-anterior",
   estado: true,
 };
+
+const crearUsuarioAuth = async (overrides: Record<string, unknown> = {}) => ({
+  idUsuario: 1,
+  idRol: 1,
+  nombre: "Admin PIXEL",
+  telefono: "3001234567",
+  correo: "admin@pixel.test",
+  contrasenaHash: await encriptarContrasena("Password123"),
+  estado: true,
+  rol: {
+    idRol: 1,
+    nombre: "Admin",
+    descripcion: "Administrador",
+    estado: true,
+  },
+  cliente: null,
+  ...overrides,
+});
+
+test("AuthService login admin con correo existente funciona y no devuelve password", async (t) => {
+  const usuarioAuth = await crearUsuarioAuth();
+  const buscarMock = t.mock.method(
+    UsuarioRepository.prototype,
+    "buscarPorCorreoConRol",
+    async () => usuarioAuth,
+  );
+
+  const respuesta = await new AuthService().login({
+    correo: "ADMIN@PIXEL.TEST",
+    contrasena: "Password123",
+  });
+
+  assert.equal(buscarMock.mock.calls[0]?.arguments[0], "admin@pixel.test");
+  assert.equal(typeof respuesta.token, "string");
+  assert.equal(respuesta.usuario.correo, "admin@pixel.test");
+  assert.equal(respuesta.usuario.rol.nombre, "Admin");
+  assert.equal("contrasenaHash" in respuesta.usuario, false);
+});
+
+test("AuthService login cliente con correo existente conserva Cliente vinculado", async (t) => {
+  const usuarioCliente = await crearUsuarioAuth({
+    idUsuario: 7,
+    idRol: 5,
+    correo: "cliente@pixel.test",
+    rol: {
+      idRol: 5,
+      nombre: "Cliente",
+      descripcion: "Cliente externo",
+      estado: true,
+    },
+    cliente: {
+      idCliente: 20,
+      nombre: "Cliente PIXEL",
+      correo: "cliente@pixel.test",
+      telefono: "3009990000",
+      estado: true,
+    },
+  });
+  t.mock.method(
+    UsuarioRepository.prototype,
+    "buscarPorCorreoConRol",
+    async () => usuarioCliente,
+  );
+
+  const respuesta = await new AuthService().login({
+    correo: "cliente@pixel.test",
+    contrasena: "Password123",
+  });
+
+  assert.equal(respuesta.usuario.rol.nombre, "Cliente");
+  assert.equal(respuesta.usuario.cliente?.idCliente, 20);
+  assert.equal("contrasenaHash" in respuesta.usuario, false);
+});
+
+test("AuthService login con correo inexistente responde error controlado", async (t) => {
+  t.mock.method(
+    UsuarioRepository.prototype,
+    "buscarPorCorreoConRol",
+    async () => null,
+  );
+
+  await assert.rejects(
+    () =>
+      new AuthService().login({
+        correo: "nadie@pixel.test",
+        contrasena: "Password123",
+      }),
+    /Correo o contrase.a incorrectos\./,
+  );
+});
+
+test("AuthService login con contrasena incorrecta responde error controlado", async (t) => {
+  t.mock.method(
+    UsuarioRepository.prototype,
+    "buscarPorCorreoConRol",
+    async () => await crearUsuarioAuth(),
+  );
+
+  await assert.rejects(
+    () =>
+      new AuthService().login({
+        correo: "admin@pixel.test",
+        contrasena: "PasswordIncorrecta123",
+      }),
+    /Correo o contrase.a incorrectos\./,
+  );
+});
+
+test("AuthService obtenerPermisosUsuario mantiene contrato de auth/me/permisos", async (t) => {
+  const permisos = [
+    {
+      idPermiso: 1,
+      codigo: "perfil.ver",
+      modulo: "perfil",
+      accion: "ver",
+      estado: true,
+    },
+    {
+      idPermiso: 2,
+      codigo: "perfil.editar",
+      modulo: "perfil",
+      accion: "editar",
+      estado: true,
+    },
+  ];
+  const listarPermisosMock = t.mock.method(
+    PermisoService.prototype,
+    "listarPermisosPorRol",
+    async () => permisos,
+  );
+
+  const respuesta = await new AuthService().obtenerPermisosUsuario({
+    idUsuario: 7,
+    correo: "cliente@pixel.test",
+    idRol: 5,
+    rol: "Cliente",
+  });
+
+  assert.deepEqual(listarPermisosMock.mock.calls[0]?.arguments, [5]);
+  assert.equal(respuesta.usuario.idUsuario, 7);
+  assert.deepEqual(respuesta.codigos, ["perfil.ver", "perfil.editar"]);
+});
 
 test("AuthService forgot-password responde generico y no revela correos inexistentes", async (t) => {
   t.mock.method(UsuarioRepository.prototype, "buscarPorCorreo", async () => null);

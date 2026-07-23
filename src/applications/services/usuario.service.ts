@@ -217,6 +217,73 @@ export class UsuarioService {
     return await usuarioRepository.actualizarUsuario(idUsuario, dataActualizar);
   }
 
+  async actualizarPerfilPropio(idUsuario: number, data: any) {
+    if (isNaN(idUsuario) || idUsuario <= 0) {
+      throw new Error("El id del usuario no es vÃ¡lido.");
+    }
+
+    const dataPerfil = {
+      nombre: data.nombre,
+      documento: data.documento,
+      telefono: data.telefono,
+      direccion: data.direccion,
+      correo: data.correo,
+    };
+
+    const error = validarActualizarUsuario(dataPerfil);
+    if (error) {
+      throw new Error(error);
+    }
+
+    const usuarioExistente = await usuarioRepository.buscarPorId(idUsuario);
+    if (!usuarioExistente) {
+      throw new Error("El usuario a actualizar no existe.");
+    }
+
+    const dataActualizar: any = {};
+
+    if (dataPerfil.nombre !== undefined) {
+      dataActualizar.nombre = dataPerfil.nombre.trim();
+    }
+
+    if (dataPerfil.documento !== undefined) {
+      const docLimpio = limpiarTextoOpcional(dataPerfil.documento);
+
+      if (docLimpio) {
+        const docExistente = await usuarioRepository.buscarPorDocumento(docLimpio);
+        if (docExistente && docExistente.idUsuario !== idUsuario) {
+          throw new Error("El documento ya esta registrado.");
+        }
+      }
+      dataActualizar.documento = docLimpio;
+    }
+
+    if (dataPerfil.correo !== undefined) {
+      const correoLimpio = dataPerfil.correo.trim().toLowerCase();
+      const correoExistente = await usuarioRepository.buscarPorCorreo(correoLimpio);
+
+      if (correoExistente && correoExistente.idUsuario !== idUsuario) {
+        throw new Error("El correo debe ser Ãºnico en todo el sistema.");
+      }
+
+      dataActualizar.correo = correoLimpio;
+    }
+
+    if (dataPerfil.telefono !== undefined) {
+      dataActualizar.telefono = limpiarTextoOpcional(dataPerfil.telefono);
+    }
+
+    if (dataPerfil.direccion !== undefined) {
+      dataActualizar.direccion = limpiarTextoOpcional(dataPerfil.direccion);
+    }
+
+    return await usuarioRepository.actualizarPerfilPropio(
+      idUsuario,
+      dataActualizar,
+      dataActualizar,
+    );
+  }
+
   async desactivarUsuario(idUsuario: number) {
     if (isNaN(idUsuario) || idUsuario <= 0) {
       throw new Error("El id del usuario no es válido.");
