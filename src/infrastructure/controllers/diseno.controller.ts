@@ -116,7 +116,9 @@ export class DisenoController {
       return res.status(200).json({
         message: resultado.pasoAProduccion
           ? "Diseño aprobado correctamente. El pedido pasó a producción."
-          : "Diseño aprobado correctamente, pero el pedido aún no puede pasar a producción porque falta el abono mínimo del 50%.",
+          : resultado.todosDisenosRequeridosAprobados
+            ? "Diseño aprobado correctamente, pero el pedido aún no puede pasar a producción porque falta el abono mínimo del 50%."
+            : "Diseño aprobado correctamente. El pedido sigue pendiente de aprobar otros diseños requeridos.",
         data: {
           diseno: resultado.diseno,
           pedido: resultado.pedido,

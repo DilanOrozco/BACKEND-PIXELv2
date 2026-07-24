@@ -3,6 +3,7 @@ import type { Prisma } from "../../../generated/prisma/client";
 import type { EstadoAbonoPermitido, MetodoPagoPermitido } from "../../applications/validators/abono.validator";
 import { abonoSelect } from "../../utils/selects/abono.select";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
+import { DisenoRepository } from "./diseno.repository";
 
 type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 
@@ -39,6 +40,7 @@ export interface ActualizarAbonoData {
 }
 
 const db = (tx?: Prisma.TransactionClient): PrismaExecutor => tx ?? prisma;
+const disenoRepository = new DisenoRepository();
 
 const pedidoResumenSelect = {
   idPedido: true,
@@ -212,17 +214,7 @@ export class AbonoRepository {
   }
 
   async existeDisenoAprobado(idPedido: number, tx?: Prisma.TransactionClient) {
-    const diseno = await db(tx).diseno.findFirst({
-      where: {
-        idPedido,
-        estado: "APROBADO",
-      },
-      select: {
-        idDiseno: true,
-      },
-    });
-
-    return Boolean(diseno);
+    return await disenoRepository.todosDisenosRequeridosAprobados(idPedido, tx);
   }
 
   async actualizarResumenPagoPedido(

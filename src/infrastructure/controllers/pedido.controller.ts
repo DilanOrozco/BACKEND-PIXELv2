@@ -188,6 +188,26 @@ export class PedidoController {
     }
   }
 
+  async actualizarRequiereDisenoDetalle(req: AuthRequest, res: Response) {
+    try {
+      const resultado = await pedidoService.actualizarRequiereDisenoDetalle(
+        Number(req.params.id),
+        Number(req.params.idDetallePedido),
+        req.body,
+        req.user,
+      );
+
+      return res.status(200).json({
+        message: "Requerimiento de diseno actualizado correctamente.",
+        data: resultado,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
   async anularPedido(req: AuthRequest, res: Response) {
     try {
       const idPedido = Number(req.params.id);

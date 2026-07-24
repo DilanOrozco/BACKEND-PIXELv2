@@ -174,8 +174,8 @@ export class CotizacionRepository {
     });
   }
 
-  // Edicion de solicitud: solo actualiza el detalle existente. Si el cliente
-  // quiere otra prenda o producto, debe crear una nueva cotizacion.
+  // La edicion del cliente actualiza los detalles existentes sin alterar sus
+  // relaciones ni permitir que se adjunten detalles de otra cotizacion.
   async actualizarSolicitudCliente(
     idCotizacion: number,
     cotizacionData: any,
@@ -192,7 +192,7 @@ export class CotizacionRepository {
 
         if (!idDetalleCotizacion) {
           throw new Error(
-            "No se pueden agregar detalles al editar una solicitud. Crea una nueva cotizacion.",
+            "No se pueden agregar detalles desde esta edicion.",
           );
         }
 
@@ -216,16 +216,39 @@ export class CotizacionRepository {
     return await this.buscarPorId(idCotizacion);
   }
 
-  // Cotizar tambien es transaccional: primero actualiza todos los detalles y
-  // luego recalcula los importes de la cabecera en el mismo commit.
+  // Cotizar permite actualizar, agregar y quitar items. La lectura completa se
+  // hace despues del commit para mantener corta la transaccion.
   async cotizarCotizacion(
     idCotizacion: number,
     cotizacionData: any,
     detalles: any[],
   ) {
     await runPrismaTransaction(async (tx) => {
+      const idsConservados = detalles
+        .map((detalle) => Number(detalle.idDetalleCotizacion))
+        .filter((idDetalle) => Number.isInteger(idDetalle) && idDetalle > 0);
+
+      await tx.detalleCotizacion.deleteMany({
+        where: {
+          idCotizacion,
+          ...(idsConservados.length > 0
+            ? { idDetalleCotizacion: { notIn: idsConservados } }
+            : {}),
+        },
+      });
+
+      const detallesNuevos = [];
+
       for (const detalle of detalles) {
         const { idDetalleCotizacion, ...detalleData } = detalle;
+
+        if (!idDetalleCotizacion) {
+          detallesNuevos.push({
+            ...detalleData,
+            idCotizacion,
+          });
+          continue;
+        }
 
         const resultado = await tx.detalleCotizacion.updateMany({
           where: {
@@ -240,6 +263,12 @@ export class CotizacionRepository {
             `El detalle ${idDetalleCotizacion} no pertenece a esta cotizacion.`,
           );
         }
+      }
+
+      if (detallesNuevos.length > 0) {
+        await tx.detalleCotizacion.createMany({
+          data: detallesNuevos,
+        });
       }
 
       await tx.cotizacion.update({

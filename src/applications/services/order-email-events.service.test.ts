@@ -5,6 +5,8 @@ import { PedidoService } from "./pedido.service";
 import { NotificationService } from "./notification.service";
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
+import { ProductoService } from "./producto.service";
+import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 
 const cliente = {
   idCliente: 1,
@@ -106,6 +108,23 @@ test("CotizacionService dispara COTIZACION_MODIFICADA al recotizar una cotizacio
     ],
   };
   t.mock.method(CotizacionRepository.prototype, "buscarPorId", async () => cotizacionConPrecios);
+  t.mock.method(ProductoService.prototype, "calcularItems", async () => ({
+    items: [
+      {
+        snapshot: {
+          idProducto: 1,
+          precioBase: 38000,
+          descuentoPorcentaje: 21.43,
+          descuentoValorUnitario: 8143,
+          precioUnitario: 29857,
+          subtotal: 3724000,
+          subtotalBruto: 3724000,
+          descuentoTotal: 798053,
+          subtotalConDescuento: 2925947,
+        },
+      },
+    ],
+  }));
   const cotizarMock = t.mock.method(
     CotizacionRepository.prototype,
     "cotizarCotizacion",
@@ -153,6 +172,150 @@ test("CotizacionService dispara COTIZACION_MODIFICADA al recotizar una cotizacio
     "Se agrego costo de diseno.",
   );
   assert.equal(opciones.totalAnterior, 2925947);
+});
+
+test("CotizacionService recotiza, agrega y conserva varios productos", async (t) => {
+  t.mock.method(CotizacionRepository.prototype, "buscarPorId", async () => cotizacion);
+  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => ({
+    idTecnica: 2,
+    estado: true,
+  }));
+  t.mock.method(ProductoService.prototype, "calcularItems", async () => ({
+    items: [
+      {
+        snapshot: {
+          idProducto: 1,
+          precioBase: 25000,
+          descuentoPorcentaje: 0,
+          descuentoValorUnitario: 0,
+          precioUnitario: 25000,
+          subtotal: 50000,
+          subtotalBruto: 50000,
+          descuentoTotal: 0,
+          subtotalConDescuento: 50000,
+        },
+      },
+      {
+        snapshot: {
+          idProducto: 2,
+          precioBase: 13000,
+          descuentoPorcentaje: 0,
+          descuentoValorUnitario: 0,
+          precioUnitario: 13000,
+          subtotal: 26000,
+          subtotalBruto: 26000,
+          descuentoTotal: 0,
+          subtotalConDescuento: 26000,
+        },
+      },
+    ],
+  }));
+  const cotizarMock = t.mock.method(
+    CotizacionRepository.prototype,
+    "cotizarCotizacion",
+    async (_id: number, data: any, detalles: any[]) => ({
+      ...cotizacion,
+      ...data,
+      detalles,
+    }),
+  );
+  t.mock.method(
+    NotificationService.prototype,
+    "cotizacionModificada",
+    async () => ({ event: "COTIZACION_MODIFICADA", cliente: "enviado" }),
+  );
+
+  const resultado = await new CotizacionService().cotizarCotizacion(10, {
+    costosAdicionales: 3000,
+    detalles: [
+      { idDetalleCotizacion: 1, costoDiseno: 1000 },
+      {
+        idProducto: 2,
+        idTecnica: 2,
+        descripcion: "Gorra",
+        cantidad: 2,
+        costoDiseno: 2000,
+      },
+    ],
+  });
+  const [, cabecera, detalles] = cotizarMock.mock.calls[0]?.arguments ?? [];
+
+  assert.equal(detalles?.length, 2);
+  assert.equal(detalles?.[0].idDetalleCotizacion, 1);
+  assert.equal(detalles?.[1].idDetalleCotizacion, undefined);
+  assert.equal(cabecera.subtotal, 76000);
+  assert.equal(cabecera.total, 82000);
+  assert.equal(resultado.cantidadItems, 2);
+});
+
+test("CotizacionService permite quitar un producto al recotizar el arreglo completo", async (t) => {
+  const cotizacionMultiple = {
+    ...cotizacion,
+    total: 76000,
+    subtotal: 76000,
+    descuentoTotal: 0,
+    detalles: [
+      cotizacion.detalles[0],
+      {
+        ...cotizacion.detalles[0],
+        idDetalleCotizacion: 2,
+        idProducto: 2,
+        descripcion: "Gorra",
+        cantidad: 2,
+        precioUnitario: 13000,
+        subtotal: 26000,
+      },
+    ],
+  };
+  t.mock.method(
+    CotizacionRepository.prototype,
+    "buscarPorId",
+    async () => cotizacionMultiple,
+  );
+  t.mock.method(ProductoService.prototype, "calcularItems", async () => ({
+    items: [
+      {
+        snapshot: {
+          idProducto: 1,
+          precioBase: 25000,
+          descuentoPorcentaje: 0,
+          descuentoValorUnitario: 0,
+          precioUnitario: 25000,
+          subtotal: 50000,
+          subtotalBruto: 50000,
+          descuentoTotal: 0,
+          subtotalConDescuento: 50000,
+        },
+      },
+    ],
+  }));
+  const cotizarMock = t.mock.method(
+    CotizacionRepository.prototype,
+    "cotizarCotizacion",
+    async (_id: number, data: any, detalles: any[]) => ({
+      ...cotizacionMultiple,
+      ...data,
+      detalles,
+    }),
+  );
+  const notificarMock = t.mock.method(
+    NotificationService.prototype,
+    "cotizacionModificada",
+    async () => ({ event: "COTIZACION_MODIFICADA", cliente: "enviado" }),
+  );
+
+  const resultado = await new CotizacionService().cotizarCotizacion(10, {
+    motivoCambio: "Cliente retiro la gorra.",
+    costosAdicionales: 0,
+    detalles: [{ idDetalleCotizacion: 1, idProducto: 1, cantidad: 2 }],
+  });
+  const [, cabecera, detalles] = cotizarMock.mock.calls[0]?.arguments ?? [];
+
+  assert.equal(detalles?.length, 1);
+  assert.equal(detalles?.[0].idDetalleCotizacion, 1);
+  assert.equal(cabecera.total, 50000);
+  assert.equal(resultado.cantidadItems, 1);
+  assert.equal(notificarMock.mock.calls[0]?.arguments[1]?.motivoCambio, "Cliente retiro la gorra.");
 });
 
 test("PedidoService dispara PEDIDO_FINALIZADO y evita duplicar si ya no esta en proceso", async (t) => {
@@ -333,7 +496,7 @@ test("PedidoService actualiza fecha estimada y anula sin eliminar relaciones", a
 
   const conFecha = await service.actualizarFechaEntregaEstimada(
     20,
-    { fechaEntregaEstimada: "2026-07-23" },
+    { fechaEntregaEstimada: "2099-07-23" },
     { idUsuario: 99, rol: "Admin" },
   );
   const anulado = await service.anularPedido(

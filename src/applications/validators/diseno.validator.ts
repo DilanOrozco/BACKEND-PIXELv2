@@ -86,6 +86,8 @@ export const validarCrearDiseno = (
 ) => {
   const errorCampos = validarCamposPermitidos(data, [
     "idPedido",
+    "idDetallePedido",
+    "esDisenoGeneral",
     "idDisenador",
     "archivoUrl",
     "descripcion",
@@ -102,6 +104,28 @@ export const validarCrearDiseno = (
 
   if (!esEnteroPositivo(valor(data, "idPedido"))) {
     return "El pedido es obligatorio y debe ser valido.";
+  }
+
+  if (
+    valor(data, "idDetallePedido") !== undefined &&
+    valor(data, "idDetallePedido") !== null &&
+    !esEnteroPositivo(valor(data, "idDetallePedido"))
+  ) {
+    return "El detalle del pedido debe ser valido.";
+  }
+
+  if (
+    valor(data, "esDisenoGeneral") !== undefined &&
+    typeof valor(data, "esDisenoGeneral") !== "boolean"
+  ) {
+    return "esDisenoGeneral debe ser booleano.";
+  }
+
+  if (
+    esEnteroPositivo(valor(data, "idDetallePedido")) &&
+    valor(data, "esDisenoGeneral") === true
+  ) {
+    return "No puedes asociar un diseno a un detalle y marcarlo como general al mismo tiempo.";
   }
 
   if (

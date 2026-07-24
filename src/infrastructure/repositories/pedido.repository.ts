@@ -280,4 +280,34 @@ export class PedidoRepository {
       select: pedidoOperacionSelect,
     });
   }
+
+  async buscarDetallePedido(
+    idDetallePedido: number,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).detallePedido.findUnique({
+      where: { idDetallePedido },
+      select: {
+        idDetallePedido: true,
+        idPedido: true,
+        requiereDiseno: true,
+      },
+    });
+  }
+
+  async actualizarRequiereDisenoDetalle(
+    idDetallePedido: number,
+    requiereDiseno: boolean,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).detallePedido.update({
+      where: { idDetallePedido },
+      data: { requiereDiseno },
+      select: {
+        idDetallePedido: true,
+        idPedido: true,
+        requiereDiseno: true,
+      },
+    });
+  }
 }

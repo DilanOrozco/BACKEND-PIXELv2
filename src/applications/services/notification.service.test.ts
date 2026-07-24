@@ -36,6 +36,10 @@ const pedido = {
         nombre: "Camiseta",
         categoriaProducto: { nombre: "Textiles" },
       },
+      tecnica: {
+        idTecnica: 2,
+        nombre: "Sublimacion",
+      },
     },
   ],
 };
@@ -78,6 +82,7 @@ test("NotificationService email de cotizacion publica muestra desglose con descu
   assert.match(correoCliente.text, /Descuento aplicado: 15%/);
   assert.match(correoCliente.text, /Precio unitario con descuento:.*25\.500/);
   assert.match(correoCliente.text, /Subtotal bruto:.*60\.000\.000/);
+  assert.match(correoCliente.text, /Tecnica: Sublimacion/);
   assert.match(correoCliente.text, /Valor descontado:.*9\.000\.000/);
   assert.match(correoCliente.text, /Subtotal con descuento:.*51\.000\.000/);
   assert.match(correoCliente.text, /Total final:.*51\.000\.000/);
@@ -95,6 +100,54 @@ test("NotificationService email de cotizacion publica muestra desglose con descu
   } else {
     process.env.STAFF_EMAIL = staffAnterior;
   }
+});
+
+test("NotificationService muestra todos los productos de una cotizacion multiple", async (t) => {
+  delete process.env.STAFF_EMAIL;
+  const sendMailMock = t.mock.method(
+    EmailService.prototype,
+    "sendMail",
+    async () => ({ sent: true, skipped: false }),
+  );
+
+  await new NotificationService().cotizacionCreada({
+    ...pedido,
+    idCotizacion: 102,
+    subtotal: 60026000,
+    descuentoTotal: 9000000,
+    total: 51026000,
+    detalles: [
+      {
+        ...pedido.detalles[0],
+        tecnica: { nombre: "DTF" },
+      },
+      {
+        descripcion: "Gorra",
+        cantidad: 2,
+        precioBase: 13000,
+        descuentoPorcentaje: 0,
+        descuentoValorUnitario: 0,
+        precioUnitario: 13000,
+        subtotal: 26000,
+        subtotalBruto: 26000,
+        descuentoTotal: 0,
+        subtotalConDescuento: 26000,
+        producto: { nombre: "Gorra" },
+        tecnica: { nombre: "Sublimacion" },
+      },
+    ],
+  });
+  const mail = sendMailMock.mock.calls[0]?.arguments[0];
+
+  assert.ok(mail);
+  assert.match(mail.text, /Camiseta/);
+  assert.match(mail.text, /Tecnica: DTF/);
+  assert.match(mail.text, /Gorra/);
+  assert.match(mail.text, /Tecnica: Sublimacion/);
+  assert.match(mail.text, /Total final:.*51\.026\.000/);
+  assert.equal(contar(mail.text, /Subtotal bruto:/g), 2);
+  assertContenidoLimpio(mail.text);
+  assertContenidoLimpio(mail.html ?? "");
 });
 
 test("NotificationService email de cotizacion publica sin descuento muestra total claro", async (t) => {
@@ -174,7 +227,7 @@ test("NotificationService envia cotizacion presencial valorizada con acceso segu
   }
 
   assert.match(correoCliente.subject, /cotizacion presencial/i);
-  assert.match(correoCliente.text, /Subtotal antes de descuento:.*60\.000\.000/);
+  assert.match(correoCliente.text, /Subtotal bruto:.*60\.000\.000/);
   assert.match(correoCliente.text, /Valor descontado:.*9\.000\.000/);
   assert.match(correoCliente.text, /Total final:.*51\.000\.000/);
   assert.match(correoCliente.text, /Crea tu contrasena aqui:/i);
@@ -200,8 +253,9 @@ test("NotificationService envia evento PEDIDO_CREADO_DESDE_COTIZACION", async (t
   assert.equal(mail.to, "ana@pixel.test");
   assert.match(mail.subject, /cotizacion fue aprobada/i);
   assert.match(mail.text, /Numero de pedido: 20/i);
+  assert.match(mail.text, /Tecnica: Sublimacion/);
   assert.doesNotMatch(mail.text, /cotizacion #/i);
-  assert.match(mail.text, /Subtotal antes de descuento:.*60\.000\.000/);
+  assert.match(mail.text, /Subtotal bruto:.*60\.000\.000/);
   assert.match(mail.text, /Valor descontado:.*9\.000\.000/);
   assert.match(mail.text, /Total final:.*51\.000\.000/);
   assertContenidoLimpio(mail.text);
@@ -368,8 +422,62 @@ test("NotificationService envia evento PRIMER_ABONO_CONFIRMADO", async (t) => {
   assert.equal(resultado.cliente, "enviado");
   assert.match(mail.subject, /Abono confirmado/);
   assert.match(mail.text, /pedido #20/i);
-  assert.match(mail.text, /Total del pedido:.*51\.000\.000/);
+  assert.match(mail.text, /Tecnica: Sublimacion/);
+  assert.match(mail.text, /Total final:.*51\.000\.000/);
   assertContenidoLimpio(mail.text);
+});
+
+test("NotificationService primer abono muestra todos los productos y snapshots", async (t) => {
+  const sendMailMock = t.mock.method(
+    EmailService.prototype,
+    "sendMail",
+    async () => ({ sent: true, skipped: false }),
+  );
+  const pedidoMultiproducto = {
+    ...pedido,
+    total: 51644000,
+    saldoPendiente: 25822000,
+    cotizacion: {
+      subtotal: 60700000,
+      descuentoTotal: 9056000,
+      costosAdicionales: 0,
+      total: 51644000,
+      detalles: [
+        pedido.detalles[0],
+        {
+          descripcion: "Gorra",
+          cantidad: 100,
+          precioBase: 7000,
+          descuentoPorcentaje: 8,
+          descuentoValorUnitario: 560,
+          precioUnitario: 6440,
+          subtotalBruto: 700000,
+          descuentoTotal: 56000,
+          subtotalConDescuento: 644000,
+          producto: { nombre: "Gorra" },
+          tecnica: { nombre: "DTF" },
+        },
+      ],
+    },
+  };
+
+  await new NotificationService().primerAbonoConfirmado({
+    idAbono: 2,
+    monto: 25822000,
+    pedido: pedidoMultiproducto,
+  });
+  const mail = sendMailMock.mock.calls[0]?.arguments[0];
+
+  assert.ok(mail);
+  assert.match(mail.text, /Camiseta/);
+  assert.match(mail.text, /Gorra/);
+  assert.match(mail.text, /Descuento aplicado: 15%/);
+  assert.match(mail.text, /Descuento aplicado: 8%/);
+  assert.match(mail.text, /Subtotal bruto:.*700\.000/);
+  assert.match(mail.text, /Saldo pendiente:.*25\.822\.000/);
+  assert.equal(contar(mail.text, /Subtotal bruto:/g), 2);
+  assertContenidoLimpio(mail.text);
+  assertContenidoLimpio(mail.html ?? "");
 });
 
 test("NotificationService envia evento PEDIDO_FINALIZADO", async (t) => {
@@ -389,7 +497,7 @@ test("NotificationService envia evento PEDIDO_FINALIZADO", async (t) => {
   assert.equal(resultado.event, "PEDIDO_FINALIZADO");
   assert.equal(resultado.cliente, "enviado");
   assert.match(mail.subject, /listo para reclamar/);
-  assert.match(mail.text, /Subtotal antes de descuento:.*60\.000\.000/);
+  assert.match(mail.text, /Subtotal bruto:.*60\.000\.000/);
   assert.match(mail.text, /Total final:.*51\.000\.000/);
   assertContenidoLimpio(mail.text);
 });
@@ -506,8 +614,9 @@ test("NotificationService soporta cotizaciones antiguas sin campos nuevos", asyn
   const mail = sendMailMock.mock.calls[0]?.arguments[0];
 
   assert.ok(mail);
-  assert.match(mail.text, /Subtotal:.*50\.000/);
+  assert.match(mail.text, /Subtotal bruto:.*50\.000/);
   assert.match(mail.text, /Descuento aplicado: Sin descuento \/ 0%/);
+  assert.match(mail.text, /Tecnica: No especificada/);
   assert.match(mail.text, /Total final:.*50\.000/);
   assertContenidoLimpio(mail.text);
 });

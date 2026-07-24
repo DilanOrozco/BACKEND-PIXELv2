@@ -28,13 +28,13 @@ const clienteEnvioPrecios = (detalle: any) => {
   );
 };
 
-const validarUnicoDetalle = (data: any) => {
+const validarDetalles = (data: any) => {
   if (!data?.detalles || !Array.isArray(data.detalles)) {
-    return "La cotizacion debe tener un detalle.";
+    return "La cotizacion debe tener al menos un detalle.";
   }
 
-  if (data.detalles.length !== 1) {
-    return "La cotizacion debe tener un unico detalle. Para otra prenda o producto crea una nueva cotizacion.";
+  if (data.detalles.length === 0) {
+    return "La cotizacion debe tener al menos un detalle.";
   }
 
   return null;
@@ -47,7 +47,7 @@ export const validarSolicitudCliente = (
   data: any,
   opciones: { requiereDetalleExistente?: boolean } = {},
 ) => {
-  const errorDetalleUnico = validarUnicoDetalle(data);
+  const errorDetalleUnico = validarDetalles(data);
 
   if (errorDetalleUnico) {
     return errorDetalleUnico;
@@ -96,7 +96,7 @@ export const validarSolicitudCliente = (
 
 // Regla de cotizar: el empleado asigna precios sobre detalles ya existentes.
 export const validarCotizar = (data: any) => {
-  const errorDetalleUnico = validarUnicoDetalle(data);
+  const errorDetalleUnico = validarDetalles(data);
 
   if (errorDetalleUnico) {
     return errorDetalleUnico;
@@ -116,24 +116,47 @@ export const validarCotizar = (data: any) => {
   const idsDetalle = new Set<number>();
 
   for (const detalle of data.detalles) {
-    if (!esEnteroPositivo(detalle.idDetalleCotizacion)) {
-      return "Cada detalle a cotizar debe incluir idDetalleCotizacion.";
+    const esExistente = esEnteroPositivo(detalle.idDetalleCotizacion);
+    const tieneProducto = esEnteroPositivo(detalle.idProducto);
+
+    if (!esExistente && !tieneProducto) {
+      return "Cada detalle nuevo debe incluir un idProducto valido.";
     }
 
-    const idDetalle = Number(detalle.idDetalleCotizacion);
+    if (esExistente) {
+      const idDetalle = Number(detalle.idDetalleCotizacion);
 
-    if (idsDetalle.has(idDetalle)) {
-      return "No se pueden repetir detalles en la cotizacion.";
+      if (idsDetalle.has(idDetalle)) {
+        return "No se pueden repetir detalles en la cotizacion.";
+      }
+
+      idsDetalle.add(idDetalle);
     }
 
-    idsDetalle.add(idDetalle);
+    if (detalle.idProducto !== undefined && !tieneProducto) {
+      return "El producto debe ser valido.";
+    }
 
-    if (!esMontoValido(detalle.precioUnitario)) {
+    if (detalle.cantidad !== undefined && !esEnteroPositivo(detalle.cantidad)) {
+      return "La cantidad debe ser mayor a 0.";
+    }
+
+    if (!esExistente) {
+      if (!esEnteroPositivo(detalle.idTecnica)) {
+        return "La tecnica es obligatoria en cada detalle nuevo.";
+      }
+
+      if (!esTextoNoVacio(detalle.descripcion)) {
+        return "La descripcion del detalle nuevo no puede estar vacia.";
+      }
+    }
+
+    if (!esExistente && !tieneProducto && !esMontoValido(detalle.precioUnitario)) {
       return "El precio unitario es obligatorio y no puede ser negativo.";
     }
 
-    if (!esMontoValido(detalle.costoDiseno)) {
-      return "El costo de diseno es obligatorio y no puede ser negativo.";
+    if (!esMontoValido(detalle.costoDiseno ?? 0)) {
+      return "El costo de diseno no puede ser negativo.";
     }
   }
 
@@ -184,7 +207,7 @@ export const validarActualizarCotizacion = (data: any) => {
 // Se conserva idProducto opcional para no invalidar solicitudes antiguas que aun
 // deben ser cotizadas manualmente.
 export const validarCrearCotizacionPresencial = (data: any) => {
-  const errorDetalleUnico = validarUnicoDetalle(data);
+  const errorDetalleUnico = validarDetalles(data);
 
   if (errorDetalleUnico) {
     return errorDetalleUnico;
@@ -212,6 +235,13 @@ export const validarCrearCotizacionPresencial = (data: any) => {
 
     if (!esEnteroPositivo(detalle.idTecnica)) {
       return "La tecnica es obligatoria en cada detalle.";
+    }
+
+    if (
+      detalle.idProducto !== undefined &&
+      !esEnteroPositivo(detalle.idProducto)
+    ) {
+      return "El producto debe ser valido.";
     }
 
     if (!esTextoNoVacio(detalle.descripcion)) {

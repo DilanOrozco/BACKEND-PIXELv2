@@ -83,3 +83,15 @@ export const verificarAuth = async (
     });
   }
 };
+
+export const verificarAuthOpcional = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  if (!req.headers.authorization) {
+    return next();
+  }
+
+  return verificarAuth(req, res, next);
+};

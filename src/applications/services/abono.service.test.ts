@@ -127,11 +127,49 @@ test("AbonoService registra abono confirmado y envia evento despues de DB", asyn
     "buscarPorId",
     async () => abonoConfirmado,
   );
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarPedidoCompleto",
+    async () => ({
+      ...pedidoBase,
+      detalles: [
+        {
+          idDetallePedido: 1,
+          idProducto: 1,
+          cantidad: 12,
+          precioUnitario: 26001,
+          subtotal: 312012,
+          producto: { idProducto: 1, nombre: "Camiseta" },
+        },
+      ],
+      cotizacion: {
+        subtotal: 336000,
+        descuentoTotal: 23988,
+        costosAdicionales: 0,
+        total: 312012,
+        detalles: [
+          {
+            idProducto: 1,
+            cantidad: 12,
+            precioBase: 28000,
+            descuentoPorcentaje: 7.14,
+            precioUnitario: 26001,
+            subtotalBruto: 336000,
+            descuentoTotal: 23988,
+            subtotalConDescuento: 312012,
+            producto: { nombre: "Camiseta" },
+          },
+        ],
+      },
+    }),
+  );
   const notificationMock = t.mock.method(
     NotificationService.prototype,
     "primerAbonoConfirmado",
-    async () => {
+    async (abono: any) => {
       assert.equal(dentroTransaccion, false);
+      assert.equal(abono.pedido.cotizacion.detalles.length, 1);
+      assert.equal(abono.pedido.cotizacion.detalles[0].precioBase, 28000);
       return { event: "PRIMER_ABONO_CONFIRMADO", cliente: "enviado" };
     },
   );
@@ -185,6 +223,11 @@ test("AbonoService confirmar primer abono envia evento y actualiza saldo", async
     AbonoRepository.prototype,
     "buscarPorId",
     async () => abonoConfirmado,
+  );
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarPedidoCompleto",
+    async () => ({ ...pedidoBase, detalles: [], cotizacion: { detalles: [] } }),
   );
   const notificationMock = t.mock.method(
     NotificationService.prototype,

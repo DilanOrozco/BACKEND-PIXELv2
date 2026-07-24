@@ -18,6 +18,7 @@ const categoriaProductoRepository = new CategoriaProductoRepository();
 
 type ItemCalculoEntrada = {
   idProducto: number;
+  idTecnica?: number | null;
   cantidad: number;
   observaciones?: string | null;
 };
@@ -217,12 +218,7 @@ export class ProductoService {
       throw new Error("Debe enviar al menos un producto para cotizar.");
     }
 
-    const resultados = [];
-    let subtotalBrutoGeneral = new Prisma.Decimal(0);
-    let descuentoTotalGeneral = new Prisma.Decimal(0);
-    let total = new Prisma.Decimal(0);
-
-    for (const item of items) {
+    const itemsNormalizados = items.map((item) => {
       const idProducto = Number(item.idProducto);
       const cantidad = Number(item.cantidad);
 
@@ -232,7 +228,27 @@ export class ProductoService {
         throw new Error("La cantidad debe ser mayor a 0.");
       }
 
-      const producto = await productoRepository.buscarActivoPorId(idProducto);
+      return { item, idProducto, cantidad };
+    });
+    const idsProductos = [
+      ...new Set(itemsNormalizados.map(({ idProducto }) => idProducto)),
+    ];
+    const productos = await Promise.all(
+      idsProductos.map(async (idProducto) => ({
+        idProducto,
+        producto: await productoRepository.buscarActivoPorId(idProducto),
+      })),
+    );
+    const productosPorId = new Map(
+      productos.map(({ idProducto, producto }) => [idProducto, producto]),
+    );
+    const resultados = [];
+    let subtotalBrutoGeneral = new Prisma.Decimal(0);
+    let descuentoTotalGeneral = new Prisma.Decimal(0);
+    let total = new Prisma.Decimal(0);
+
+    for (const { item, idProducto, cantidad } of itemsNormalizados) {
+      const producto = productosPorId.get(idProducto);
 
       if (!producto) {
         throw new Error(`El producto ${idProducto} no existe o esta inactivo.`);
@@ -265,6 +281,7 @@ export class ProductoService {
 
       resultados.push({
         idProducto: producto.idProducto,
+        idTecnica: item.idTecnica ? Number(item.idTecnica) : undefined,
         producto: {
           idProducto: producto.idProducto,
           nombre: producto.nombre,
@@ -285,6 +302,7 @@ export class ProductoService {
         observaciones: limpiarTextoOpcional(item.observaciones),
         snapshot: {
           idProducto: producto.idProducto,
+          idTecnica: item.idTecnica ? Number(item.idTecnica) : undefined,
           descripcion: producto.nombre,
           cantidad,
           precioBase,
@@ -305,7 +323,9 @@ export class ProductoService {
       subtotal: subtotalBrutoGeneral.toNumber(),
       subtotalBruto: subtotalBrutoGeneral.toNumber(),
       descuentoTotal: descuentoTotalGeneral.toNumber(),
+      subtotalConDescuento: total.toNumber(),
       costosAdicionales: 0,
+      costoDiseno: 0,
       total: total.toNumber(),
     };
   }

@@ -103,6 +103,21 @@ export class ClienteRepository {
     });
   }
 
+  async buscarPorCorreo(correo: string) {
+    return await prisma.cliente.findFirst({
+      where: {
+        correo: {
+          equals: correo,
+          mode: "insensitive",
+        },
+      },
+      select: clienteSelect,
+      orderBy: {
+        idCliente: "asc",
+      },
+    });
+  }
+
   async crearCliente(data: ClienteData) {
     return await prisma.cliente.create({
       data: {

@@ -315,11 +315,13 @@ model DetallePedido {
   cantidad        Int
   precioUnitario  Decimal @db.Decimal(10, 2)
   subtotal        Decimal @db.Decimal(10, 2)
+  requiereDiseno  Boolean @default(true) @map("requiere_diseno")
   observaciones   String?
 
   pedido   Pedido             @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
   tecnica  Tecnica?           @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)
   producto ProductoCotizable? @relation(fields: [idProducto], references: [idProducto], onDelete: SetNull)
+  disenos  Diseno[]
 
   @@map("detalle_pedido")
 }
@@ -349,6 +351,8 @@ model Abonos {
 model Diseno {
   idDiseno           Int          @id @default(autoincrement()) @map("id_diseno")
   idPedido           Int          @map("id_pedido")
+  idDetallePedido    Int?         @map("id_detalle_pedido")
+  esDisenoGeneral    Boolean      @default(false) @map("es_diseno_general")
   idDisenador        Int?         @map("id_disenador")
   archivoUrl         String?      @map("archivo_url")
   descripcion        String?
@@ -368,10 +372,12 @@ model Diseno {
   fechaAprobacion    DateTime?    @map("fecha_aprobacion")
 
   pedido                  Pedido   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  detallePedido           DetallePedido? @relation(fields: [idDetallePedido], references: [idDetallePedido], onDelete: SetNull)
   disenador               Usuario? @relation(fields: [idDisenador], references: [idUsuario], onDelete: SetNull)
   respuestaRegistradaPor  Usuario? @relation("DisenosRespuestaRegistrada", fields: [respuestaRegistradaPorId], references: [idUsuario], onDelete: SetNull)
   recibidoPor             Usuario? @relation("DisenosRecibidos", fields: [recibidoPorId], references: [idUsuario], onDelete: SetNull)
 
+  @@index([idDetallePedido])
   @@map("disenos")
 }
 

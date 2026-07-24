@@ -57,6 +57,12 @@ router.patch(
 );
 
 router.patch(
+  "/:id/detalles/:idDetallePedido/requiere-diseno",
+  autorizarPermiso("pedidos.editar"),
+  pedidoController.actualizarRequiereDisenoDetalle,
+);
+
+router.patch(
   "/:id",
   autorizarPermiso("pedidos.editar"),
   pedidoController.actualizarPedido,

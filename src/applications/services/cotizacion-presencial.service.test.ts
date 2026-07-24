@@ -30,6 +30,11 @@ const tecnica = {
   descripcion: null,
   estado: true,
 };
+const tecnicaBordado = {
+  ...tecnica,
+  idTecnica: 2,
+  nombre: "Bordado",
+};
 
 const calculoProducto = {
   items: [
@@ -67,7 +72,12 @@ test("CotizacionService mantiene compatibilidad usando idCliente", async (t) => 
     "buscarPorCorreoOTelefono",
     async () => null,
   );
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  t.mock.method(
+    TecnicaRepository.prototype,
+    "buscarPorId",
+    async (idTecnica: number) =>
+      idTecnica === 2 ? tecnicaBordado : tecnica,
+  );
   const crearCotizacionMock = mockCotizacionCreada(t);
 
   const respuesta = await new CotizacionService().crearCotizacionNormal(
@@ -126,6 +136,92 @@ test("CotizacionService calcula y notifica cotizacion presencial con producto", 
   assert.equal(payload.detalles[0].subtotalConDescuento, 312010);
   assert.equal(payload.detalles[0].costoDiseno, 10000);
   assert.equal(notificarMock.mock.calls.length, 1);
+});
+
+test("CotizacionService calcula varios productos y agrega sus totales", async (t) => {
+  t.mock.method(ClienteRepository.prototype, "buscarPorId", async () => cliente);
+  t.mock.method(
+    TecnicaRepository.prototype,
+    "buscarPorId",
+    async (idTecnica: number) =>
+      idTecnica === 2 ? tecnicaBordado : tecnica,
+  );
+  const calcularMock = t.mock.method(
+    ProductoService.prototype,
+    "calcularItems",
+    async () => ({
+      items: [
+        calculoProducto.items[0],
+        {
+          snapshot: {
+            idProducto: 4,
+            cantidad: 2,
+            precioBase: 13000,
+            descuentoPorcentaje: 0,
+            descuentoValorUnitario: 0,
+            precioUnitario: 13000,
+            subtotal: 26000,
+            subtotalBruto: 26000,
+            descuentoTotal: 0,
+            subtotalConDescuento: 26000,
+          },
+        },
+      ],
+      subtotal: 362000,
+      descuentoTotal: 23990,
+      total: 338010,
+    }),
+  );
+  t.mock.method(
+    ClienteAccessService.prototype,
+    "asegurarAccesoCliente",
+    async () => ({ usuarioExistente: true }),
+  );
+  t.mock.method(
+    NotificationService.prototype,
+    "cotizacionPresencialCreada",
+    async () => ({
+      event: "COTIZACION_PRESENCIAL_CREADA",
+      cliente: "enviado" as const,
+    }),
+  );
+  const crearCotizacionMock = mockCotizacionCreada(t);
+
+  const respuesta = await new CotizacionService().crearCotizacionNormal(
+    {
+      idCliente: 7,
+      costosAdicionales: 2000,
+      detalles: [
+        { ...detalle, idProducto: 3, cantidad: 12, costoDiseno: 10000 },
+        {
+          ...detalle,
+          idTecnica: 2,
+          idProducto: 4,
+          descripcion: "Gorra",
+          cantidad: 2,
+          costoDiseno: 5000,
+        },
+      ],
+    },
+    usuarioAuth,
+  );
+  const payload = crearCotizacionMock.mock.calls[0]?.arguments[0];
+  const itemsCalculados = calcularMock.mock.calls[0]?.arguments[0];
+  const itemCalculado1 = itemsCalculados?.[0] as any;
+  const itemCalculado2 = itemsCalculados?.[1] as any;
+
+  assert.equal(itemsCalculados?.length, 2);
+  assert.equal(itemCalculado1.idTecnica, 1);
+  assert.equal(itemCalculado2.idTecnica, 2);
+  assert.equal(payload.detalles.length, 2);
+  assert.equal(payload.detalles[0].idTecnica, 1);
+  assert.equal(payload.detalles[1].idTecnica, 2);
+  assert.equal(payload.subtotal, 362000);
+  assert.equal(payload.descuentoTotal, 23990);
+  assert.equal(payload.total, 355010);
+  assert.equal(respuesta.cantidadItems, 2);
+  assert.equal(respuesta.costoDiseno, 15000);
+  assert.equal(respuesta.subtotalFinal, 338010);
 });
 
 test("CotizacionService conserva solicitud por cotizar cuando no llega idProducto", async (t) => {

@@ -6,6 +6,7 @@ import { CategoriaProductoService } from "./categoria-producto.service";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 import { NotificationService } from "./notification.service";
 import { ClienteAccessService } from "./cliente-access.service";
+import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
 import {
   validarCalcularCotizacionPublica,
   validarCrearCotizacionPublica,
@@ -18,21 +19,117 @@ const categoriaProductoService = new CategoriaProductoService();
 const tecnicaRepository = new TecnicaRepository();
 const notificationService = new NotificationService();
 const clienteAccessService = new ClienteAccessService();
+const usuarioRepository = new UsuarioRepository();
+
+const EMAIL_REQUIRES_LOGIN_MESSAGE =
+  "Este correo ya est\u00e1 registrado. Inicia sesi\u00f3n para realizar una cotizaci\u00f3n con esta cuenta.";
+
+export class PublicCotizacionConflictError extends Error {
+  readonly code = "EMAIL_REQUIRES_LOGIN";
+
+  constructor() {
+    super(EMAIL_REQUIRES_LOGIN_MESSAGE);
+    this.name = "PublicCotizacionConflictError";
+  }
+}
 
 const limpiarCorreo = (valor: unknown) => {
   const texto = limpiarTextoOpcional(valor);
   return texto ? texto.toLowerCase() : null;
 };
 
-const respuestaCalculoPublica = (calculo: any) => ({
-  items: calculo.items.map((item: any) => {
+const construirResumenProductos = (items: any[]) => {
+  const nombres = items.map(
+    (item) => item.producto?.nombre ?? item.descripcion ?? "Producto",
+  );
+
+  return nombres.length <= 2
+    ? nombres.join(", ")
+    : `${nombres.slice(0, 2).join(", ")} y ${nombres.length - 2} mas`;
+};
+
+const respuestaCalculoPublica = (
+  calculo: any,
+  itemsEntrada: any[] = [],
+  tecnicasPorId: Map<number, any> = new Map(),
+) => {
+  const items = calculo.items.map((item: any, index: number) => {
     const { snapshot, ...publico } = item;
     void snapshot;
-    return publico;
-  }),
-  subtotal: calculo.subtotal,
-  total: calculo.total,
-});
+    const idTecnica = itemsEntrada[index]?.idTecnica
+      ? Number(itemsEntrada[index].idTecnica)
+      : undefined;
+
+    return {
+      ...publico,
+      idTecnica,
+      tecnica: idTecnica ? tecnicasPorId.get(idTecnica) ?? null : null,
+    };
+  });
+  const subtotalConDescuento =
+    calculo.subtotalConDescuento ?? calculo.total;
+
+  return {
+    items,
+    detalles: items,
+    cantidadItems: items.length,
+    productosResumen: construirResumenProductos(items),
+    subtotal: calculo.subtotal,
+    subtotalBruto: calculo.subtotalBruto ?? calculo.subtotal,
+    descuentoTotal: calculo.descuentoTotal ?? 0,
+    subtotalConDescuento,
+    subtotalFinal: subtotalConDescuento,
+    costosAdicionales: calculo.costosAdicionales ?? 0,
+    costoDiseno: calculo.costoDiseno ?? 0,
+    total: calculo.total,
+  };
+};
+
+const formatearCotizacionPublica = (cotizacion: any) => {
+  const detalles = Array.isArray(cotizacion?.detalles)
+    ? cotizacion.detalles.map((detalle: any) => {
+        const subtotalBruto = detalle.subtotalBruto ?? detalle.subtotal;
+        const descuentoTotal = detalle.descuentoTotal ?? 0;
+        const subtotalConDescuento =
+          detalle.subtotalConDescuento ??
+          (subtotalBruto === null || subtotalBruto === undefined
+            ? null
+            : Number(subtotalBruto) - Number(descuentoTotal));
+
+        return {
+          ...detalle,
+          subtotalBruto,
+          descuentoValorUnitario: detalle.descuentoValorUnitario ?? 0,
+          descuentoTotal,
+          subtotalConDescuento,
+          subtotalFinal: subtotalConDescuento,
+        };
+      })
+    : [];
+  const subtotalBruto = cotizacion?.subtotal ?? 0;
+  const descuentoTotal = cotizacion?.descuentoTotal ?? 0;
+  const subtotalConDescuento = Math.max(
+    Number(subtotalBruto) - Number(descuentoTotal),
+    0,
+  );
+  const costoDiseno = detalles.reduce(
+    (total: number, detalle: any) =>
+      total + Number(detalle.costoDiseno ?? 0),
+    0,
+  );
+
+  return {
+    ...cotizacion,
+    detalles,
+    cantidadItems: detalles.length,
+    productosResumen: construirResumenProductos(detalles),
+    subtotalBruto,
+    descuentoTotal,
+    subtotalConDescuento,
+    subtotalFinal: subtotalConDescuento,
+    costoDiseno,
+  };
+};
 
 const enviarCorreosCotizacion = async (
   cliente: any,
@@ -40,12 +137,25 @@ const enviarCorreosCotizacion = async (
   calculo: any,
   observaciones: string | null,
   accesoCliente?: any,
+  tecnicasPorId: Map<number, any> = new Map(),
 ) => {
+  const detallesBase =
+    Array.isArray(cotizacion.detalles) && cotizacion.detalles.length > 0
+      ? cotizacion.detalles
+      : respuestaCalculoPublica(calculo).items;
+  const detallesCorreo = detallesBase.map((detalle: any) => ({
+    ...detalle,
+    tecnica:
+      detalle.tecnica ??
+      tecnicasPorId.get(Number(detalle.idTecnica)) ??
+      null,
+  }));
   const payload = {
     idCotizacion: cotizacion.idCotizacion,
     cliente,
-    items: respuestaCalculoPublica(calculo).items,
-    total: calculo.total,
+    ...respuestaCalculoPublica(calculo),
+    detalles: detallesCorreo,
+    items: detallesCorreo,
     observaciones,
     accesoCliente,
   };
@@ -66,15 +176,30 @@ export class PublicCotizacionService {
   }
 
   private async asegurarTecnicasActivas(items: any[]) {
-    const idsTecnicas = [...new Set(items.map((item) => Number(item.idTecnica)))];
+    const idsTecnicas = [
+      ...new Set(
+        items
+          .filter((item) => item.idTecnica !== undefined)
+          .map((item) => Number(item.idTecnica)),
+      ),
+    ];
 
-    for (const idTecnica of idsTecnicas) {
-      const tecnica = await tecnicaRepository.buscarPorId(idTecnica);
+    const tecnicas = await Promise.all(
+      idsTecnicas.map(async (idTecnica) => ({
+        idTecnica,
+        tecnica: await tecnicaRepository.buscarPorId(idTecnica),
+      })),
+    );
 
+    for (const { idTecnica, tecnica } of tecnicas) {
       if (!tecnica || !tecnica.estado) {
         throw new Error(`La tecnica con ID ${idTecnica} no existe o esta inactiva.`);
       }
     }
+
+    return new Map(
+      tecnicas.map(({ idTecnica, tecnica }) => [idTecnica, tecnica]),
+    );
   }
 
   async calcular(data: Record<string, unknown>) {
@@ -84,44 +209,85 @@ export class PublicCotizacionService {
       throw new Error(error);
     }
 
-    const calculo = await productoService.calcularItems(data.items as any[]);
-    return respuestaCalculoPublica(calculo);
+    const itemsEntrada = data.items as any[];
+    const tecnicasPorId = await this.asegurarTecnicasActivas(itemsEntrada);
+    const calculo = await productoService.calcularItems(itemsEntrada);
+    return respuestaCalculoPublica(calculo, itemsEntrada, tecnicasPorId);
   }
 
-  async crearCotizacion(data: Record<string, unknown>) {
-    const error = validarCrearCotizacionPublica(data);
+  async crearCotizacion(
+    data: Record<string, unknown>,
+    usuarioAuth?: any,
+  ) {
+    const esClienteAutenticado =
+      String(usuarioAuth?.rol ?? "").toLowerCase() === "cliente";
+    const clienteAutenticado = esClienteAutenticado
+      ? await clienteAccessService.obtenerClienteDeUsuario(
+          Number(usuarioAuth.idUsuario),
+        )
+      : null;
+    const datosValidados = clienteAutenticado
+      ? { ...data, cliente: clienteAutenticado }
+      : data;
+    const error = validarCrearCotizacionPublica(datosValidados);
 
     if (error) {
       throw new Error(error);
     }
 
     const itemsEntrada = data.items as any[];
-    await this.asegurarTecnicasActivas(itemsEntrada);
+    const tecnicasPorId = await this.asegurarTecnicasActivas(itemsEntrada);
 
     const calculo = await productoService.calcularItems(itemsEntrada);
-    const clienteEntrada = data.cliente as Record<string, unknown>;
-    const correo = limpiarCorreo(clienteEntrada.correo);
-    const telefono = limpiarTextoOpcional(clienteEntrada.telefono);
-    const clienteExistente =
-      await clienteRepository.buscarPorCorreoOTelefono(correo, telefono);
+    let cliente: any = clienteAutenticado;
+    let accesoCliente: any = clienteAutenticado
+      ? {
+          usuarioCreado: false,
+          usuarioExistente: true,
+          idUsuario: Number(usuarioAuth.idUsuario),
+        }
+      : null;
 
-    const cliente = clienteExistente
-      ? await clienteRepository.actualizarCliente(clienteExistente.idCliente, {
-          nombre: String(clienteEntrada.nombre).trim(),
-          documento: limpiarTextoOpcional(clienteEntrada.documento),
-          correo: correo ?? clienteExistente.correo,
-          telefono: telefono ?? clienteExistente.telefono,
-          direccion: limpiarTextoOpcional(clienteEntrada.direccion),
-        })
-      : await clienteRepository.crearCliente({
-          nombre: String(clienteEntrada.nombre).trim(),
-          documento: limpiarTextoOpcional(clienteEntrada.documento),
-          correo,
-          telefono,
-          direccion: limpiarTextoOpcional(clienteEntrada.direccion),
-        });
+    if (!cliente) {
+      const clienteEntrada = data.cliente as Record<string, unknown>;
+      const correo = limpiarCorreo(clienteEntrada.correo);
+      const telefono = limpiarTextoOpcional(clienteEntrada.telefono);
 
-    const accesoCliente = await clienteAccessService.asegurarAccesoCliente(cliente);
+      if (correo) {
+        const [clienteConCorreo, usuarioConCorreo] = await Promise.all([
+          clienteRepository.buscarPorCorreo(correo),
+          usuarioRepository.buscarPorCorreo(correo),
+        ]);
+
+        if (clienteConCorreo || usuarioConCorreo) {
+          throw new PublicCotizacionConflictError();
+        }
+      }
+
+      const clienteExistente =
+        await clienteRepository.buscarPorCorreoOTelefono(correo, telefono);
+      const puedeReutilizarCliente =
+        clienteExistente &&
+        (!correo || !clienteExistente.idUsuario);
+
+      cliente = puedeReutilizarCliente
+        ? await clienteRepository.actualizarCliente(clienteExistente.idCliente, {
+            nombre: String(clienteEntrada.nombre).trim(),
+            documento: limpiarTextoOpcional(clienteEntrada.documento),
+            correo: correo ?? clienteExistente.correo,
+            telefono: telefono ?? clienteExistente.telefono,
+            direccion: limpiarTextoOpcional(clienteEntrada.direccion),
+          })
+        : await clienteRepository.crearCliente({
+            nombre: String(clienteEntrada.nombre).trim(),
+            documento: limpiarTextoOpcional(clienteEntrada.documento),
+            correo,
+            telefono,
+            direccion: limpiarTextoOpcional(clienteEntrada.direccion),
+          });
+
+      accesoCliente = await clienteAccessService.asegurarAccesoCliente(cliente);
+    }
 
     const detalles = calculo.items.map((item: any, index: number) => ({
       idProducto: item.snapshot.idProducto,
@@ -159,11 +325,12 @@ export class PublicCotizacionService {
       calculo,
       observaciones,
       accesoCliente,
+      tecnicasPorId,
     );
 
     return {
-      cotizacion,
-      calculo: respuestaCalculoPublica(calculo),
+      cotizacion: formatearCotizacionPublica(cotizacion),
+      calculo: respuestaCalculoPublica(calculo, itemsEntrada, tecnicasPorId),
       email,
     };
   }

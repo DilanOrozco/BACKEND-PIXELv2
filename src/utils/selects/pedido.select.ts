@@ -56,6 +56,12 @@ export const pedidoSelect = {
           descuentoTotal: true,
           subtotalConDescuento: true,
           observaciones: true,
+          tecnica: {
+            select: {
+              idTecnica: true,
+              nombre: true,
+            },
+          },
           producto: {
             select: {
               idProducto: true,
@@ -81,6 +87,7 @@ export const pedidoSelect = {
       cantidad: true,
       precioUnitario: true,
       subtotal: true,
+      requiereDiseno: true,
       observaciones: true,
       tecnica: { select: { idTecnica: true, nombre: true } },
       producto: {
@@ -132,6 +139,8 @@ export const pedidoSelect = {
     select: {
       idDiseno: true,
       idPedido: true,
+      idDetallePedido: true,
+      esDisenoGeneral: true,
       idDisenador: true,
       archivoUrl: true,
       descripcion: true,
@@ -141,6 +150,28 @@ export const pedidoSelect = {
       fechaActualizacion: true,
       fechaEnvio: true,
       fechaAprobacion: true,
+      detallePedido: {
+        select: {
+          idDetallePedido: true,
+          idProducto: true,
+          idTecnica: true,
+          descripcion: true,
+          cantidad: true,
+          requiereDiseno: true,
+          producto: {
+            select: {
+              idProducto: true,
+              nombre: true,
+            },
+          },
+          tecnica: {
+            select: {
+              idTecnica: true,
+              nombre: true,
+            },
+          },
+        },
+      },
       disenador: {
         select: {
           idUsuario: true,

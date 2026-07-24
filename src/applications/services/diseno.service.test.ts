@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Prisma } from "../../../generated/prisma/client";
 import { DisenoService } from "./diseno.service";
-import { DisenoRepository } from "../../infrastructure/repositories/diseno.repository";
+import {
+  DisenoRepository,
+  evaluarCoberturaDisenos,
+} from "../../infrastructure/repositories/diseno.repository";
 import { AbonoService } from "./abono.service";
 import { NotificationService } from "./notification.service";
 
@@ -34,12 +37,19 @@ const pedidoBase = {
   total: 100000,
   totalPagado: 50000,
   saldoPendiente: 50000,
+  detalles: [
+    {
+      idDetallePedido: 501,
+      requiereDiseno: true,
+    },
+  ],
   cliente: clienteA,
 };
 
 const disenoBase = {
   idDiseno: 1,
   idPedido: 100,
+  idDetallePedido: 501,
   idDisenador: null,
   archivoUrl: "https://pixel.test/diseno.png",
   descripcion: "Mockup camiseta",
@@ -57,6 +67,20 @@ const disenoBase = {
   fechaActualizacion: new Date("2026-01-01"),
   fechaEnvio: new Date("2026-01-01"),
   fechaAprobacion: null,
+  detallePedido: {
+    idDetallePedido: 501,
+    idPedido: 100,
+    idProducto: 1,
+    idTecnica: 1,
+    descripcion: "Camiseta",
+    cantidad: 12,
+    precioUnitario: 26001,
+    subtotal: 312012,
+    requiereDiseno: true,
+    observaciones: null,
+    producto: { idProducto: 1, nombre: "Camiseta" },
+    tecnica: { idTecnica: 1, nombre: "DTF" },
+  },
   pedido: pedidoBase,
   respuestaRegistradaPor: null,
   disenador: null,
@@ -94,8 +118,13 @@ test("DisenoService cliente aprueba diseno propio y permite avanzar a produccion
   }));
   t.mock.method(
     DisenoRepository.prototype,
-    "buscarDisenoAprobadoPorPedido",
+    "buscarDisenoAprobadoPorDetalle",
     async () => null,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "todosDisenosRequeridosAprobados",
+    async () => true,
   );
   const actualizarDisenoMock = t.mock.method(
     DisenoRepository.prototype,
@@ -222,8 +251,13 @@ test("DisenoService admin aprueba diseno en nombre del cliente", async (t) => {
   }));
   t.mock.method(
     DisenoRepository.prototype,
-    "buscarDisenoAprobadoPorPedido",
+    "buscarDisenoAprobadoPorDetalle",
     async () => null,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "todosDisenosRequeridosAprobados",
+    async () => true,
   );
   const notificacionMock = t.mock.method(
     NotificationService.prototype,
@@ -396,6 +430,7 @@ test("DisenoService crea diseno de origen DISENADOR asignando disenador autentic
   );
 
   const data = crearMock.mock.calls[0]?.arguments[0] as any;
+  assert.equal(data.idDetallePedido, 501);
   assert.equal(data.idDisenador, 55);
   assert.equal(data.origenDiseno, "DISENADOR");
   assert.equal(diseno.idPedido, 100);
@@ -439,6 +474,7 @@ test("DisenoService crea diseno de origen CLIENTE sin exigir disenador", async (
   );
 
   const data = crearMock.mock.calls[0]?.arguments[0] as any;
+  assert.equal(data.idDetallePedido, 501);
   assert.equal(data.idDisenador, null);
   assert.equal(data.origenDiseno, "CLIENTE");
   assert.equal(data.medioRecepcion, "WHATSAPP");
@@ -480,6 +516,11 @@ test("DisenoService admin puede crear diseno recibido por WhatsApp ya aprobado",
       ...disenoBase,
       ...data,
     }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "todosDisenosRequeridosAprobados",
+    async () => true,
   );
   const actualizarPedidoMock = t.mock.method(
     DisenoRepository.prototype,
@@ -542,6 +583,8 @@ test("DisenoService cliente puede ver diseno recibido por WhatsApp si es de su p
   assert.equal(disenos.length, 1);
   assert.ok(disenos[0]);
   assert.equal(disenos[0].medioRecepcion, "WHATSAPP");
+  assert.equal(disenos[0].detallePedido?.idDetallePedido, 501);
+  assert.equal(disenos[0].detallePedido?.producto?.nombre, "Camiseta");
   assert.deepEqual(listarMock.mock.calls[0]?.arguments, [10]);
 });
 
@@ -559,4 +602,223 @@ test("DisenoService modulo admin sigue listando disenos", async (t) => {
 
   assert.equal(disenos.length, 1);
   assert.deepEqual(listarMock.mock.calls[0]?.arguments, [{}, undefined]);
+});
+
+test("DisenoService aprobar un solo diseno multiproducto no pasa pedido a produccion", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorIdOperacion",
+    async () => ({
+      ...disenoBase,
+      idDetallePedido: 501,
+      pedido: {
+        ...pedidoBase,
+        detalles: [
+          { idDetallePedido: 501, requiereDiseno: true },
+          { idDetallePedido: 502, requiereDiseno: true },
+        ],
+      },
+    }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarDisenoAprobadoPorDetalle",
+    async () => null,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarDisenoOperacion",
+    async (_id: number, data: any) => ({ ...disenoBase, ...data }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "todosDisenosRequeridosAprobados",
+    async () => false,
+  );
+  const actualizarPedido = t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarEstadoPedido",
+    async () => pedidoCompleto,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => ({ ...disenoBase, estado: "APROBADO" }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoCompleto",
+    async () => pedidoCompleto,
+  );
+  const notificar = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEnProduccion",
+    async () => ({ event: "PEDIDO_EN_PRODUCCION", cliente: "enviado" }),
+  );
+
+  const resultado = await servicio().aprobarDiseno(
+    1,
+    { idUsuario: 99, rol: "Admin" },
+    {},
+  );
+
+  assert.equal(resultado.pasoAProduccion, false);
+  assert.equal(resultado.todosDisenosRequeridosAprobados, false);
+  assert.equal(actualizarPedido.mock.calls.length, 0);
+  assert.equal(notificar.mock.calls.length, 0);
+});
+
+test("DisenoService aprobar el ultimo diseno multiproducto pasa pedido a produccion", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorIdOperacion",
+    async () => ({
+      ...disenoBase,
+      idDiseno: 2,
+      idDetallePedido: 502,
+      pedido: {
+        ...pedidoBase,
+        detalles: [
+          { idDetallePedido: 501, requiereDiseno: true },
+          { idDetallePedido: 502, requiereDiseno: true },
+        ],
+      },
+    }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarDisenoAprobadoPorDetalle",
+    async () => null,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarDisenoOperacion",
+    async (_id: number, data: any) => ({
+      ...disenoBase,
+      idDiseno: 2,
+      idDetallePedido: 502,
+      ...data,
+    }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "todosDisenosRequeridosAprobados",
+    async () => true,
+  );
+  const actualizarPedido = t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarEstadoPedido",
+    async (_id: number, estadoPedido: string) => ({
+      ...pedidoCompleto,
+      estadoPedido,
+    }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => ({
+      ...disenoBase,
+      idDiseno: 2,
+      idDetallePedido: 502,
+      estado: "APROBADO",
+    }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoCompleto",
+    async () => ({ ...pedidoCompleto, estadoPedido: "EN_PROCESO" }),
+  );
+  const notificar = t.mock.method(
+    NotificationService.prototype,
+    "pedidoEnProduccion",
+    async () => ({ event: "PEDIDO_EN_PRODUCCION", cliente: "enviado" }),
+  );
+
+  const resultado = await servicio().aprobarDiseno(
+    2,
+    { idUsuario: 99, rol: "Admin" },
+    {},
+  );
+
+  assert.equal(resultado.pasoAProduccion, true);
+  assert.equal(resultado.todosDisenosRequeridosAprobados, true);
+  assert.equal(actualizarPedido.mock.calls.length, 1);
+  assert.equal(notificar.mock.calls.length, 1);
+});
+
+test("DisenoService asocia diseno al detalle seleccionado en pedido multiproducto", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => ({
+      ...pedidoBase,
+      detalles: [
+        { idDetallePedido: 501, requiereDiseno: true },
+        { idDetallePedido: 502, requiereDiseno: true },
+      ],
+    }),
+  );
+  t.mock.method(
+    AbonoService.prototype,
+    "pedidoTienePagoInicialValido",
+    async () => true,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async (data: any) => ({ ...disenoBase, ...data }),
+  );
+
+  const diseno = await servicio().crearDiseno(
+    {
+      idPedido: 100,
+      idDetallePedido: 502,
+      descripcion: "Diseno para el segundo producto",
+      origenDiseno: "ADMIN",
+    },
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.equal((crear.mock.calls[0]?.arguments[0] as any).idDetallePedido, 502);
+  assert.equal(diseno.idDetallePedido, 502);
+});
+
+test("cobertura de disenos exige todos los detalles y conserva compatibilidad legacy", () => {
+  const detalles = [
+    { idDetallePedido: 501 },
+    { idDetallePedido: 502 },
+  ];
+
+  assert.equal(
+    evaluarCoberturaDisenos(detalles, [
+      { idDetallePedido: 501, esDisenoGeneral: false },
+    ]),
+    false,
+  );
+  assert.equal(
+    evaluarCoberturaDisenos(detalles, [
+      { idDetallePedido: 501, esDisenoGeneral: false },
+      { idDetallePedido: 502, esDisenoGeneral: false },
+    ]),
+    true,
+  );
+  assert.equal(
+    evaluarCoberturaDisenos(detalles, [
+      { idDetallePedido: null, esDisenoGeneral: true },
+    ]),
+    true,
+  );
+  assert.equal(
+    evaluarCoberturaDisenos(detalles, [
+      { idDetallePedido: null, esDisenoGeneral: false },
+    ]),
+    false,
+  );
+  assert.equal(
+    evaluarCoberturaDisenos(
+      [{ idDetallePedido: 501 }],
+      [{ idDetallePedido: null, esDisenoGeneral: false }],
+    ),
+    true,
+  );
 });

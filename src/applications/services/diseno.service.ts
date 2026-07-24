@@ -218,6 +218,32 @@ export class DisenoService {
       throw new Error("Solo se pueden crear disenos para pedidos PENDIENTE.");
     }
 
+    const idDetalleSolicitado =
+      data.idDetallePedido === undefined || data.idDetallePedido === null
+        ? null
+        : Number(data.idDetallePedido);
+    const detalleSolicitado = idDetalleSolicitado
+      ? pedido.detalles.find(
+          (detalle) => detalle.idDetallePedido === idDetalleSolicitado,
+        )
+      : null;
+
+    if (idDetalleSolicitado && !detalleSolicitado) {
+      throw new Error("El detalle indicado no pertenece al pedido.");
+    }
+
+    let idDetallePedido = idDetalleSolicitado;
+
+    if (!idDetallePedido && data.esDisenoGeneral !== true) {
+      if (pedido.detalles.length === 1) {
+        idDetallePedido = pedido.detalles[0]?.idDetallePedido ?? null;
+      } else {
+        throw new Error(
+          "Debes indicar idDetallePedido para pedidos con varios productos o marcar esDisenoGeneral=true.",
+        );
+      }
+    }
+
     const tienePagoInicial =
       await abonoService.pedidoTienePagoInicialValido(idPedido);
 
@@ -261,6 +287,8 @@ export class DisenoService {
 
     const dataCrear: CrearDisenoData = {
       idPedido,
+      idDetallePedido,
+      esDisenoGeneral: data.esDisenoGeneral === true,
       idDisenador,
       archivoUrl,
       descripcion: limpiarTextoOpcional(data.descripcion),
@@ -282,23 +310,32 @@ export class DisenoService {
         estado === ESTADO_APROBADO_DISENO ? Number(user.idUsuario) : null,
     };
 
-    const disenoCreado = await this.ejecutarTransaccion(
+    const resultadoCreacion = await this.ejecutarTransaccion(
       async (tx: Prisma.TransactionClient) => {
         const diseno = await disenoRepository.crearDiseno(dataCrear, tx);
+        let pasoAProduccion = false;
 
         if (estado === ESTADO_APROBADO_DISENO) {
-          await disenoRepository.actualizarEstadoPedido(
-            idPedido,
-            ESTADO_PEDIDO_EN_PROCESO,
-            tx,
-          );
+          const todosAprobados =
+            await disenoRepository.todosDisenosRequeridosAprobados(idPedido, tx);
+
+          if (todosAprobados) {
+            await disenoRepository.actualizarEstadoPedido(
+              idPedido,
+              ESTADO_PEDIDO_EN_PROCESO,
+              tx,
+            );
+            pasoAProduccion = true;
+          }
         }
 
-        return diseno;
+        return { diseno, pasoAProduccion };
       },
     );
 
-    if (estado === ESTADO_APROBADO_DISENO) {
+    const disenoCreado = resultadoCreacion.diseno;
+
+    if (resultadoCreacion.pasoAProduccion) {
       const pedidoEnProduccion = await disenoRepository.buscarPedidoCompleto(idPedido);
 
       if (pedidoEnProduccion) {
@@ -567,8 +604,9 @@ export class DisenoService {
 
       if (decision === "APROBAR") {
         const disenoAprobadoExistente =
-          await disenoRepository.buscarDisenoAprobadoPorPedido(
+          await disenoRepository.buscarDisenoAprobadoPorDetalle(
             diseno.idPedido,
+            diseno.idDetallePedido,
             tx,
           );
 
@@ -608,10 +646,21 @@ export class DisenoService {
 
       const tienePagoInicial =
         decision === "APROBAR" && pedidoTienePagoInicial(diseno.pedido);
+      const todosDisenosRequeridosAprobados =
+        decision === "APROBAR"
+          ? await disenoRepository.todosDisenosRequeridosAprobados(
+              diseno.idPedido,
+              tx,
+            )
+          : false;
 
       let estadoPedido = diseno.pedido.estadoPedido;
 
-      if (tienePagoInicial && estadoPedido === ESTADO_PEDIDO_PENDIENTE) {
+      if (
+        tienePagoInicial &&
+        todosDisenosRequeridosAprobados &&
+        estadoPedido === ESTADO_PEDIDO_PENDIENTE
+      ) {
         const pedidoActualizado = await disenoRepository.actualizarEstadoPedido(
           diseno.idPedido,
           ESTADO_PEDIDO_EN_PROCESO,
@@ -624,8 +673,11 @@ export class DisenoService {
         idDiseno: disenoActualizado.idDiseno,
         idPedido: diseno.idPedido,
         pasoAProduccion: Boolean(
-          tienePagoInicial && estadoPedido === ESTADO_PEDIDO_EN_PROCESO,
+          tienePagoInicial &&
+          todosDisenosRequeridosAprobados &&
+          estadoPedido === ESTADO_PEDIDO_EN_PROCESO,
         ),
+        todosDisenosRequeridosAprobados,
       };
     });
 
@@ -646,6 +698,8 @@ export class DisenoService {
       diseno,
       pedido,
       pasoAProduccion: resultado.pasoAProduccion,
+      todosDisenosRequeridosAprobados:
+        resultado.todosDisenosRequeridosAprobados,
     };
   }
 

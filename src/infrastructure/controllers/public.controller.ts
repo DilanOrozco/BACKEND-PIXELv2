@@ -1,5 +1,9 @@
 import type { Request, Response } from "express";
-import { PublicCotizacionService } from "../../applications/services/public-cotizacion.service";
+import {
+  PublicCotizacionConflictError,
+  PublicCotizacionService,
+} from "../../applications/services/public-cotizacion.service";
+import type { AuthRequest } from "../middlewares/auth.middleware";
 
 const publicCotizacionService = new PublicCotizacionService();
 
@@ -66,15 +70,25 @@ export class PublicController {
     }
   }
 
-  async crearCotizacion(req: Request, res: Response) {
+  async crearCotizacion(req: AuthRequest, res: Response) {
     try {
-      const cotizacion = await publicCotizacionService.crearCotizacion(req.body);
+      const cotizacion = await publicCotizacionService.crearCotizacion(
+        req.body,
+        req.user,
+      );
 
       return res.status(201).json({
         message: "Cotizacion creada correctamente.",
         data: cotizacion,
       });
     } catch (error: unknown) {
+      if (error instanceof PublicCotizacionConflictError) {
+        return res.status(409).json({
+          message: error.message,
+          code: error.code,
+        });
+      }
+
       return res.status(400).json({
         message: mensajeError(error),
       });

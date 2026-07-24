@@ -84,14 +84,17 @@ export class CotizacionService {
     const subtotal = detalle.subtotal ?? null;
     const descuentoTotal = detalle.descuentoTotal ?? 0;
 
+    const subtotalConDescuento =
+      detalle.subtotalConDescuento ??
+      (subtotal !== null ? aNumero(subtotal) - aNumero(descuentoTotal) : null);
+
     return {
       ...detalle,
       descuentoValorUnitario: detalle.descuentoValorUnitario ?? 0,
       subtotalBruto: detalle.subtotalBruto ?? subtotal,
       descuentoTotal,
-      subtotalConDescuento:
-        detalle.subtotalConDescuento ??
-        (subtotal !== null ? aNumero(subtotal) - aNumero(descuentoTotal) : null),
+      subtotalConDescuento,
+      subtotalFinal: subtotalConDescuento,
     };
   }
 
@@ -100,14 +103,43 @@ export class CotizacionService {
       return cotizacion;
     }
 
+    const detalles = Array.isArray(cotizacion.detalles)
+      ? cotizacion.detalles.map((detalle: any) =>
+          this.formatearDetalleCotizacion(detalle),
+        )
+      : cotizacion.detalles;
+    const costoDiseno = Array.isArray(detalles)
+      ? detalles.reduce(
+          (total: number, detalle: any) => total + aNumero(detalle.costoDiseno),
+          0,
+        )
+      : 0;
+    const subtotalBruto = cotizacion.subtotal ?? 0;
+    const descuentoTotal = cotizacion.descuentoTotal ?? 0;
+    const subtotalConDescuento = Math.max(
+      aNumero(subtotalBruto) - aNumero(descuentoTotal),
+      0,
+    );
+    const nombresProductos = Array.isArray(detalles)
+      ? detalles.map(
+          (detalle: any) =>
+            detalle.producto?.nombre ?? detalle.descripcion ?? "Producto",
+        )
+      : [];
+
     return {
       ...cotizacion,
-      descuentoTotal: cotizacion.descuentoTotal ?? 0,
-      detalles: Array.isArray(cotizacion.detalles)
-        ? cotizacion.detalles.map((detalle: any) =>
-            this.formatearDetalleCotizacion(detalle),
-          )
-        : cotizacion.detalles,
+      subtotalBruto,
+      descuentoTotal,
+      subtotalConDescuento,
+      subtotalFinal: subtotalConDescuento,
+      costoDiseno,
+      cantidadItems: Array.isArray(detalles) ? detalles.length : 0,
+      productosResumen:
+        nombresProductos.length <= 2
+          ? nombresProductos.join(", ")
+          : `${nombresProductos.slice(0, 2).join(", ")} y ${nombresProductos.length - 2} mas`,
+      detalles,
     };
   }
 
@@ -130,11 +162,18 @@ export class CotizacionService {
       ...new Set(detalles.map((detalle) => Number(detalle.idTecnica))),
     ];
 
-    for (const idTecnica of idsTecnicas) {
-      const tecnica = await tecnicaRepository.buscarPorId(idTecnica);
+    const tecnicas = await Promise.all(
+      idsTecnicas.map(async (idTecnica) => ({
+        idTecnica,
+        tecnica: await tecnicaRepository.buscarPorId(idTecnica),
+      })),
+    );
 
-      if (!tecnica) {
-        throw new Error(`La tecnica con ID ${idTecnica} no existe.`);
+    for (const { idTecnica, tecnica } of tecnicas) {
+      if (!tecnica || !tecnica.estado) {
+        throw new Error(
+          `La tecnica con ID ${idTecnica} no existe o esta inactiva.`,
+        );
       }
     }
   }
@@ -233,6 +272,9 @@ export class CotizacionService {
   private prepararDetallesSolicitud(detalles: any[], incluirIdDetalle = false) {
     return detalles.map((detalle) => {
       const detallePreparado: any = {
+        idProducto: detalle.idProducto
+          ? Number(detalle.idProducto)
+          : undefined,
         idTecnica: Number(detalle.idTecnica),
         descripcion: detalle.descripcion.trim(),
         cantidad: Number(detalle.cantidad),
@@ -288,9 +330,9 @@ export class CotizacionService {
     return this.formatearCotizacion(cotizacion);
   }
 
-  // Empleado: crea una cotizacion presencial. Si llega idProducto, se valora
-  // con el catalogo; las solicitudes antiguas sin producto conservan el flujo
-  // pendiente de cotizar.
+  // Empleado: crea una cotizacion presencial. Si todos los detalles incluyen
+  // producto, se valoran con el catalogo; solicitudes antiguas sin producto
+  // conservan el flujo pendiente de cotizar.
   async crearCotizacionNormal(data: any, usuarioAuth: any) {
     const error = validarCrearCotizacionPresencial(data);
 
@@ -303,25 +345,39 @@ export class CotizacionService {
     await this.asegurarTecnicasExisten(data.detalles);
     const cliente = await this.resolverClientePresencial(data);
     this.validarTelefonoClientePresencial(cliente);
-    const detalleEntrada = data.detalles[0];
-    const idProducto = detalleEntrada.idProducto === undefined
-      ? null
-      : Number(detalleEntrada.idProducto);
-    const costoDiseno = Math.round(aNumero(detalleEntrada.costoDiseno));
+    const detallesConProducto = data.detalles.filter(
+      (detalle: any) => detalle.idProducto !== undefined,
+    );
+
+    if (
+      detallesConProducto.length > 0 &&
+      detallesConProducto.length !== data.detalles.length
+    ) {
+      throw new Error(
+        "Todos los detalles deben incluir idProducto para calcular la cotizacion automaticamente.",
+      );
+    }
+
+    const tieneProductos = detallesConProducto.length === data.detalles.length;
     const costosAdicionales = Math.round(aNumero(data.costosAdicionales));
 
-    const calculo = idProducto
-      ? await productoService.calcularItems([
-          {
-            idProducto,
-            cantidad: Number(detalleEntrada.cantidad),
-            observaciones: limpiarTextoOpcional(detalleEntrada.observaciones),
-          },
-        ])
+    const calculo = tieneProductos
+      ? await productoService.calcularItems(
+          data.detalles.map((detalle: any) => ({
+            idProducto: Number(detalle.idProducto),
+            idTecnica: Number(detalle.idTecnica),
+            cantidad: Number(detalle.cantidad),
+            observaciones: limpiarTextoOpcional(detalle.observaciones),
+          })),
+        )
       : null;
 
     const detalles = calculo
-      ? calculo.items.map((item: any) => ({
+      ? calculo.items.map((item: any, index: number) => {
+          const detalleEntrada = data.detalles[index];
+          const costoDiseno = Math.round(aNumero(detalleEntrada.costoDiseno));
+
+          return {
           idProducto: item.snapshot.idProducto,
           idTecnica: Number(detalleEntrada.idTecnica),
           descripcion: detalleEntrada.descripcion.trim(),
@@ -337,13 +393,20 @@ export class CotizacionService {
           subtotalConDescuento: item.snapshot.subtotalConDescuento,
           imagenReferencia: limpiarTextoOpcional(detalleEntrada.imagenReferencia),
           observaciones: limpiarTextoOpcional(detalleEntrada.observaciones),
-        }))
+          };
+        })
       : this.prepararDetallesSolicitud(data.detalles);
 
     const subtotal = calculo ? calculo.subtotal : 0;
     const descuentoTotal = calculo ? calculo.descuentoTotal : 0;
+    const costoDisenoTotal = calculo
+      ? detalles.reduce(
+          (total: number, detalle: any) => total + aNumero(detalle.costoDiseno),
+          0,
+        )
+      : 0;
     const total = calculo
-      ? Math.round(calculo.total + costoDiseno + costosAdicionales)
+      ? Math.round(calculo.total + costoDisenoTotal + costosAdicionales)
       : 0;
     const accesoCliente = calculo
       ? await clienteAccessService.asegurarAccesoCliente(cliente)
@@ -446,8 +509,8 @@ export class CotizacionService {
     return this.formatearCotizaciones(cotizaciones);
   }
 
-  // Cliente: puede editar su solicitud mientras siga pendiente y aun no tenga
-  // precios asignados. Otra prenda requiere otra cotizacion.
+  // Cliente: puede editar los detalles existentes mientras la solicitud siga
+  // pendiente y aun no tenga precios asignados.
   async editarSolicitudCliente(
     idCotizacion: number,
     data: any,
@@ -475,24 +538,27 @@ export class CotizacionService {
       );
     }
 
-    if (cotizacion.detalles.length !== 1) {
-      throw new Error(
-        "Esta solicitud no cumple la regla de un unico detalle por cotizacion.",
-      );
-    }
-
-    const detalleActual = cotizacion.detalles[0];
-
-    if (!detalleActual) {
+    if (cotizacion.detalles.length === 0) {
       throw new Error("La cotizacion no tiene detalle para actualizar.");
     }
 
-    const idDetalleActual = Number(detalleActual.idDetalleCotizacion);
-    const idDetalleRecibido = Number(data.detalles[0].idDetalleCotizacion);
+    const idsActuales = new Set(
+      cotizacion.detalles.map((detalle: any) =>
+        Number(detalle.idDetalleCotizacion),
+      ),
+    );
+    const idsRecibidos = new Set(
+      data.detalles.map((detalle: any) =>
+        Number(detalle.idDetalleCotizacion),
+      ),
+    );
 
-    if (idDetalleActual !== idDetalleRecibido) {
+    if (
+      idsActuales.size !== idsRecibidos.size ||
+      [...idsActuales].some((idDetalle) => !idsRecibidos.has(idDetalle))
+    ) {
       throw new Error(
-        "Solo puedes modificar el detalle existente de esta cotizacion.",
+        "Solo puedes modificar los detalles existentes de esta cotizacion.",
       );
     }
 
@@ -539,80 +605,157 @@ export class CotizacionService {
     const teniaPrecios = cotizacionTienePrecios(cotizacion);
     const totalAnterior = cotizacion.total;
 
-    if (cotizacion.detalles.length !== 1) {
-      throw new Error(
-        "Esta solicitud no cumple la regla de un unico detalle por cotizacion.",
-      );
-    }
-
     const idsActuales = new Set(
-      cotizacion.detalles.map((detalle: any) => detalle.idDetalleCotizacion),
-    );
-    const idsRecibidos = new Set(
-      data.detalles.map((detalle: any) =>
+      cotizacion.detalles.map((detalle: any) =>
         Number(detalle.idDetalleCotizacion),
       ),
     );
 
-    for (const idDetalle of idsActuales) {
-      if (!idsRecibidos.has(idDetalle)) {
-        throw new Error("Debe cotizar el detalle existente de la solicitud.");
-      }
-    }
-
-    const detallesCotizados = data.detalles.map((detalle: any) => {
-      const detalleActual = cotizacion.detalles.find(
-        (item: any) =>
-          item.idDetalleCotizacion === Number(detalle.idDetalleCotizacion),
-      );
-
-      if (!detalleActual) {
+    for (const detalle of data.detalles) {
+      if (
+        detalle.idDetalleCotizacion !== undefined &&
+        !idsActuales.has(Number(detalle.idDetalleCotizacion))
+      ) {
         throw new Error(
           `El detalle ${detalle.idDetalleCotizacion} no pertenece a esta cotizacion.`,
         );
       }
+    }
 
-      const cantidad = Number(detalleActual.cantidad);
-      const precioUnitario = Number(detalle.precioUnitario);
-      const costoDiseno = Number(detalle.costoDiseno);
-      const subtotalBruto = aNumero(
-        detalleActual.subtotalBruto ??
-          detalleActual.subtotal ??
-          cantidad * precioUnitario,
-      );
-      const descuentoTotal = aNumero(detalleActual.descuentoTotal);
-      const subtotalConDescuento = aNumero(
-        detalleActual.subtotalConDescuento ??
-          Math.max(subtotalBruto - descuentoTotal, 0),
-      );
+    const detallesResueltos = data.detalles.map((detalle: any) => {
+      const detalleActual = detalle.idDetalleCotizacion
+        ? cotizacion.detalles.find(
+            (item: any) =>
+              item.idDetalleCotizacion ===
+              Number(detalle.idDetalleCotizacion),
+          )
+        : null;
 
       return {
-        idDetalleCotizacion: Number(detalle.idDetalleCotizacion),
+        entrada: detalle,
+        actual: detalleActual,
+        idProducto: Number(detalle.idProducto ?? detalleActual?.idProducto) || null,
+        idTecnica:
+          detalle.idTecnica ?? detalleActual?.idTecnica
+            ? Number(detalle.idTecnica ?? detalleActual?.idTecnica)
+            : null,
+        descripcion:
+          limpiarTextoOpcional(detalle.descripcion) ??
+          detalleActual?.descripcion ??
+          null,
+        cantidad: Number(detalle.cantidad ?? detalleActual?.cantidad),
+        costoDiseno: Math.round(
+          aNumero(detalle.costoDiseno ?? detalleActual?.costoDiseno),
+        ),
+        validarTecnica:
+          !detalleActual ||
+          (detalle.idTecnica !== undefined &&
+            Number(detalle.idTecnica) !== Number(detalleActual.idTecnica)),
+      };
+    });
+
+    const tecnicasPorValidar = detallesResueltos.filter(
+      (detalle: any) => detalle.validarTecnica,
+    );
+
+    if (tecnicasPorValidar.length > 0) {
+      await this.asegurarTecnicasExisten(tecnicasPorValidar);
+    }
+
+    const itemsCatalogo = detallesResueltos.filter(
+      (detalle: any) => detalle.idProducto,
+    );
+    const calculoCatalogo =
+      itemsCatalogo.length > 0
+        ? await productoService.calcularItems(
+            itemsCatalogo.map((detalle: any) => ({
+              idProducto: detalle.idProducto,
+              idTecnica: detalle.idTecnica,
+              cantidad: detalle.cantidad,
+              observaciones:
+                detalle.entrada.observaciones ??
+                detalle.actual?.observaciones,
+            })),
+          )
+        : null;
+    let indiceCatalogo = 0;
+
+    const detallesCotizados = detallesResueltos.map((detalle: any) => {
+      const observaciones =
+        detalle.entrada.observaciones !== undefined
+          ? limpiarTextoOpcional(detalle.entrada.observaciones)
+          : detalle.actual?.observaciones ?? null;
+      const datosComunes = {
+        idDetalleCotizacion:
+          detalle.actual?.idDetalleCotizacion ?? undefined,
+        idProducto: detalle.idProducto,
+        idTecnica: detalle.idTecnica,
+        descripcion: detalle.descripcion,
+        cantidad: detalle.cantidad,
+        costoDiseno: detalle.costoDiseno,
+        imagenReferencia:
+          detalle.entrada.imagenReferencia !== undefined
+            ? limpiarTextoOpcional(detalle.entrada.imagenReferencia)
+            : detalle.actual?.imagenReferencia ?? null,
+        observaciones,
+      };
+
+      if (detalle.idProducto) {
+        const calculado = calculoCatalogo?.items[indiceCatalogo++];
+
+        if (!calculado) {
+          throw new Error("No fue posible calcular uno de los productos.");
+        }
+
+        return {
+          ...datosComunes,
+          precioBase: calculado.snapshot.precioBase,
+          descuentoPorcentaje: calculado.snapshot.descuentoPorcentaje,
+          descuentoValorUnitario: calculado.snapshot.descuentoValorUnitario,
+          precioUnitario: calculado.snapshot.precioUnitario,
+          subtotal: calculado.snapshot.subtotal,
+          subtotalBruto: calculado.snapshot.subtotalBruto,
+          descuentoTotal: calculado.snapshot.descuentoTotal,
+          subtotalConDescuento: calculado.snapshot.subtotalConDescuento,
+        };
+      }
+
+      const precioUnitario = Number(detalle.entrada.precioUnitario);
+
+      if (!Number.isFinite(precioUnitario) || precioUnitario < 0) {
+        throw new Error(
+          `El precio unitario del detalle ${detalle.actual?.idDetalleCotizacion} es obligatorio y no puede ser negativo.`,
+        );
+      }
+
+      const subtotalBruto = detalle.cantidad * precioUnitario;
+
+      return {
+        ...datosComunes,
+        precioBase: null,
+        descuentoPorcentaje: null,
+        descuentoValorUnitario: 0,
         precioUnitario,
-        costoDiseno,
         subtotal: subtotalBruto,
         subtotalBruto,
-        descuentoValorUnitario: aNumero(detalleActual.descuentoValorUnitario),
-        descuentoTotal,
-        subtotalConDescuento,
-        observaciones:
-          detalle.observaciones !== undefined
-            ? limpiarTextoOpcional(detalle.observaciones)
-            : detalleActual.observaciones,
+        descuentoTotal: 0,
+        subtotalConDescuento: subtotalBruto,
       };
     });
 
     const subtotal = detallesCotizados.reduce(
-      (acc: number, item: any) => acc + item.subtotal,
+      (acc: number, item: any) => acc + aNumero(item.subtotal),
       0,
     );
     const descuentoTotal = detallesCotizados.reduce(
-      (acc: number, item: any) => acc + item.descuentoTotal,
+      (acc: number, item: any) => acc + aNumero(item.descuentoTotal),
       0,
     );
     const subtotalConDescuento = detallesCotizados.reduce(
       (acc: number, item: any) =>
-        acc + item.subtotalConDescuento + item.costoDiseno,
+        acc +
+        aNumero(item.subtotalConDescuento) +
+        aNumero(item.costoDiseno),
       0,
     );
     const costosAdicionales = aNumero(data.costosAdicionales);
@@ -633,12 +776,10 @@ export class CotizacionService {
 
     const cotizacionFormateada = this.formatearCotizacion(cotizacionCotizada);
 
-    if (teniaPrecios) {
-      await notificationService.cotizacionModificada(cotizacionFormateada, {
-        motivoCambio: motivoCambioCotizacion(data.motivoCambio),
-        totalAnterior,
-      });
-    }
+    await notificationService.cotizacionModificada(cotizacionFormateada, {
+      motivoCambio: motivoCambioCotizacion(data.motivoCambio),
+      totalAnterior: teniaPrecios ? totalAnterior : undefined,
+    });
 
     return cotizacionFormateada;
   }

@@ -241,3 +241,17 @@ export const validarAnularPedido = (data: any) => {
 
   return null;
 };
+
+export const validarRequiereDisenoDetalle = (data: any) => {
+  const errorCampos = validarCamposPermitidos(data, ["requiereDiseno"]);
+
+  if (errorCampos) {
+    return errorCampos;
+  }
+
+  if (typeof data?.requiereDiseno !== "boolean") {
+    return "requiereDiseno es obligatorio y debe ser booleano.";
+  }
+
+  return null;
+};

@@ -12,6 +12,7 @@ import {
   validarAnularPedido,
   validarMarcarPendienteSaldoFinal,
   validarPasarPedidoEnProceso,
+  validarRequiereDisenoDetalle,
 } from "../validators/pedido.validator";
 import {
   paginatedResponse,
@@ -132,6 +133,106 @@ const prepararDetallePedido = (detalle: any) => {
   };
 };
 
+const valorDefinido = (...valores: any[]) =>
+  valores.find((valor) => valor !== undefined && valor !== null);
+
+const normalizarTexto = (valor: any) =>
+  typeof valor === "string" ? valor.trim().toLowerCase() : "";
+
+const buscarSnapshotDetalle = (
+  detalle: any,
+  snapshots: any[],
+  usados: Set<number>,
+  indiceDetalle: number,
+) => {
+  const disponibles = snapshots
+    .map((snapshot, indice) => ({ snapshot, indice }))
+    .filter(({ indice }) => !usados.has(indice));
+  const idProducto = Number(detalle?.idProducto);
+  const idTecnica = Number(detalle?.idTecnica);
+  const mismoProducto = ({ snapshot }: any) =>
+    Number.isInteger(idProducto) &&
+    idProducto > 0 &&
+    Number(snapshot?.idProducto) === idProducto;
+  const mismaTecnica = ({ snapshot }: any) =>
+    Number.isInteger(idTecnica) &&
+    idTecnica > 0 &&
+    Number(snapshot?.idTecnica) === idTecnica;
+  const mismaCantidad = ({ snapshot }: any) =>
+    Number(snapshot?.cantidad) === Number(detalle?.cantidad);
+  const descripcion = normalizarTexto(detalle?.descripcion);
+  const mismaDescripcion = ({ snapshot }: any) =>
+    descripcion !== "" &&
+    normalizarTexto(snapshot?.descripcion) === descripcion;
+
+  const coincidencia =
+    disponibles.find(
+      (candidato) =>
+        mismoProducto(candidato) &&
+        mismaTecnica(candidato) &&
+        mismaCantidad(candidato) &&
+        mismaDescripcion(candidato),
+    ) ??
+    disponibles.find(
+      (candidato) =>
+        mismoProducto(candidato) &&
+        mismaTecnica(candidato) &&
+        mismaCantidad(candidato),
+    ) ??
+    disponibles.find(
+      (candidato) => mismoProducto(candidato) && mismaCantidad(candidato),
+    ) ??
+    disponibles.find(
+      (candidato) => mismaDescripcion(candidato) && mismaCantidad(candidato),
+    ) ??
+    disponibles.find(({ indice }) => indice === indiceDetalle);
+
+  if (coincidencia) {
+    usados.add(coincidencia.indice);
+  }
+
+  return coincidencia?.snapshot ?? null;
+};
+
+const formatearDetallePedido = (detalle: any, snapshot: any) => {
+  const subtotalConDescuento = valorDefinido(
+    snapshot?.subtotalConDescuento,
+    detalle?.subtotal,
+  );
+  const subtotalBruto = valorDefinido(
+    snapshot?.subtotalBruto,
+    snapshot?.subtotal,
+    detalle?.subtotal,
+  );
+
+  return {
+    ...detalle,
+    producto: detalle?.producto ?? snapshot?.producto ?? null,
+    tecnica: detalle?.tecnica ?? snapshot?.tecnica ?? null,
+    precioBase: valorDefinido(snapshot?.precioBase, detalle?.precioBase) ?? null,
+    descuentoPorcentaje:
+      valorDefinido(
+        snapshot?.descuentoPorcentaje,
+        detalle?.descuentoPorcentaje,
+      ) ?? null,
+    descuentoValorUnitario:
+      valorDefinido(
+        snapshot?.descuentoValorUnitario,
+        detalle?.descuentoValorUnitario,
+      ) ?? null,
+    precioUnitario: valorDefinido(
+      snapshot?.precioUnitario,
+      detalle?.precioUnitario,
+    ),
+    costoDiseno: valorDefinido(snapshot?.costoDiseno, detalle?.costoDiseno) ?? 0,
+    subtotalBruto,
+    descuentoTotal:
+      valorDefinido(snapshot?.descuentoTotal, detalle?.descuentoTotal) ?? null,
+    subtotalConDescuento,
+    subtotalFinal: subtotalConDescuento,
+  };
+};
+
 const pedidoPagadoCompleto = (pedido: any) =>
   redondearMoneda(aNumero(pedido?.saldoPendiente)) <= 0 &&
   redondearMoneda(aNumero(pedido?.totalPagado)) >=
@@ -176,8 +277,47 @@ export class PedidoService {
       return pedido;
     }
 
+    const snapshots = Array.isArray(pedido?.cotizacion?.detalles)
+      ? pedido.cotizacion.detalles
+      : [];
+    const usados = new Set<number>();
+    const detalles = Array.isArray(pedido.detalles)
+      ? pedido.detalles.map((detalle: any, indice: number) =>
+          formatearDetallePedido(
+            detalle,
+            buscarSnapshotDetalle(detalle, snapshots, usados, indice),
+          ),
+        )
+      : [];
+    const subtotalBruto =
+      valorDefinido(pedido?.subtotalBruto, pedido?.cotizacion?.subtotal) ?? null;
+    const descuentoTotal =
+      valorDefinido(
+        pedido?.descuentoTotal,
+        pedido?.cotizacion?.descuentoTotal,
+      ) ?? null;
+    const subtotalConDescuento =
+      subtotalBruto !== null && descuentoTotal !== null
+        ? redondearMoneda(aNumero(subtotalBruto) - aNumero(descuentoTotal))
+        : null;
+    const costoDiseno = snapshots.reduce(
+      (total: number, detalle: any) => total + aNumero(detalle?.costoDiseno),
+      0,
+    );
+
     return {
       ...pedido,
+      detalles,
+      subtotalBruto,
+      descuentoTotal,
+      subtotalConDescuento,
+      subtotalFinal: subtotalConDescuento,
+      costosAdicionales:
+        valorDefinido(
+          pedido?.costosAdicionales,
+          pedido?.cotizacion?.costosAdicionales,
+        ) ?? 0,
+      costoDiseno,
       fechaCreacion: formatearFechaLegible(pedido.fechaCreacion),
       fechaEntregaEstimada: formatearFechaLegible(
         pedido.fechaEntregaEstimada,
@@ -522,6 +662,83 @@ export class PedidoService {
     usuarioAuth: any,
   ) {
     return await this.actualizarPedido(idPedido, data, usuarioAuth);
+  }
+
+  async actualizarRequiereDisenoDetalle(
+    idPedido: number,
+    idDetallePedido: number,
+    data: any,
+    usuarioAuth: any,
+  ) {
+    validarId(idPedido);
+    validarId(idDetallePedido);
+
+    if (!puedeGestionarPedido(usuarioAuth)) {
+      throw new Error("No tienes permiso para configurar los disenos del pedido.");
+    }
+
+    const error = validarRequiereDisenoDetalle(data);
+
+    if (error) {
+      throw new Error(error);
+    }
+
+    const resultado = await runPrismaTransaction(async (tx) => {
+      const detalle = await pedidoRepository.buscarDetallePedido(
+        idDetallePedido,
+        tx,
+      );
+
+      if (!detalle || detalle.idPedido !== idPedido) {
+        throw new Error("El detalle indicado no pertenece al pedido.");
+      }
+
+      const detalleActualizado =
+        await pedidoRepository.actualizarRequiereDisenoDetalle(
+          idDetallePedido,
+          data.requiereDiseno,
+          tx,
+        );
+      const pedido = await pedidoRepository.buscarOperacionPorId(idPedido, tx);
+      let pasoAProduccion = false;
+
+      if (
+        pedido?.estadoPedido === ESTADO_PEDIDO_PENDIENTE &&
+        data.requiereDiseno === false
+      ) {
+        const tienePagoInicial =
+          await abonoService.pedidoTienePagoInicialValido(idPedido, tx);
+        const tieneDisenosAprobados =
+          await abonoService.pedidoTieneDisenoAprobado(idPedido, tx);
+
+        if (tienePagoInicial && tieneDisenosAprobados) {
+          await pedidoRepository.actualizarPedidoOperacion(
+            idPedido,
+            { estadoPedido: ESTADO_PEDIDO_EN_PROCESO },
+            tx,
+          );
+          pasoAProduccion = true;
+        }
+      }
+
+      return { detalleActualizado, pasoAProduccion };
+    });
+
+    const pedido = await pedidoRepository.buscarPorId(idPedido);
+
+    if (resultado.pasoAProduccion && pedido) {
+      try {
+        await notificationService.pedidoEnProduccion(pedido);
+      } catch (error) {
+        console.error("Error enviando correo de pedido en produccion:", error);
+      }
+    }
+
+    return {
+      detalle: resultado.detalleActualizado,
+      pedido: this.formatearPedido(pedido),
+      pasoAProduccion: resultado.pasoAProduccion,
+    };
   }
 
   async marcarPendienteSaldoFinal(idPedido: number, data: any, usuarioAuth: any) {

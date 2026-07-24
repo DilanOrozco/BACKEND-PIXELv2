@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import jwt from "jsonwebtoken";
-import { verificarAuth } from "./auth.middleware";
+import { verificarAuth, verificarAuthOpcional } from "./auth.middleware";
 import { UsuarioRepository } from "../repositories/usuario.repository";
 import { generarToken } from "../../utils/jwt.util";
 
@@ -120,5 +120,45 @@ test("verificarAuth responde 401 para token invalido", async () => {
     assert.deepEqual(res.payload, {
       message: "Token invalido.",
     });
+  });
+});
+
+test("verificarAuthOpcional permite continuar sin token", async () => {
+  const req: any = { headers: {} };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await verificarAuthOpcional(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.equal(req.user, undefined);
+  assert.equal(res.statusCode, 200);
+});
+
+test("verificarAuthOpcional carga Cliente cuando recibe token valido", async (t) => {
+  await withJwtEnv(async () => {
+    t.mock.method(
+      UsuarioRepository.prototype,
+      "buscarUsuarioAuthPorId",
+      async () => ({
+        ...usuarioActivo,
+        rol: { nombre: "Cliente", estado: true },
+        cliente: { idCliente: 10, estado: true },
+      }),
+    );
+    const token = generarToken({ idUsuario: 1 });
+    const req: any = { headers: { authorization: `Bearer ${token}` } };
+    const res = crearRespuesta();
+    let llamado = false;
+
+    await verificarAuthOpcional(req, res, () => {
+      llamado = true;
+    });
+
+    assert.equal(llamado, true);
+    assert.equal(req.user.rol, "Cliente");
+    assert.equal(req.user.idCliente, 10);
   });
 });

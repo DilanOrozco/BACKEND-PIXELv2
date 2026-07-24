@@ -176,6 +176,43 @@ test("ProductoService calcula subtotal bruto descuento total y total final", asy
   assert.equal(calculo.total, 51000000);
 });
 
+test("ProductoService calcula y agrega varios productos en una cotizacion", async (t) => {
+  t.mock.method(
+    ProductoRepository.prototype,
+    "buscarActivoPorId",
+    async (idProducto: number) =>
+      idProducto === 1
+        ? producto
+        : {
+            ...producto,
+            idProducto: 2,
+            nombre: "Gorra",
+            precioBase: 13000,
+            rangos: [
+              {
+                idRango: 10,
+                idProducto: 2,
+                cantidadMin: 1,
+                descuentoPorcentaje: 0,
+                estado: true,
+              },
+            ],
+          },
+  );
+
+  const calculo = await new ProductoService().calcularItems([
+    { idProducto: 1, cantidad: 12 },
+    { idProducto: 2, cantidad: 2 },
+  ]);
+
+  assert.equal(calculo.items.length, 2);
+  assert.equal(calculo.subtotalBruto, 362000);
+  assert.equal(calculo.descuentoTotal, 23990);
+  assert.equal(calculo.subtotalConDescuento, 338010);
+  assert.equal(calculo.costoDiseno, 0);
+  assert.equal(calculo.total, 338010);
+});
+
 test("ProductoService falla con producto inactivo o cantidad invalida", async (t) => {
   t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => null);
   const service = new ProductoService();

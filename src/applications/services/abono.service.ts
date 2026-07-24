@@ -92,6 +92,21 @@ const notificarPrimerAbonoConfirmado = async (abono: unknown) => {
   }
 };
 
+const cargarAbonoParaNotificacion = async (abono: any) => {
+  if (!abono?.idPedido) {
+    return abono;
+  }
+
+  const pedidoCompleto = await abonoRepository.buscarPedidoCompleto(
+    Number(abono.idPedido),
+  );
+
+  return {
+    ...abono,
+    pedido: pedidoCompleto ?? abono.pedido,
+  };
+};
+
 export class AbonoService {
   constructor(
     private readonly ejecutarTransaccion = runPrismaTransaction,
@@ -416,7 +431,9 @@ export class AbonoService {
       const abonoCompleto = await abonoRepository.buscarPorId(resultado.idAbono);
 
       if (resultado.primerAbonoConfirmado) {
-        await notificarPrimerAbonoConfirmado(abonoCompleto);
+        await notificarPrimerAbonoConfirmado(
+          await cargarAbonoParaNotificacion(abonoCompleto),
+        );
       }
 
       return this.prepararRespuestaAbono(abonoCompleto);
@@ -504,7 +521,9 @@ export class AbonoService {
     const abono = await abonoRepository.buscarPorId(resultado.idAbono);
 
     if (resultado.primerAbonoConfirmado) {
-      await notificarPrimerAbonoConfirmado(abono);
+      await notificarPrimerAbonoConfirmado(
+        await cargarAbonoParaNotificacion(abono),
+      );
     }
 
     return this.prepararRespuestaAbono(abono);

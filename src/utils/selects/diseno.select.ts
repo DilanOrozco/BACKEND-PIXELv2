@@ -1,6 +1,8 @@
 export const disenoSelect = {
   idDiseno: true,
   idPedido: true,
+  idDetallePedido: true,
+  esDisenoGeneral: true,
   idDisenador: true,
   archivoUrl: true,
   descripcion: true,
@@ -18,6 +20,32 @@ export const disenoSelect = {
   fechaActualizacion: true,
   fechaEnvio: true,
   fechaAprobacion: true,
+  detallePedido: {
+    select: {
+      idDetallePedido: true,
+      idPedido: true,
+      idProducto: true,
+      idTecnica: true,
+      descripcion: true,
+      cantidad: true,
+      precioUnitario: true,
+      subtotal: true,
+      requiereDiseno: true,
+      observaciones: true,
+      producto: {
+        select: {
+          idProducto: true,
+          nombre: true,
+        },
+      },
+      tecnica: {
+        select: {
+          idTecnica: true,
+          nombre: true,
+        },
+      },
+    },
+  },
   pedido: {
     select: {
       idPedido: true,
