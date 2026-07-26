@@ -10,7 +10,11 @@ const mensajeError = (error: unknown) =>
 export class AbonoController {
   async crearAbono(req: AuthRequest, res: Response) {
     try {
-      const abono = await abonoService.crearAbono(req.body, req.user);
+      const abono = await abonoService.crearAbono(
+        req.body,
+        req.user,
+        req.file,
+      );
       const estado = (abono as { estado?: string } | null)?.estado;
 
       return res.status(201).json({
@@ -72,9 +76,16 @@ export class AbonoController {
         req.query as Record<string, unknown>,
       );
 
-      return res.status(200).json({
-        data: abonos,
-      });
+      if (
+        abonos &&
+        typeof abonos === "object" &&
+        "meta" in abonos &&
+        "data" in abonos
+      ) {
+        return res.status(200).json(abonos);
+      }
+
+      return res.status(200).json({ data: abonos });
     } catch (error: unknown) {
       return res.status(404).json({
         message: mensajeError(error),
@@ -118,6 +129,7 @@ export class AbonoController {
       const abono = await abonoService.actualizarAbonoPendiente(
         idAbono,
         req.body,
+        req.user,
       );
 
       return res.status(200).json({
@@ -144,6 +156,50 @@ export class AbonoController {
       return res.status(400).json({
         message: mensajeError(error),
       });
+    }
+  }
+
+  async subirComprobanteCliente(req: AuthRequest, res: Response) {
+    try {
+      const resultado = await abonoService.crearDesdeComprobanteCliente(
+        Number(req.params.idPedido),
+        req.file,
+        req.body?.observaciones,
+        req.user,
+      );
+
+      return res.status(resultado.duplicado ? 200 : 201).json({
+        message: resultado.duplicado
+          ? "El comprobante ya estaba registrado."
+          : "Comprobante recibido y pendiente de revision.",
+        data: resultado,
+      });
+    } catch (error: unknown) {
+      return res.status(400).json({ message: mensajeError(error) });
+    }
+  }
+
+  async descargarComprobante(req: AuthRequest, res: Response) {
+    try {
+      const comprobante = await abonoService.obtenerComprobante(
+        Number(req.params.idAbono ?? req.params.id),
+        req.user,
+      );
+      res.setHeader("Content-Type", comprobante.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `inline; filename="${encodeURIComponent(comprobante.fileName)}"`,
+      );
+      comprobante.stream.on("error", () => {
+        if (!res.headersSent) {
+          res.status(404).json({ message: "Comprobante no encontrado." });
+        } else {
+          res.end();
+        }
+      });
+      return comprobante.stream.pipe(res);
+    } catch (error: unknown) {
+      return res.status(404).json({ message: mensajeError(error) });
     }
   }
 }

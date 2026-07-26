@@ -51,7 +51,12 @@ const esTextoRequerido = (valorEntrada: unknown, maximo: number) => {
 };
 
 const esBooleanoOpcional = (valorEntrada: unknown) => {
-  return valorEntrada === undefined || typeof valorEntrada === "boolean";
+  return (
+    valorEntrada === undefined ||
+    typeof valorEntrada === "boolean" ||
+    valorEntrada === "true" ||
+    valorEntrada === "false"
+  );
 };
 
 const esFechaOpcionalValida = (valorEntrada: unknown) => {
@@ -92,6 +97,8 @@ export const validarCrearAbono = (
     "monto",
     "metodoPago",
     "referencia",
+    "fechaPago",
+    "observaciones",
     "comprobanteUrl",
     "confirmar",
   ]);
@@ -114,6 +121,14 @@ export const validarCrearAbono = (
 
   if (!esTextoOpcional(valor(data, "referencia"), 255)) {
     return "La referencia debe ser texto de maximo 255 caracteres, null u omitirse.";
+  }
+
+  if (!esFechaOpcionalValida(valor(data, "fechaPago"))) {
+    return "La fecha del pago no es valida.";
+  }
+
+  if (!esTextoOpcional(valor(data, "observaciones"), 500)) {
+    return "Las observaciones deben ser texto de maximo 500 caracteres.";
   }
 
   if (!esTextoOpcional(valor(data, "comprobanteUrl"), 500)) {
@@ -171,7 +186,10 @@ export const validarActualizarAbono = (data: DatosEntrada) => {
     "monto",
     "metodoPago",
     "referencia",
+    "fechaPago",
+    "observaciones",
     "comprobanteUrl",
+    "requiereRevisionManual",
   ]);
 
   if (errorCampos) {
@@ -203,10 +221,32 @@ export const validarActualizarAbono = (data: DatosEntrada) => {
     return "El comprobante debe ser texto de maximo 500 caracteres, null u omitirse.";
   }
 
+  if (!esFechaOpcionalValida(valor(data, "fechaPago"))) {
+    return "La fecha del pago no es valida.";
+  }
+
+  if (!esTextoOpcional(valor(data, "observaciones"), 500)) {
+    return "Las observaciones deben ser texto de maximo 500 caracteres.";
+  }
+
+  if (
+    valor(data, "requiereRevisionManual") !== undefined &&
+    typeof valor(data, "requiereRevisionManual") !== "boolean"
+  ) {
+    return "requiereRevisionManual debe ser booleano.";
+  }
+
   return null;
 };
 
 export const validarFiltrosAbono = (filtros: DatosEntrada) => {
+  if (
+    valor(filtros, "idCliente") !== undefined &&
+    !esEnteroPositivo(valor(filtros, "idCliente"))
+  ) {
+    return "El cliente debe ser valido.";
+  }
+
   if (
     valor(filtros, "idPedido") !== undefined &&
     !esEnteroPositivo(valor(filtros, "idPedido"))

@@ -35,6 +35,18 @@ export class ClienteController {
     }
   }
 
+  async listarPedidos(req: Request, res: Response) {
+    try {
+      const pedidos = await clienteService.listarPedidos(
+        Number(req.params.id),
+        req.query as Record<string, unknown>,
+      );
+      return res.status(200).json(pedidos);
+    } catch (error: unknown) {
+      return res.status(404).json({ message: mensajeError(error) });
+    }
+  }
+
   async desactivarCliente(req: Request, res: Response) {
     try {
       const cliente = await clienteService.desactivarCliente(

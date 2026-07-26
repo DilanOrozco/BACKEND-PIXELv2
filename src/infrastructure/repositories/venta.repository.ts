@@ -3,8 +3,6 @@ import type { Prisma } from "../../../generated/prisma/client";
 import type { EstadoPagoVenta } from "../../applications/validators/venta.validator";
 import { ventaSelect } from "../../utils/selects/venta.select";
 
-const ESTADOS_PEDIDO_VENTA = ["FINALIZADO", "ENTREGADO"] as const;
-
 export interface VentaFiltros {
   fechaInicio?: Date;
   fechaFin?: Date;
@@ -16,7 +14,9 @@ const redondearMoneda = (valor: number) => Math.round(valor * 100) / 100;
 
 const construirWhere = (filtros: VentaFiltros = {}): Prisma.PedidoWhereInput => {
   const where: Prisma.PedidoWhereInput = {
-    estadoPedido: { in: [...ESTADOS_PEDIDO_VENTA] },
+    venta: {
+      isNot: null,
+    },
   };
 
   if (filtros.idCliente) {
@@ -28,9 +28,13 @@ const construirWhere = (filtros: VentaFiltros = {}): Prisma.PedidoWhereInput => 
   }
 
   if (filtros.fechaInicio || filtros.fechaFin) {
-    where.fechaFinalizado = {
-      ...(filtros.fechaInicio ? { gte: filtros.fechaInicio } : {}),
-      ...(filtros.fechaFin ? { lte: filtros.fechaFin } : {}),
+    where.venta = {
+      is: {
+        fechaPrimerPago: {
+          ...(filtros.fechaInicio ? { gte: filtros.fechaInicio } : {}),
+          ...(filtros.fechaFin ? { lte: filtros.fechaFin } : {}),
+        },
+      },
     };
   }
 
@@ -48,7 +52,9 @@ export class VentaRepository {
       select: ventaSelect,
       orderBy: [
         {
-          fechaFinalizado: "desc",
+          venta: {
+            fechaPrimerPago: "desc",
+          },
         },
         {
           idPedido: "desc",
@@ -66,7 +72,7 @@ export class VentaRepository {
 
     return await prisma.pedido.findMany({
       where: {
-        estadoPedido: { in: [...ESTADOS_PEDIDO_VENTA] },
+        venta: { isNot: null },
         OR: [
           ...filtrosId,
           {
@@ -98,7 +104,9 @@ export class VentaRepository {
       select: ventaSelect,
       orderBy: [
         {
-          fechaFinalizado: "desc",
+          venta: {
+            fechaPrimerPago: "desc",
+          },
         },
         {
           idPedido: "desc",
@@ -109,12 +117,31 @@ export class VentaRepository {
 
   async obtenerResumen(filtros: VentaFiltros = {}) {
     const where = construirWhere(filtros);
-    const [total, cantidadVentas, porEstadoPago] = await Promise.all([
+    const [total, ingresos, cantidadVentas, porEstadoPago] = await Promise.all([
       prisma.pedido.aggregate({
         where,
         _sum: {
           total: true,
         },
+      }),
+      prisma.abonos.aggregate({
+        where: {
+          estado: "CONFIRMADO",
+          ...(filtros.fechaInicio || filtros.fechaFin
+            ? {
+                fechaConfirmacion: {
+                  ...(filtros.fechaInicio
+                    ? { gte: filtros.fechaInicio }
+                    : {}),
+                  ...(filtros.fechaFin ? { lte: filtros.fechaFin } : {}),
+                },
+              }
+            : {}),
+          ...(filtros.idCliente
+            ? { pedido: { idCliente: filtros.idCliente } }
+            : {}),
+        },
+        _sum: { monto: true },
       }),
       prisma.pedido.count({ where }),
       prisma.pedido.groupBy({
@@ -130,6 +157,9 @@ export class VentaRepository {
 
     return {
       totalVentas,
+      ingresosRecibidos: redondearMoneda(
+        Number(ingresos._sum.monto ?? 0),
+      ),
       cantidadVentas,
       ticketPromedio: cantidadVentas > 0
         ? redondearMoneda(totalVentas / cantidadVentas)

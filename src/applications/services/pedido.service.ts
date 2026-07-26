@@ -1,6 +1,7 @@
 import { runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
 import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
+import { AbonoRepository } from "../../infrastructure/repositories/abono.repository";
 import { AbonoService } from "./abono.service";
 import { NotificationService } from "./notification.service";
 import type { MetodoPagoPermitido } from "../validators/abono.validator";
@@ -21,6 +22,7 @@ import {
 } from "../../utils/pagination.util";
 
 const pedidoRepository = new PedidoRepository();
+const abonoRepository = new AbonoRepository();
 const abonoService = new AbonoService();
 const notificationService = new NotificationService();
 
@@ -129,6 +131,16 @@ const prepararDetallePedido = (detalle: any) => {
     cantidad: Number(detalle.cantidad),
     precioUnitario: aNumero(detalle.precioUnitario),
     subtotal: aNumero(detalle.subtotalConDescuento ?? detalle.subtotal),
+    costoDiseno: aNumero(detalle.costoDiseno),
+    requiereDiseno: detalle.requiereDiseno !== false,
+    origenDiseno: String(detalle.origenDiseno ?? "PIXEL").toUpperCase(),
+    archivoDisenoInicialUrl: limpiarTextoOpcional(
+      detalle.archivoDisenoInicialUrl,
+    ),
+    esDisenoGeneral: detalle.esDisenoGeneral === true,
+    medioRecepcionDiseno: limpiarTextoOpcional(
+      detalle.medioRecepcionDiseno,
+    ),
     observaciones: limpiarTextoOpcional(detalle.observaciones),
   };
 };
@@ -233,6 +245,140 @@ const formatearDetallePedido = (detalle: any, snapshot: any) => {
   };
 };
 
+const estadoDesdeDiseno = (diseno: any, esGeneral = false) => {
+  if (diseno?.estado === "APROBADO") {
+    return esGeneral
+      ? "CUBIERTO_POR_DISENO_GENERAL"
+      : "DISENO_APROBADO";
+  }
+
+  if (
+    diseno?.estado === "ENVIADO" &&
+    String(diseno?.origenDiseno).toUpperCase() === "CLIENTE"
+  ) {
+    return esGeneral
+      ? "DISENO_GENERAL_ENTREGADO_POR_CLIENTE"
+      : "DISENO_ENTREGADO_POR_CLIENTE";
+  }
+
+  const prefijo = esGeneral ? "DISENO_GENERAL_" : "DISENO_";
+  return `${prefijo}${String(diseno?.estado ?? "PENDIENTE").toUpperCase()}`;
+};
+
+export const agregarCoberturaDisenoADetalles = (
+  detalles: any[],
+  disenos: any[] = [],
+) => {
+  const detallesRequierenDiseno = detalles.filter(
+    (detalle) => detalle.requiereDiseno !== false,
+  );
+  const disenoLegacyUnico =
+    detallesRequierenDiseno.length === 1
+      ? disenos.find(
+          (diseno) =>
+            diseno.idDetallePedido === null && !diseno.esDisenoGeneral,
+        )
+      : null;
+  const disenoGeneralAprobado = disenos.find(
+    (diseno) => diseno.esDisenoGeneral && diseno.estado === "APROBADO",
+  );
+  const disenoGeneralVigente =
+    disenoGeneralAprobado ??
+    disenos.find(
+      (diseno) =>
+        diseno.esDisenoGeneral && diseno.estado !== "RECHAZADO",
+    ) ??
+    disenos.find((diseno) => diseno.esDisenoGeneral);
+
+  return detalles.map((detalle) => {
+    if (detalle.requiereDiseno === false) {
+      return {
+        ...detalle,
+        diseno: null,
+        estadoCoberturaDiseno: "NO_REQUIERE_DISENO",
+        mensajeEstadoDiseno: "No requiere diseno.",
+        cubiertoPorDiseno: true,
+      };
+    }
+
+    const disenosEspecificos = disenos.filter(
+      (diseno) =>
+        Number(diseno.idDetallePedido) === Number(detalle.idDetallePedido) &&
+        !diseno.esDisenoGeneral,
+    );
+    if (
+      disenoLegacyUnico &&
+      Number(detalle.idDetallePedido) ===
+        Number(detallesRequierenDiseno[0]?.idDetallePedido)
+    ) {
+      disenosEspecificos.push(disenoLegacyUnico);
+    }
+    const disenoEspecificoAprobado = disenosEspecificos.find(
+      (diseno) => diseno.estado === "APROBADO",
+    );
+
+    if (disenoEspecificoAprobado) {
+      return {
+        ...detalle,
+        diseno: disenoEspecificoAprobado,
+        estadoCoberturaDiseno: "DISENO_APROBADO",
+        mensajeEstadoDiseno: "Diseno especifico aprobado.",
+        cubiertoPorDiseno: true,
+      };
+    }
+
+    if (disenoGeneralAprobado) {
+      return {
+        ...detalle,
+        diseno: disenoGeneralAprobado,
+        estadoCoberturaDiseno: "CUBIERTO_POR_DISENO_GENERAL",
+        mensajeEstadoDiseno: "Cubierto por un diseno general aprobado.",
+        cubiertoPorDiseno: true,
+      };
+    }
+
+    const disenoEspecifico = disenosEspecificos[0];
+    const disenoRelacionado = disenoEspecifico ?? disenoGeneralVigente;
+
+    if (disenoRelacionado) {
+      const esGeneral = Boolean(disenoRelacionado.esDisenoGeneral);
+
+      return {
+        ...detalle,
+        diseno: disenoRelacionado,
+        estadoCoberturaDiseno: estadoDesdeDiseno(
+          disenoRelacionado,
+          esGeneral,
+        ),
+        mensajeEstadoDiseno: esGeneral
+          ? "El diseno general esta pendiente de aprobacion."
+          : "El diseno del producto esta pendiente de aprobacion.",
+        cubiertoPorDiseno: false,
+      };
+    }
+
+    const origenCliente =
+      String(detalle.origenDiseno ?? "PIXEL").toUpperCase() === "CLIENTE";
+    const tieneArchivoCliente = Boolean(detalle.archivoDisenoInicialUrl);
+
+    return {
+      ...detalle,
+      diseno: null,
+      estadoCoberturaDiseno: origenCliente
+        ? tieneArchivoCliente
+          ? "DISENO_CLIENTE_PENDIENTE_VINCULACION"
+          : "PENDIENTE_ARCHIVO_CLIENTE"
+        : "PENDIENTE_CREACION_PIXEL",
+      mensajeEstadoDiseno: origenCliente
+        ? tieneArchivoCliente
+          ? "El cliente entrego un diseno pendiente de vinculacion."
+          : "Pendiente de que el cliente entregue el diseno."
+        : "PIXEL debe crear y enviar el diseno.",
+      cubiertoPorDiseno: false,
+    };
+  });
+};
+
 const pedidoPagadoCompleto = (pedido: any) =>
   redondearMoneda(aNumero(pedido?.saldoPendiente)) <= 0 &&
   redondearMoneda(aNumero(pedido?.totalPagado)) >=
@@ -272,6 +418,10 @@ const notificarPedidoAnulado = async (pedido: any, motivo?: string | null) => {
 };
 
 export class PedidoService {
+  constructor(
+    private readonly ejecutarTransaccion = runPrismaTransaction,
+  ) {}
+
   formatearPedido(pedido: any) {
     if (!pedido) {
       return pedido;
@@ -281,7 +431,7 @@ export class PedidoService {
       ? pedido.cotizacion.detalles
       : [];
     const usados = new Set<number>();
-    const detalles = Array.isArray(pedido.detalles)
+    const detallesBase = Array.isArray(pedido.detalles)
       ? pedido.detalles.map((detalle: any, indice: number) =>
           formatearDetallePedido(
             detalle,
@@ -289,6 +439,10 @@ export class PedidoService {
           ),
         )
       : [];
+    const detalles = agregarCoberturaDisenoADetalles(
+      detallesBase,
+      Array.isArray(pedido.disenos) ? pedido.disenos : [],
+    );
     const subtotalBruto =
       valorDefinido(pedido?.subtotalBruto, pedido?.cotizacion?.subtotal) ?? null;
     const descuentoTotal =
@@ -300,14 +454,34 @@ export class PedidoService {
       subtotalBruto !== null && descuentoTotal !== null
         ? redondearMoneda(aNumero(subtotalBruto) - aNumero(descuentoTotal))
         : null;
-    const costoDiseno = snapshots.reduce(
+    const costoDiseno = detalles.reduce(
       (total: number, detalle: any) => total + aNumero(detalle?.costoDiseno),
       0,
     );
+    const abonos = Array.isArray(pedido.abonos)
+      ? pedido.abonos.map((abono: any) => {
+          const {
+            comprobantePath: _comprobantePath,
+            nombreSeguroComprobante: _nombreSeguroComprobante,
+            textoOcr: _textoOcr,
+            ...respuesta
+          } = abono;
+
+          return {
+            ...respuesta,
+            comprobanteDisponible: Boolean(
+              abono.comprobantePath ??
+                abono.nombreOriginalComprobante ??
+                abono.comprobanteUrl,
+            ),
+          };
+        })
+      : pedido.abonos;
 
     return {
       ...pedido,
       detalles,
+      abonos,
       subtotalBruto,
       descuentoTotal,
       subtotalConDescuento,
@@ -465,6 +639,125 @@ export class PedidoService {
     const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
 
     return this.formatearPedido(pedido);
+  }
+
+  async obtenerExpediente(idPedido: number, usuarioAuth: any) {
+    const pedido = await this.buscarPorIdInterno(idPedido, usuarioAuth);
+    const formateado = this.formatearPedido(pedido);
+    const todosDisenosAprobados = (formateado.detalles ?? []).every(
+      (detalle: any) => detalle.cubiertoPorDiseno,
+    );
+    const requiereCreacionDisenoPixel = (formateado.detalles ?? []).some(
+      (detalle: any) =>
+        detalle.estadoCoberturaDiseno === "PENDIENTE_CREACION_PIXEL",
+    );
+    const comprobantesPendientes = (pedido.abonos ?? []).some(
+      (abono: any) =>
+        abono.estado === "PENDIENTE" &&
+        Boolean(
+          abono.comprobantePath ??
+            abono.nombreOriginalComprobante ??
+            abono.comprobanteUrl,
+        ),
+    );
+    const proximasAcciones: string[] = [];
+
+    if (pedido.estadoPedido === ESTADO_PEDIDO_ANULADO) {
+      proximasAcciones.push("ANULADO");
+    } else if (pedido.estadoPedido === ESTADO_PEDIDO_ENTREGADO) {
+      proximasAcciones.push("ENTREGADO");
+    } else {
+      if (comprobantesPendientes) {
+        proximasAcciones.push("COMPROBANTE_PENDIENTE_REVISION");
+      }
+      if (aNumero(pedido.totalPagado) <= 0) {
+        proximasAcciones.push("REQUIERE_PRIMER_ABONO");
+      }
+      if (!todosDisenosAprobados) {
+        proximasAcciones.push(
+          requiereCreacionDisenoPixel
+            ? "REQUIERE_DISENO"
+            : "DISENO_PENDIENTE_APROBACION",
+        );
+      }
+      if (
+        pedido.estadoPedido === ESTADO_PEDIDO_PENDIENTE &&
+        aNumero(pedido.totalPagado) >= aNumero(pedido.total) * 0.5 &&
+        todosDisenosAprobados
+      ) {
+        proximasAcciones.push("LISTO_PARA_PRODUCCION");
+      }
+      if (pedido.estadoPedido === ESTADO_PEDIDO_EN_PROCESO) {
+        proximasAcciones.push("EN_PRODUCCION");
+      }
+      if (
+        pedido.estadoPedido === ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL ||
+        (pedido.estadoPedido === ESTADO_PEDIDO_EN_PROCESO &&
+          aNumero(pedido.saldoPendiente) > 0)
+      ) {
+        proximasAcciones.push("PENDIENTE_SALDO_FINAL");
+      }
+      if (pedido.estadoPedido === ESTADO_PEDIDO_FINALIZADO) {
+        proximasAcciones.push("LISTO_PARA_ENTREGAR");
+      }
+    }
+
+    const historial = [
+      {
+        tipo: "PEDIDO_CREADO",
+        fecha: pedido.fechaCreacion,
+      },
+      ...(pedido.abonos ?? []).map((abono: any) => ({
+        tipo: `ABONO_${abono.estado}`,
+        fecha:
+          abono.fechaConfirmacion ??
+          abono.fechaRechazo ??
+          abono.fechaCreacion,
+        idAbono: abono.idAbono,
+      })),
+      ...(pedido.disenos ?? []).map((diseno: any) => ({
+        tipo: `DISENO_${diseno.estado}`,
+        fecha:
+          diseno.fechaAprobacion ??
+          diseno.fechaEnvio ??
+          diseno.fechaCreacion,
+        idDiseno: diseno.idDiseno,
+      })),
+      ...(pedido.fechaFinalizado
+        ? [{ tipo: "PEDIDO_FINALIZADO", fecha: pedido.fechaFinalizado }]
+        : []),
+      ...(pedido.fechaEntregado
+        ? [{ tipo: "PEDIDO_ENTREGADO", fecha: pedido.fechaEntregado }]
+        : []),
+    ].sort(
+      (a, b) =>
+        new Date(a.fecha).getTime() - new Date(b.fecha).getTime(),
+    );
+
+    return {
+      pedido: {
+        idPedido: formateado.idPedido,
+        idCotizacion: formateado.idCotizacion,
+        estadoPedido: formateado.estadoPedido,
+        estadoPago: formateado.estadoPago,
+        fechaCreacion: formateado.fechaCreacion,
+        fechaEntregaEstimada: formateado.fechaEntregaEstimada,
+        observaciones: formateado.observaciones,
+      },
+      cliente: pedido.cliente,
+      detalles: formateado.detalles,
+      resumenEconomico: {
+        total: aNumero(pedido.total),
+        totalConfirmado: aNumero(pedido.totalPagado),
+        saldoPendiente: aNumero(pedido.saldoPendiente),
+        estadoPago: pedido.estadoPago,
+      },
+      venta: pedido.venta ?? null,
+      abonos: formateado.abonos ?? [],
+      disenos: pedido.disenos ?? [],
+      historial,
+      proximasAcciones,
+    };
   }
 
   async buscarParcial(termino: string, usuarioAuth: any) {
@@ -885,15 +1178,27 @@ export class PedidoService {
     const motivo = limpiarTextoOpcional(
       data?.motivoAnulacion ?? data?.observaciones,
     );
-    const pedidoAnulado = await pedidoRepository.actualizarPedido(idPedido, {
-      estadoPedido: ESTADO_PEDIDO_ANULADO,
-      observaciones: agregarObservacionAuditoria(
-        pedido.observaciones,
-        motivo ?? "Pedido anulado por un usuario autorizado.",
-        usuarioAuth,
-        "Anulacion de pedido",
-      ),
+    await this.ejecutarTransaccion(async (tx) => {
+      await pedidoRepository.actualizarPedidoOperacion(
+        idPedido,
+        {
+          estadoPedido: ESTADO_PEDIDO_ANULADO,
+          observaciones: agregarObservacionAuditoria(
+            pedido.observaciones,
+            motivo ?? "Pedido anulado por un usuario autorizado.",
+            usuarioAuth,
+            "Anulacion de pedido",
+          ),
+        },
+        tx,
+      );
+      await abonoRepository.actualizarVentaAnulada(idPedido, tx);
     });
+    const pedidoAnulado = await pedidoRepository.buscarPorId(idPedido);
+
+    if (!pedidoAnulado) {
+      throw new Error("No fue posible cargar el pedido anulado.");
+    }
 
     await notificarPedidoAnulado(pedidoAnulado, motivo);
 

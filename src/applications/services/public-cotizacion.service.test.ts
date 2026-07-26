@@ -337,8 +337,22 @@ test("PublicCotizacionService calcula y crea una cotizacion con varios productos
     async () => ({ sent: true, skipped: false }),
   );
   const items = [
-    { idProducto: 1, idTecnica: 5, cantidad: 12 },
-    { idProducto: 2, idTecnica: 6, cantidad: 24 },
+    {
+      idProducto: 1,
+      idTecnica: 5,
+      cantidad: 12,
+      requiereDiseno: false,
+      origenDiseno: "PIXEL",
+    },
+    {
+      idProducto: 2,
+      idTecnica: 6,
+      cantidad: 24,
+      requiereDiseno: true,
+      origenDiseno: "CLIENTE",
+      archivoDisenoInicialUrl: "https://pixel.test/disenos/gorra.png",
+      esDisenoGeneral: false,
+    },
   ];
   const service = new PublicCotizacionService();
 
@@ -370,6 +384,12 @@ test("PublicCotizacionService calcula y crea una cotizacion con varios productos
   assert.equal(payload.detalles.length, 2);
   assert.equal(payload.detalles[0].idTecnica, 5);
   assert.equal(payload.detalles[1].idTecnica, 6);
+  assert.equal(payload.detalles[0].requiereDiseno, false);
+  assert.equal(payload.detalles[1].origenDiseno, "CLIENTE");
+  assert.equal(
+    payload.detalles[1].archivoDisenoInicialUrl,
+    "https://pixel.test/disenos/gorra.png",
+  );
   assert.equal(payload.total, 568287);
   assert.equal(creado.calculo.items.length, 2);
   assert.equal(creado.cotizacion.cantidadItems, 2);

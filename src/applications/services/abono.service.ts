@@ -7,6 +7,16 @@ import {
   type CrearAbonoData,
 } from "../../infrastructure/repositories/abono.repository";
 import { NotificationService } from "./notification.service";
+import { FileStorageService } from "./file-storage.service";
+import {
+  TesseractOcrService,
+  type OcrService,
+  type PaymentReceiptOcrResult,
+} from "./ocr.service";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+} from "../../utils/pagination.util";
 import {
   type EstadoAbonoPermitido,
   type MetodoPagoPermitido,
@@ -40,8 +50,11 @@ interface AuthUser {
 type DatosEntrada = Record<string, unknown>;
 
 interface ResumenConfirmacionPago {
+  idCliente: number;
   total: number;
   nuevoTotalPagado: number;
+  saldoPendiente: number;
+  estadoPago: "PENDIENTE" | "PARCIAL" | "COMPLETO";
   pagoInicialValido: boolean;
   primerAbonoConfirmado: boolean;
 }
@@ -110,6 +123,8 @@ const cargarAbonoParaNotificacion = async (abono: any) => {
 export class AbonoService {
   constructor(
     private readonly ejecutarTransaccion = runPrismaTransaction,
+    private readonly fileStorage = new FileStorageService(),
+    private readonly ocrService: OcrService = new TesseractOcrService(),
   ) {}
 
   private obtenerUsuario(usuarioAuth: AuthUser | undefined) {
@@ -148,7 +163,10 @@ export class AbonoService {
       monto: redondearMoneda(Number(data.monto)),
       metodoPago: data.metodoPago as MetodoPagoPermitido,
       referencia: limpiarTextoOpcional(data.referencia),
+      fechaPago: data.fechaPago ? new Date(String(data.fechaPago)) : null,
       comprobanteUrl: limpiarTextoOpcional(data.comprobanteUrl),
+      origenRegistro: "ADMIN_MANUAL",
+      observaciones: limpiarTextoOpcional(data.observaciones),
     };
   }
 
@@ -236,24 +254,74 @@ export class AbonoService {
     }
 
     return {
+      idCliente: Number(pedido.idCliente),
       total,
       nuevoTotalPagado,
+      saldoPendiente: resumen.saldoPendiente,
+      estadoPago: resumen.estadoPago,
       pagoInicialValido: resumen.pagoInicialValido,
       primerAbonoConfirmado: totalPagadoActual === 0,
     };
   }
 
+  private async sincronizarVentaConfirmada(
+    idPedido: number,
+    resumen: ResumenConfirmacionPago,
+    tx: Prisma.TransactionClient,
+  ) {
+    await abonoRepository.upsertVentaDesdePago(
+      {
+        idPedido,
+        idCliente: resumen.idCliente,
+        totalPedido: resumen.total,
+        totalPagado: resumen.nuevoTotalPagado,
+        saldoPendiente: resumen.saldoPendiente,
+        estado:
+          resumen.estadoPago === ESTADO_PAGO_COMPLETO
+            ? "COMPLETA"
+            : "PARCIAL",
+        fechaPrimerPago: new Date(),
+      },
+      tx,
+    );
+  }
+
   private prepararRespuestaAbono(abono: any) {
     if (!abono?.pedido) {
-      return abono;
+      const {
+        comprobantePath: _comprobantePath,
+        nombreSeguroComprobante: _nombreSeguroComprobante,
+        textoOcr: _textoOcr,
+        ...respuesta
+      } = abono ?? {};
+
+      return {
+        ...respuesta,
+        comprobanteDisponible: Boolean(
+          abono?.comprobantePath ??
+            abono?.nombreOriginalComprobante ??
+            abono?.comprobanteUrl,
+        ),
+      };
     }
 
+    const {
+      comprobantePath: _comprobantePath,
+      nombreSeguroComprobante: _nombreSeguroComprobante,
+      textoOcr: _textoOcr,
+      ...respuesta
+    } = abono;
     const totalPedido = redondearMoneda(aNumero(abono.pedido.total));
     const totalConfirmado = redondearMoneda(aNumero(abono.pedido.totalPagado));
     const saldoPendiente = redondearMoneda(aNumero(abono.pedido.saldoPendiente));
 
     return {
-      ...abono,
+      ...respuesta,
+      comprobanteDisponible: Boolean(
+        abono.comprobantePath ??
+          abono.nombreOriginalComprobante ??
+          abono.comprobanteUrl,
+      ),
       totalPedido,
       totalConfirmado,
       saldoPendiente,
@@ -342,9 +410,13 @@ export class AbonoService {
     user: AuthUser,
     tx: Prisma.TransactionClient,
   ): Promise<ResultadoAbonoConfirmadoTransaccion> {
+    if (!Number.isFinite(data.monto) || Number(data.monto) <= 0) {
+      throw new Error("El abono requiere un monto valido antes de confirmarse.");
+    }
+
     const resumenConfirmacion = await this.validarConfirmacionDeMonto(
       data.idPedido,
-      data.monto,
+      Number(data.monto),
       tx,
     );
 
@@ -362,6 +434,11 @@ export class AbonoService {
       data.idPedido,
       resumenConfirmacion.total,
       resumenConfirmacion.nuevoTotalPagado,
+      tx,
+    );
+    await this.sincronizarVentaConfirmada(
+      data.idPedido,
+      resumenConfirmacion,
       tx,
     );
     await this.intentarPasarPedidoAEnProceso(
@@ -391,7 +468,11 @@ export class AbonoService {
     return await abonoRepository.buscarPorIdOperacion(resultado.idAbono, tx);
   }
 
-  async crearAbono(data: DatosEntrada, usuarioAuth: AuthUser | undefined) {
+  async crearAbono(
+    data: DatosEntrada,
+    usuarioAuth: AuthUser | undefined,
+    file?: Express.Multer.File,
+  ) {
     const user = this.obtenerUsuario(usuarioAuth);
     const error = validarCrearAbono(data, user.rol);
 
@@ -419,30 +500,261 @@ export class AbonoService {
       throw new Error("No tienes permiso para registrar abonos en este pedido.");
     }
 
-    if (data.confirmar === true) {
-      const resultado = await this.ejecutarTransaccion(async (tx) => {
-        return await this.crearAbonoConfirmadoConResumenEnTransaccion(
-          datosBase,
-          user,
-          tx,
-        );
+    let storedPath: string | null = null;
+
+    if (file) {
+      const stored = await this.fileStorage.savePaymentReceipt(file, {
+        idCliente: Number(pedido.idCliente),
+        idPedido: datosBase.idPedido,
       });
+      storedPath = stored.relativePath;
+      const duplicado = await abonoRepository.buscarPorHash(
+        datosBase.idPedido,
+        stored.sha256,
+      );
 
-      const abonoCompleto = await abonoRepository.buscarPorId(resultado.idAbono);
+      if (duplicado) {
+        await this.fileStorage.deleteFile(stored.relativePath);
+        throw new Error("Este comprobante ya fue registrado.");
+      }
 
-      if (resultado.primerAbonoConfirmado) {
-        await notificarPrimerAbonoConfirmado(
-          await cargarAbonoParaNotificacion(abonoCompleto),
+      let ocr: PaymentReceiptOcrResult | null = null;
+
+      try {
+        ocr = await this.ocrService.analyzePaymentReceipt(
+          this.fileStorage.resolveSafePath(stored.relativePath),
+        );
+      } catch (error) {
+        console.error(
+          "OCR administrativo no disponible:",
+          error instanceof Error ? error.message : "error desconocido",
         );
       }
 
-      return this.prepararRespuestaAbono(abonoCompleto);
+      Object.assign(datosBase, {
+        comprobantePath: stored.relativePath,
+        nombreOriginalComprobante: stored.originalName,
+        nombreSeguroComprobante: stored.safeName,
+        comprobanteMimeType: stored.mimeType,
+        comprobanteSizeBytes: stored.sizeBytes,
+        comprobanteHash: stored.sha256,
+        comprobanteSubidoEn: new Date(),
+        textoOcr: ocr?.textoCompleto || null,
+        montoDetectadoOcr: ocr?.montoDetectado ?? null,
+        referenciaDetectadaOcr: ocr?.referenciaDetectada ?? null,
+        fechaDetectadaOcr: ocr?.fechaDetectada ?? null,
+        bancoDetectadoOcr: ocr?.bancoDetectado ?? null,
+        confianzaOcr: ocr?.confianza ?? null,
+        requiereRevisionManual: ocr?.requiereRevisionManual ?? true,
+        origenRegistro: "ADMIN_OCR",
+      });
     }
 
-    return this.prepararRespuestaAbono(await abonoRepository.crearAbono({
-      ...datosBase,
-      estado: ESTADO_ABONO_PENDIENTE,
-    }));
+    try {
+      if (data.confirmar === true || data.confirmar === "true") {
+        const resultado = await this.ejecutarTransaccion(async (tx) => {
+          return await this.crearAbonoConfirmadoConResumenEnTransaccion(
+            datosBase,
+            user,
+            tx,
+          );
+        });
+
+        const abonoCompleto = await abonoRepository.buscarPorId(
+          resultado.idAbono,
+        );
+
+        if (resultado.primerAbonoConfirmado) {
+          await notificarPrimerAbonoConfirmado(
+            await cargarAbonoParaNotificacion(abonoCompleto),
+          );
+        }
+
+        return this.prepararRespuestaAbono(abonoCompleto);
+      }
+
+      return this.prepararRespuestaAbono(
+        await abonoRepository.crearAbono({
+          ...datosBase,
+          estado: ESTADO_ABONO_PENDIENTE,
+        }),
+      );
+    } catch (error) {
+      if (storedPath) {
+        await this.fileStorage.deleteFile(storedPath);
+      }
+      throw error;
+    }
+  }
+
+  async crearDesdeComprobanteCliente(
+    idPedido: number,
+    file: Express.Multer.File | undefined,
+    observaciones: unknown,
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    const user = this.obtenerUsuario(usuarioAuth);
+    validarId(idPedido, "El ID del pedido no es valido.");
+
+    if (!esCliente(user)) {
+      throw new Error("Este endpoint solo esta disponible para clientes.");
+    }
+
+    if (!file) {
+      throw new Error("El comprobante es obligatorio.");
+    }
+
+    if (process.env.LOCAL_STORAGE_ENABLED === "false") {
+      throw new Error("El almacenamiento local de comprobantes esta deshabilitado.");
+    }
+
+    const pedido = await abonoRepository.buscarPedidoPorId(idPedido);
+
+    if (!pedido) {
+      throw new Error("Pedido no encontrado.");
+    }
+
+    this.validarAccesoClienteAlPedido(
+      pedido,
+      user,
+      "No tienes permiso para registrar abonos en este pedido.",
+    );
+
+    if (["ANULADO", "ENTREGADO"].includes(pedido.estadoPedido)) {
+      throw new Error("Este pedido ya no admite comprobantes de pago.");
+    }
+
+    if (redondearMoneda(aNumero(pedido.saldoPendiente)) <= 0) {
+      throw new Error("El pedido no tiene saldo pendiente.");
+    }
+
+    const stored = await this.fileStorage.savePaymentReceipt(file, {
+      idCliente: idClienteAutenticado(user),
+      idPedido,
+    });
+    const duplicado = await abonoRepository.buscarPorHash(idPedido, stored.sha256);
+
+    if (duplicado) {
+      await this.fileStorage.deleteFile(stored.relativePath);
+      return {
+        abono: this.prepararRespuestaAbono(duplicado),
+        ocr: {
+          montoDetectado: aNumero(duplicado.montoDetectadoOcr) || null,
+          referenciaDetectada: duplicado.referenciaDetectadaOcr,
+          fechaDetectada: duplicado.fechaDetectadaOcr,
+          bancoDetectado: duplicado.bancoDetectadoOcr,
+          confianza: aNumero(duplicado.confianzaOcr) || null,
+          requiereRevisionManual: duplicado.requiereRevisionManual,
+          advertencias: ["El comprobante ya habia sido registrado."],
+        },
+        duplicado: true,
+      };
+    }
+
+    let ocr: PaymentReceiptOcrResult;
+
+    try {
+      ocr = await this.ocrService.analyzePaymentReceipt(
+        this.fileStorage.resolveSafePath(stored.relativePath),
+      );
+    } catch (error) {
+      console.error(
+        "OCR de comprobante no disponible; se requiere revision manual:",
+        error instanceof Error ? error.message : "error desconocido",
+      );
+      ocr = {
+        textoCompleto: "",
+        montoDetectado: null,
+        referenciaDetectada: null,
+        fechaDetectada: null,
+        bancoDetectado: null,
+        confianza: null,
+        candidatosMonto: [],
+        requiereRevisionManual: true,
+        advertencias: ["No fue posible procesar el OCR."],
+      };
+    }
+
+    try {
+      const abono = await abonoRepository.crearAbono({
+        idPedido,
+        monto: null,
+        metodoPago: "TRANSFERENCIA",
+        referencia: null,
+        fechaPago: null,
+        comprobanteUrl: null,
+        comprobantePath: stored.relativePath,
+        nombreOriginalComprobante: stored.originalName,
+        nombreSeguroComprobante: stored.safeName,
+        comprobanteMimeType: stored.mimeType,
+        comprobanteSizeBytes: stored.sizeBytes,
+        comprobanteHash: stored.sha256,
+        comprobanteSubidoEn: new Date(),
+        textoOcr: ocr.textoCompleto || null,
+        montoDetectadoOcr: ocr.montoDetectado,
+        referenciaDetectadaOcr: ocr.referenciaDetectada,
+        fechaDetectadaOcr: ocr.fechaDetectada,
+        bancoDetectadoOcr: ocr.bancoDetectado,
+        confianzaOcr: ocr.confianza,
+        requiereRevisionManual: ocr.requiereRevisionManual,
+        origenRegistro: "CLIENTE_OCR",
+        observaciones: limpiarTextoOpcional(observaciones),
+        estado: ESTADO_ABONO_PENDIENTE,
+      });
+
+      return {
+        abono: this.prepararRespuestaAbono(abono),
+        ocr: {
+          montoDetectado: ocr.montoDetectado,
+          referenciaDetectada: ocr.referenciaDetectada,
+          fechaDetectada: ocr.fechaDetectada,
+          bancoDetectado: ocr.bancoDetectado,
+          confianza: ocr.confianza,
+          candidatosMonto: ocr.candidatosMonto,
+          requiereRevisionManual: ocr.requiereRevisionManual,
+          advertencias: ocr.advertencias,
+        },
+        duplicado: false,
+      };
+    } catch (error) {
+      await this.fileStorage.deleteFile(stored.relativePath);
+      throw error;
+    }
+  }
+
+  async obtenerComprobante(
+    idAbono: number,
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    const user = this.obtenerUsuario(usuarioAuth);
+    validarId(idAbono, "El ID del abono no es valido.");
+    const comprobante =
+      await abonoRepository.buscarComprobanteMetadata(idAbono);
+
+    if (!comprobante) {
+      throw new Error("Abono no encontrado.");
+    }
+
+    if (
+      esCliente(user) &&
+      Number(comprobante.pedido.idCliente) !== idClienteAutenticado(user)
+    ) {
+      throw new Error("No tienes permiso para consultar este comprobante.");
+    }
+
+    if (!comprobante.comprobantePath) {
+      throw new Error("El abono no tiene comprobante almacenado.");
+    }
+
+    await this.fileStorage.getFileMetadata(comprobante.comprobantePath);
+
+    return {
+      stream: this.fileStorage.getFileStream(comprobante.comprobantePath),
+      mimeType: comprobante.comprobanteMimeType ?? "application/octet-stream",
+      fileName:
+        comprobante.nombreOriginalComprobante ??
+        `comprobante-${comprobante.idAbono}`,
+    };
   }
 
   async confirmarAbono(
@@ -504,6 +816,11 @@ export class AbonoService {
         abonoConfirmado.idPedido,
         resumenConfirmacion.total,
         resumenConfirmacion.nuevoTotalPagado,
+        tx,
+      );
+      await this.sincronizarVentaConfirmada(
+        abonoConfirmado.idPedido,
+        resumenConfirmacion,
         tx,
       );
       await this.intentarPasarPedidoAEnProceso(
@@ -584,6 +901,10 @@ export class AbonoService {
 
     const filtros: AbonoFiltros = {};
 
+    if (filtrosEntrada.idCliente !== undefined) {
+      filtros.idCliente = Number(filtrosEntrada.idCliente);
+    }
+
     if (filtrosEntrada.idPedido !== undefined) {
       filtros.idPedido = Number(filtrosEntrada.idPedido);
     }
@@ -602,6 +923,25 @@ export class AbonoService {
 
     if (typeof filtrosEntrada.hasta === "string") {
       filtros.hasta = filtrosEntrada.hasta;
+    }
+
+    const pagination = parsePaginationQuery(filtrosEntrada, {
+      defaultSortBy: "fechaCreacion",
+      allowedSortBy: ["idAbono", "fechaCreacion", "monto", "estado"],
+      maxLimit: 10,
+    });
+
+    if (pagination.isPaginated) {
+      const resultado = await abonoRepository.listarAbonosPaginado(
+        filtros,
+        pagination,
+      );
+
+      return paginatedResponse(
+        resultado.data.map((abono) => this.prepararRespuestaAbono(abono)),
+        pagination,
+        resultado.total,
+      );
     }
 
     const abonos = await abonoRepository.listarAbonos(filtros);
@@ -648,7 +988,11 @@ export class AbonoService {
     return this.prepararRespuestaAbono(abono);
   }
 
-  async actualizarAbonoPendiente(idAbono: number, data: DatosEntrada) {
+  async actualizarAbonoPendiente(
+    idAbono: number,
+    data: DatosEntrada,
+    usuarioAuth?: AuthUser,
+  ) {
     validarId(idAbono, "El ID del abono no es valido.");
 
     const error = validarActualizarAbono(data);
@@ -663,8 +1007,8 @@ export class AbonoService {
       throw new Error("Abono no encontrado.");
     }
 
-    if (abono.estado !== ESTADO_ABONO_PENDIENTE) {
-      throw new Error("Solo se pueden actualizar abonos pendientes.");
+    if (abono.estado === ESTADO_ABONO_RECHAZADO) {
+      throw new Error("No se puede editar un abono rechazado.");
     }
 
     const dataActualizar: ActualizarAbonoData = {};
@@ -681,11 +1025,88 @@ export class AbonoService {
       dataActualizar.referencia = limpiarTextoOpcional(data.referencia);
     }
 
+    if (data.fechaPago !== undefined) {
+      dataActualizar.fechaPago = data.fechaPago
+        ? new Date(String(data.fechaPago))
+        : null;
+    }
+
+    if (data.observaciones !== undefined) {
+      dataActualizar.observaciones = limpiarTextoOpcional(data.observaciones);
+    }
+
+    if (data.requiereRevisionManual !== undefined) {
+      dataActualizar.requiereRevisionManual =
+        data.requiereRevisionManual === true;
+    }
+
     if (data.comprobanteUrl !== undefined) {
       dataActualizar.comprobanteUrl = limpiarTextoOpcional(data.comprobanteUrl);
     }
 
-    return await abonoRepository.actualizarAbono(idAbono, dataActualizar);
+    dataActualizar.corregidoPorId = usuarioAuth?.idUsuario
+      ? Number(usuarioAuth.idUsuario)
+      : null;
+    dataActualizar.fechaCorreccion = new Date();
+
+    if (
+      abono.estado !== ESTADO_ABONO_CONFIRMADO ||
+      data.monto === undefined
+    ) {
+      return await abonoRepository.actualizarAbono(idAbono, dataActualizar);
+    }
+
+    const actualizado = await this.ejecutarTransaccion(async (tx) => {
+      await abonoRepository.actualizarAbonoOperacion(
+        idAbono,
+        dataActualizar,
+        tx,
+      );
+      const pedido = await abonoRepository.buscarPedidoPorId(
+        abono.idPedido,
+        tx,
+      );
+
+      if (!pedido) {
+        throw new Error("Pedido no encontrado.");
+      }
+
+      const totalPagado = redondearMoneda(
+        await abonoRepository.sumarAbonosConfirmados(abono.idPedido, tx),
+      );
+      const total = redondearMoneda(aNumero(pedido.total));
+
+      if (totalPagado > total) {
+        throw new Error("El total confirmado no puede superar el pedido.");
+      }
+
+      const resumen = this.calcularResumenPago(total, totalPagado);
+      await this.actualizarPagoPedidoConTotal(
+        abono.idPedido,
+        total,
+        totalPagado,
+        tx,
+      );
+      await abonoRepository.upsertVentaDesdePago(
+        {
+          idPedido: abono.idPedido,
+          idCliente: Number(pedido.idCliente),
+          totalPedido: total,
+          totalPagado,
+          saldoPendiente: resumen.saldoPendiente,
+          estado:
+            resumen.estadoPago === ESTADO_PAGO_COMPLETO
+              ? "COMPLETA"
+              : "PARCIAL",
+          fechaPrimerPago: abono.fechaConfirmacion ?? new Date(),
+        },
+        tx,
+      );
+
+      return { idAbono };
+    });
+
+    return await abonoRepository.buscarPorId(actualizado.idAbono);
   }
 
   async eliminarAbonoPendiente(idAbono: number) {

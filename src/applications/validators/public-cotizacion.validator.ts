@@ -56,6 +56,31 @@ const validarItems = (
     ) {
       return "Las observaciones del item deben ser texto de maximo 255 caracteres, null u omitirse.";
     }
+
+    if (
+      item?.requiereDiseno !== undefined &&
+      typeof item.requiereDiseno !== "boolean"
+    ) {
+      return "requiereDiseno debe ser booleano.";
+    }
+
+    if (
+      item?.origenDiseno !== undefined &&
+      !["CLIENTE", "PIXEL"].includes(String(item.origenDiseno).toUpperCase())
+    ) {
+      return "origenDiseno debe ser CLIENTE o PIXEL.";
+    }
+
+    if (
+      item?.esDisenoGeneral !== undefined &&
+      typeof item.esDisenoGeneral !== "boolean"
+    ) {
+      return "esDisenoGeneral debe ser booleano.";
+    }
+
+    if (!esTextoOpcional(item?.archivoDisenoInicialUrl, 500)) {
+      return "El archivo inicial de diseno debe ser texto de maximo 500 caracteres.";
+    }
   }
 
   return null;

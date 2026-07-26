@@ -122,6 +122,11 @@ test("AbonoService registra abono confirmado y envia evento despues de DB", asyn
     "existeDisenoAprobado",
     async () => false,
   );
+  const ventaMock = t.mock.method(
+    AbonoRepository.prototype,
+    "upsertVentaDesdePago",
+    async () => ({ idVenta: 1, estado: "PARCIAL" }),
+  );
   t.mock.method(
     AbonoRepository.prototype,
     "buscarPorId",
@@ -186,6 +191,7 @@ test("AbonoService registra abono confirmado y envia evento despues de DB", asyn
 
   assert.equal(abono?.estado, "CONFIRMADO");
   assert.equal(notificationMock.mock.calls.length, 1);
+  assert.equal(ventaMock.mock.calls.length, 1);
 });
 
 test("AbonoService confirmar primer abono envia evento y actualiza saldo", async (t) => {
@@ -219,6 +225,11 @@ test("AbonoService confirmar primer abono envia evento y actualiza saldo", async
     "existeDisenoAprobado",
     async () => false,
   );
+  const ventaMock = t.mock.method(
+    AbonoRepository.prototype,
+    "upsertVentaDesdePago",
+    async () => ({ idVenta: 1, estado: "PARCIAL" }),
+  );
   t.mock.method(
     AbonoRepository.prototype,
     "buscarPorId",
@@ -246,6 +257,7 @@ test("AbonoService confirmar primer abono envia evento y actualiza saldo", async
   assert.equal(pago.saldoPendiente, 50000);
   assert.equal(pago.estadoPago, "PARCIAL");
   assert.equal(notificationMock.mock.calls.length, 1);
+  assert.equal(ventaMock.mock.calls.length, 1);
 });
 
 test("AbonoService confirmar segundo abono no reenvia evento de primer abono", async (t) => {
@@ -279,6 +291,11 @@ test("AbonoService confirmar segundo abono no reenvia evento de primer abono", a
     "existeDisenoAprobado",
     async () => false,
   );
+  const ventaMock = t.mock.method(
+    AbonoRepository.prototype,
+    "upsertVentaDesdePago",
+    async () => ({ idVenta: 1, estado: "COMPLETA" }),
+  );
   t.mock.method(
     AbonoRepository.prototype,
     "buscarPorId",
@@ -293,6 +310,7 @@ test("AbonoService confirmar segundo abono no reenvia evento de primer abono", a
   await new AbonoService(transaccionFake).confirmarAbono(6, admin);
 
   assert.equal(notificationMock.mock.calls.length, 0);
+  assert.equal(ventaMock.mock.calls.length, 1);
 });
 
 test("AbonoService no confirma dos veces el mismo abono", async (t) => {
@@ -339,4 +357,166 @@ test("AbonoService pago completo deja saldo cero y estado COMPLETO", async () =>
   const service = new AbonoService(transaccionFake);
 
   assert.equal(service.calcularEstadoPago(100000, 100000), "COMPLETO");
+});
+
+test("AbonoService cliente sube comprobante propio y OCR no confirma el pago", async (t) => {
+  let transacciones = 0;
+  const transaction = async <T>(
+    handler: (tx: Prisma.TransactionClient) => Promise<T>,
+  ) => {
+    transacciones += 1;
+    return await handler({} as Prisma.TransactionClient);
+  };
+  const storage = {
+    savePaymentReceipt: async () => ({
+      relativePath: "comprobantes/cliente-10/pedido-1/abono-test.png",
+      originalName: "pago.png",
+      safeName: "abono-test.png",
+      mimeType: "image/png",
+      sizeBytes: 100,
+      sha256: "hash-unico",
+    }),
+    resolveSafePath: () => "C:\\temp\\abono-test.png",
+    deleteFile: async () => true,
+  };
+  const ocr = {
+    analyzePaymentReceipt: async () => ({
+      textoCompleto: "Valor enviado: $50.000",
+      montoDetectado: 50000,
+      referenciaDetectada: "ABC123",
+      fechaDetectada: new Date("2026-07-26"),
+      bancoDetectado: "Nequi",
+      confianza: 88,
+      candidatosMonto: [50000],
+      requiereRevisionManual: false,
+      advertencias: [],
+    }),
+  };
+
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  const crearMock = t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async (data: any) => ({ idAbono: 50, ...data }),
+  );
+
+  const resultado = await new AbonoService(
+    transaction,
+    storage as any,
+    ocr as any,
+  ).crearDesdeComprobanteCliente(
+    1,
+    { originalname: "pago.png" } as Express.Multer.File,
+    "Pago enviado desde el panel",
+    { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+  );
+  const creado = crearMock.mock.calls[0]?.arguments[0] as any;
+
+  assert.equal(resultado.abono.estado, "PENDIENTE");
+  assert.equal(resultado.ocr.montoDetectado, 50000);
+  assert.equal(creado.monto, null);
+  assert.equal(creado.estado, "PENDIENTE");
+  assert.equal(creado.origenRegistro, "CLIENTE_OCR");
+  assert.equal(resultado.abono.comprobantePath, undefined);
+  assert.equal(resultado.abono.comprobanteDisponible, true);
+  assert.equal(transacciones, 0);
+});
+
+test("AbonoService bloquea comprobante ajeno y deduplica por hash", async (t) => {
+  let guardados = 0;
+  let eliminados = 0;
+  const storage = {
+    savePaymentReceipt: async () => {
+      guardados += 1;
+      return {
+        relativePath: "comprobantes/cliente-10/pedido-1/repetido.png",
+        originalName: "repetido.png",
+        safeName: "repetido.png",
+        mimeType: "image/png",
+        sizeBytes: 100,
+        sha256: "hash-repetido",
+      };
+    },
+    resolveSafePath: () => "C:\\temp\\repetido.png",
+    deleteFile: async () => {
+      eliminados += 1;
+      return true;
+    },
+  };
+  const ocr = { analyzePaymentReceipt: async () => assert.fail("OCR no debe ejecutarse") };
+  const service = new AbonoService(transaccionFake, storage as any, ocr as any);
+
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarPedidoPorId",
+    async (idPedido: number) => ({ ...pedidoBase, idPedido, idCliente: idPedido === 2 ? 20 : 10 }),
+  );
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => ({
+    ...abonoPendiente,
+    montoDetectadoOcr: 50000,
+    referenciaDetectadaOcr: "ABC123",
+    fechaDetectadaOcr: null,
+    bancoDetectadoOcr: "Nequi",
+    confianzaOcr: 80,
+    requiereRevisionManual: false,
+    nombreOriginalComprobante: "repetido.png",
+  }));
+
+  await assert.rejects(
+    () =>
+      service.crearDesdeComprobanteCliente(
+        2,
+        { originalname: "ajeno.png" } as Express.Multer.File,
+        null,
+        { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+      ),
+    /No tienes permiso/,
+  );
+  const duplicado = await service.crearDesdeComprobanteCliente(
+    1,
+    { originalname: "repetido.png" } as Express.Multer.File,
+    null,
+    { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+  );
+
+  assert.equal(guardados, 1);
+  assert.equal(eliminados, 1);
+  assert.equal(duplicado.duplicado, true);
+});
+
+test("AbonoService protege descarga de comprobante por ownership", async (t) => {
+  const storage = {
+    getFileMetadata: async () => ({ sizeBytes: 100 }),
+    getFileStream: () => ({ pipe: () => undefined }),
+  };
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarComprobanteMetadata",
+    async () => ({
+      idAbono: 8,
+      comprobantePath: "comprobantes/cliente-10/pedido-1/pago.png",
+      nombreOriginalComprobante: "pago.png",
+      comprobanteMimeType: "image/png",
+      pedido: { idPedido: 1, idCliente: 10 },
+    }),
+  );
+  const service = new AbonoService(transaccionFake, storage as any, {} as any);
+
+  const propio = await service.obtenerComprobante(8, {
+    idUsuario: 7,
+    idCliente: 10,
+    rol: "Cliente",
+  });
+  assert.equal(propio.mimeType, "image/png");
+
+  await assert.rejects(
+    () =>
+      service.obtenerComprobante(8, {
+        idUsuario: 9,
+        idCliente: 20,
+        rol: "Cliente",
+      }),
+    /No tienes permiso/,
+  );
 });

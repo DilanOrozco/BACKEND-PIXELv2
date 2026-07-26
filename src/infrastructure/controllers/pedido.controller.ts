@@ -128,6 +128,18 @@ export class PedidoController {
     }
   }
 
+  async obtenerExpediente(req: AuthRequest, res: Response) {
+    try {
+      const expediente = await pedidoService.obtenerExpediente(
+        Number(req.params.idPedido),
+        req.user,
+      );
+      return res.status(200).json({ data: expediente });
+    } catch (error: any) {
+      return res.status(404).json({ message: error.message });
+    }
+  }
+
   async actualizarFechaEntregaEstimada(req: AuthRequest, res: Response) {
     try {
       const idPedido = Number(req.params.id);

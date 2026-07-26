@@ -5,6 +5,7 @@ import { PedidoService } from "./pedido.service";
 import { NotificationService } from "./notification.service";
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
 import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
+import { AbonoRepository } from "../../infrastructure/repositories/abono.repository";
 import { ProductoService } from "./producto.service";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 
@@ -481,18 +482,40 @@ test("PedidoService confirma entrega de pedido finalizado sin crear una venta nu
 });
 
 test("PedidoService actualiza fecha estimada y anula sin eliminar relaciones", async (t) => {
-  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => pedido);
+  let pedidoActual = { ...pedido };
+  t.mock.method(
+    PedidoRepository.prototype,
+    "buscarPorId",
+    async () => pedidoActual,
+  );
   const actualizarMock = t.mock.method(
     PedidoRepository.prototype,
     "actualizarPedido",
-    async (_idPedido: number, data: any) => ({ ...pedido, ...data }),
+    async (_idPedido: number, data: any) => {
+      pedidoActual = { ...pedidoActual, ...data };
+      return pedidoActual;
+    },
+  );
+  const actualizarOperacionMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedidoOperacion",
+    async (_idPedido: number, data: any) => {
+      pedidoActual = { ...pedidoActual, ...data };
+      return pedidoActual;
+    },
+  );
+  t.mock.method(
+    AbonoRepository.prototype,
+    "actualizarVentaAnulada",
+    async () => ({ count: 1 }),
   );
   const notificationMock = t.mock.method(
     NotificationService.prototype,
     "pedidoAnulado",
     async () => ({ event: "PEDIDO_ANULADO", cliente: "enviado" }),
   );
-  const service = new PedidoService();
+  const transaccionFake = async (handler: any) => handler({});
+  const service = new PedidoService(transaccionFake);
 
   const conFecha = await service.actualizarFechaEntregaEstimada(
     20,
@@ -507,7 +530,11 @@ test("PedidoService actualiza fecha estimada y anula sin eliminar relaciones", a
 
   assert.ok(conFecha.fechaEntregaEstimada);
   assert.equal(anulado.estadoPedido, "ANULADO");
-  assert.equal(actualizarMock.mock.calls[1]?.arguments[1].estadoPedido, "ANULADO");
+  assert.equal(actualizarMock.mock.calls.length, 1);
+  assert.equal(
+    actualizarOperacionMock.mock.calls[0]?.arguments[1].estadoPedido,
+    "ANULADO",
+  );
   assert.equal(notificationMock.mock.calls.length, 1);
 });
 

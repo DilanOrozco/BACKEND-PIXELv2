@@ -131,16 +131,20 @@ export class VentaService {
 
     return {
       idPedido: pedido.idPedido,
+      idVenta: pedido.venta?.idVenta ?? null,
       idCliente: pedido.idCliente,
       nombreCliente: pedido.cliente?.nombre ?? null,
       correoCliente: pedido.cliente?.correo ?? null,
       telefonoCliente: pedido.cliente?.telefono ?? null,
       total: aNumero(pedido.total),
       totalPagado: aNumero(pedido.totalPagado),
+      saldoPendiente: aNumero(pedido.saldoPendiente),
       fechaCreacion: pedido.fechaCreacion,
       fechaFinalizado: pedido.fechaFinalizado,
       fechaEntregado: pedido.fechaEntregado,
       estadoPago: pedido.estadoPago,
+      estado: pedido.venta?.estado ?? null,
+      fechaPrimerPago: pedido.venta?.fechaPrimerPago ?? null,
       tecnicas: Array.from(tecnicasPorId.values()),
       cantidadTotalProductos,
     };
@@ -193,6 +197,7 @@ export class VentaService {
 
     return {
       totalVentas: resumen.totalVentas,
+      ingresosRecibidos: resumen.ingresosRecibidos,
       cantidadVentas: resumen.cantidadVentas,
       ticketPromedio: resumen.ticketPromedio,
     };

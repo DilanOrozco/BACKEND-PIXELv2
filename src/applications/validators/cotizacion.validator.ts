@@ -20,6 +20,35 @@ const esTextoOpcional = (valor: any) => {
   return valor === undefined || valor === null || typeof valor === "string";
 };
 
+const validarConfiguracionDiseno = (detalle: any) => {
+  if (
+    detalle.requiereDiseno !== undefined &&
+    typeof detalle.requiereDiseno !== "boolean"
+  ) {
+    return "requiereDiseno debe ser booleano.";
+  }
+
+  if (
+    detalle.origenDiseno !== undefined &&
+    !["CLIENTE", "PIXEL"].includes(String(detalle.origenDiseno).toUpperCase())
+  ) {
+    return "origenDiseno debe ser CLIENTE o PIXEL.";
+  }
+
+  if (
+    detalle.esDisenoGeneral !== undefined &&
+    typeof detalle.esDisenoGeneral !== "boolean"
+  ) {
+    return "esDisenoGeneral debe ser booleano.";
+  }
+
+  if (!esTextoOpcional(detalle.archivoDisenoInicialUrl)) {
+    return "El archivo inicial de diseno debe ser texto, null u omitirse.";
+  }
+
+  return null;
+};
+
 const clienteEnvioPrecios = (detalle: any) => {
   return (
     detalle.precioUnitario !== undefined ||
@@ -62,6 +91,12 @@ export const validarSolicitudCliente = (
   }
 
   for (const detalle of data.detalles) {
+    const errorDiseno = validarConfiguracionDiseno(detalle);
+
+    if (errorDiseno) {
+      return errorDiseno;
+    }
+
     if (opciones.requiereDetalleExistente) {
       if (!esEnteroPositivo(detalle.idDetalleCotizacion)) {
         return "Debe enviar el idDetalleCotizacion del detalle existente.";
@@ -116,6 +151,12 @@ export const validarCotizar = (data: any) => {
   const idsDetalle = new Set<number>();
 
   for (const detalle of data.detalles) {
+    const errorDiseno = validarConfiguracionDiseno(detalle);
+
+    if (errorDiseno) {
+      return errorDiseno;
+    }
+
     const esExistente = esEnteroPositivo(detalle.idDetalleCotizacion);
     const tieneProducto = esEnteroPositivo(detalle.idProducto);
 
@@ -229,6 +270,12 @@ export const validarCrearCotizacionPresencial = (data: any) => {
   }
 
   for (const detalle of data.detalles) {
+    const errorDiseno = validarConfiguracionDiseno(detalle);
+
+    if (errorDiseno) {
+      return errorDiseno;
+    }
+
     if (detalle.idDetalleCotizacion !== undefined) {
       return "No se debe enviar idDetalleCotizacion al crear una cotizacion.";
     }

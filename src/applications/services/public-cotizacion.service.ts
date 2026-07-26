@@ -303,6 +303,19 @@ export class PublicCotizacionService {
       subtotalBruto: item.snapshot.subtotalBruto,
       descuentoTotal: item.snapshot.descuentoTotal,
       subtotalConDescuento: item.snapshot.subtotalConDescuento,
+      requiereDiseno: itemsEntrada[index]?.requiereDiseno !== false,
+      origenDiseno: String(
+        itemsEntrada[index]?.origenDiseno ?? "PIXEL",
+      ).toUpperCase(),
+      archivoDisenoInicialUrl: limpiarTextoOpcional(
+        itemsEntrada[index]?.archivoDisenoInicialUrl,
+      ),
+      esDisenoGeneral: itemsEntrada[index]?.esDisenoGeneral === true,
+      medioRecepcionDiseno:
+        String(itemsEntrada[index]?.origenDiseno ?? "PIXEL").toUpperCase() ===
+          "CLIENTE" && itemsEntrada[index]?.archivoDisenoInicialUrl
+          ? "SISTEMA"
+          : null,
       observaciones: item.snapshot.observaciones,
     }));
 

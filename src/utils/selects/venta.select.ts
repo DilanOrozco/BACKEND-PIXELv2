@@ -7,6 +7,17 @@ export const ventaSelect = {
   fechaCreacion: true,
   fechaFinalizado: true,
   fechaEntregado: true,
+  saldoPendiente: true,
+  venta: {
+    select: {
+      idVenta: true,
+      estado: true,
+      fechaPrimerPago: true,
+      totalPedido: true,
+      totalPagado: true,
+      saldoPendiente: true,
+    },
+  },
   cliente: {
     select: {
       idCliente: true,

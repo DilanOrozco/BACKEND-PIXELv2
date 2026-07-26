@@ -4,10 +4,12 @@ import type { EstadoAbonoPermitido, MetodoPagoPermitido } from "../../applicatio
 import { abonoSelect } from "../../utils/selects/abono.select";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
 import { DisenoRepository } from "./diseno.repository";
+import type { ParsedPagination } from "../../utils/pagination.util";
 
 type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 
 export interface AbonoFiltros {
+  idCliente?: number;
   idPedido?: number;
   estado?: EstadoAbonoPermitido;
   metodoPago?: MetodoPagoPermitido;
@@ -17,19 +19,37 @@ export interface AbonoFiltros {
 
 export interface CrearAbonoData {
   idPedido: number;
-  monto: number;
+  monto: number | null;
   metodoPago: MetodoPagoPermitido;
   referencia: string | null;
+  fechaPago?: Date | null;
   comprobanteUrl: string | null;
   estado?: EstadoAbonoPermitido;
   confirmadoPorId?: number | null;
   fechaConfirmacion?: Date | null;
+  comprobantePath?: string | null;
+  nombreOriginalComprobante?: string | null;
+  nombreSeguroComprobante?: string | null;
+  comprobanteMimeType?: string | null;
+  comprobanteSizeBytes?: number | null;
+  comprobanteHash?: string | null;
+  comprobanteSubidoEn?: Date | null;
+  textoOcr?: string | null;
+  montoDetectadoOcr?: number | null;
+  referenciaDetectadaOcr?: string | null;
+  fechaDetectadaOcr?: Date | null;
+  bancoDetectadoOcr?: string | null;
+  confianzaOcr?: number | null;
+  requiereRevisionManual?: boolean;
+  origenRegistro?: string;
+  observaciones?: string | null;
 }
 
 export interface ActualizarAbonoData {
   monto?: number;
   metodoPago?: MetodoPagoPermitido;
   referencia?: string | null;
+  fechaPago?: Date | null;
   comprobanteUrl?: string | null;
   estado?: EstadoAbonoPermitido;
   confirmadoPorId?: number | null;
@@ -37,6 +57,10 @@ export interface ActualizarAbonoData {
   rechazadoPorId?: number | null;
   fechaRechazo?: Date | null;
   motivoRechazo?: string | null;
+  corregidoPorId?: number | null;
+  fechaCorreccion?: Date | null;
+  observaciones?: string | null;
+  requiereRevisionManual?: boolean;
 }
 
 const db = (tx?: Prisma.TransactionClient): PrismaExecutor => tx ?? prisma;
@@ -128,7 +152,26 @@ export class AbonoRepository {
   }
 
   async listarAbonos(filtros: AbonoFiltros) {
+    const where = this.buildWhere(filtros);
+
+    return await prisma.abonos.findMany({
+      where,
+      select: abonoSelect,
+      orderBy: {
+        fechaCreacion: "desc",
+      },
+    });
+  }
+
+  private buildWhere(
+    filtros: AbonoFiltros,
+    search?: string | null,
+  ): Prisma.AbonosWhereInput {
     const where: Prisma.AbonosWhereInput = {};
+
+    if (filtros.idCliente) {
+      where.pedido = { idCliente: filtros.idCliente };
+    }
 
     if (filtros.idPedido) {
       where.idPedido = filtros.idPedido;
@@ -149,13 +192,44 @@ export class AbonoRepository {
       };
     }
 
-    return await prisma.abonos.findMany({
-      where,
-      select: abonoSelect,
-      orderBy: {
-        fechaCreacion: "desc",
-      },
-    });
+    if (search) {
+      const id = Number(search);
+      where.OR = [
+        ...(Number.isInteger(id) && id > 0
+          ? [{ idAbono: id }, { idPedido: id }]
+          : []),
+        { referencia: { contains: search, mode: "insensitive" } },
+        {
+          pedido: {
+            cliente: {
+              nombre: { contains: search, mode: "insensitive" },
+            },
+          },
+        },
+      ];
+    }
+
+    return where;
+  }
+
+  async listarAbonosPaginado(
+    filtros: AbonoFiltros,
+    pagination: ParsedPagination,
+  ) {
+    const where = this.buildWhere(filtros, pagination.search);
+    const orderBy = { [pagination.sortBy]: pagination.order };
+    const [total, data] = await Promise.all([
+      prisma.abonos.count({ where }),
+      prisma.abonos.findMany({
+        where,
+        select: abonoSelect,
+        orderBy,
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
   }
 
   async listarPorPedido(idPedido: number) {
@@ -217,6 +291,31 @@ export class AbonoRepository {
     return await disenoRepository.todosDisenosRequeridosAprobados(idPedido, tx);
   }
 
+  async buscarPorHash(idPedido: number, comprobanteHash: string) {
+    return await prisma.abonos.findFirst({
+      where: { idPedido, comprobanteHash },
+      select: abonoSelect,
+    });
+  }
+
+  async buscarComprobanteMetadata(idAbono: number) {
+    return await prisma.abonos.findUnique({
+      where: { idAbono },
+      select: {
+        idAbono: true,
+        comprobantePath: true,
+        nombreOriginalComprobante: true,
+        comprobanteMimeType: true,
+        pedido: {
+          select: {
+            idPedido: true,
+            idCliente: true,
+          },
+        },
+      },
+    });
+  }
+
   async actualizarResumenPagoPedido(
     idPedido: number,
     data: {
@@ -242,6 +341,44 @@ export class AbonoRepository {
       where: { idPedido },
       data: { estadoPedido },
       select: pedidoPagoSelect,
+    });
+  }
+
+  async upsertVentaDesdePago(
+    data: {
+      idPedido: number;
+      idCliente: number;
+      totalPedido: number;
+      totalPagado: number;
+      saldoPendiente: number;
+      estado: "PARCIAL" | "COMPLETA";
+      fechaPrimerPago: Date;
+    },
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).venta.upsert({
+      where: { idPedido: data.idPedido },
+      create: data,
+      update: {
+        totalPedido: data.totalPedido,
+        totalPagado: data.totalPagado,
+        saldoPendiente: data.saldoPendiente,
+        estado: data.estado,
+      },
+      select: {
+        idVenta: true,
+        estado: true,
+      },
+    });
+  }
+
+  async actualizarVentaAnulada(
+    idPedido: number,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).venta.updateMany({
+      where: { idPedido },
+      data: { estado: "ANULADA" },
     });
   }
 }

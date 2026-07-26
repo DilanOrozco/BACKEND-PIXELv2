@@ -286,6 +286,15 @@ export class CotizacionService {
         descuentoTotal: null,
         subtotalConDescuento: null,
         imagenReferencia: limpiarTextoOpcional(detalle.imagenReferencia),
+        requiereDiseno: detalle.requiereDiseno !== false,
+        origenDiseno: String(detalle.origenDiseno ?? "PIXEL").toUpperCase(),
+        archivoDisenoInicialUrl: limpiarTextoOpcional(
+          detalle.archivoDisenoInicialUrl,
+        ),
+        esDisenoGeneral: detalle.esDisenoGeneral === true,
+        medioRecepcionDiseno: limpiarTextoOpcional(
+          detalle.medioRecepcionDiseno,
+        ),
         observaciones: limpiarTextoOpcional(detalle.observaciones),
       };
 
@@ -392,6 +401,17 @@ export class CotizacionService {
           descuentoTotal: item.snapshot.descuentoTotal,
           subtotalConDescuento: item.snapshot.subtotalConDescuento,
           imagenReferencia: limpiarTextoOpcional(detalleEntrada.imagenReferencia),
+          requiereDiseno: detalleEntrada.requiereDiseno !== false,
+          origenDiseno: String(
+            detalleEntrada.origenDiseno ?? "PIXEL",
+          ).toUpperCase(),
+          archivoDisenoInicialUrl: limpiarTextoOpcional(
+            detalleEntrada.archivoDisenoInicialUrl,
+          ),
+          esDisenoGeneral: detalleEntrada.esDisenoGeneral === true,
+          medioRecepcionDiseno: limpiarTextoOpcional(
+            detalleEntrada.medioRecepcionDiseno,
+          ),
           observaciones: limpiarTextoOpcional(detalleEntrada.observaciones),
           };
         })
@@ -693,6 +713,27 @@ export class CotizacionService {
         descripcion: detalle.descripcion,
         cantidad: detalle.cantidad,
         costoDiseno: detalle.costoDiseno,
+        requiereDiseno:
+          detalle.entrada.requiereDiseno ??
+          detalle.actual?.requiereDiseno ??
+          true,
+        origenDiseno: String(
+          detalle.entrada.origenDiseno ??
+            detalle.actual?.origenDiseno ??
+            "PIXEL",
+        ).toUpperCase(),
+        archivoDisenoInicialUrl:
+          detalle.entrada.archivoDisenoInicialUrl !== undefined
+            ? limpiarTextoOpcional(detalle.entrada.archivoDisenoInicialUrl)
+            : detalle.actual?.archivoDisenoInicialUrl ?? null,
+        esDisenoGeneral:
+          detalle.entrada.esDisenoGeneral ??
+          detalle.actual?.esDisenoGeneral ??
+          false,
+        medioRecepcionDiseno:
+          detalle.entrada.medioRecepcionDiseno !== undefined
+            ? limpiarTextoOpcional(detalle.entrada.medioRecepcionDiseno)
+            : detalle.actual?.medioRecepcionDiseno ?? null,
         imagenReferencia:
           detalle.entrada.imagenReferencia !== undefined
             ? limpiarTextoOpcional(detalle.entrada.imagenReferencia)

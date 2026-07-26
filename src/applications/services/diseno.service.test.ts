@@ -783,6 +783,80 @@ test("DisenoService asocia diseno al detalle seleccionado en pedido multiproduct
   assert.equal(diseno.idDetallePedido, 502);
 });
 
+test("DisenoService no crea diseno para producto que no lo requiere", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => ({
+      ...pedidoBase,
+      detalles: [{ idDetallePedido: 501, requiereDiseno: false }],
+      disenos: [],
+    }),
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async () => disenoBase,
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().crearDiseno(
+        {
+          idPedido: 100,
+          idDetallePedido: 501,
+          descripcion: "No deberia crearse",
+        },
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /no requiere diseno/,
+  );
+  assert.equal(crear.mock.calls.length, 0);
+});
+
+test("DisenoService no duplica diseno entregado por cliente ni diseno general", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => ({
+      ...pedidoBase,
+      detalles: [
+        { idDetallePedido: 501, requiereDiseno: true },
+        { idDetallePedido: 502, requiereDiseno: true },
+      ],
+      disenos: [
+        {
+          idDiseno: 20,
+          idDetallePedido: null,
+          esDisenoGeneral: true,
+          estado: "ENVIADO",
+          origenDiseno: "CLIENTE",
+          archivoUrl: "https://pixel.test/general.png",
+        },
+      ],
+    }),
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async () => disenoBase,
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().crearDiseno(
+        {
+          idPedido: 100,
+          idDetallePedido: 501,
+          descripcion: "Duplicado",
+        },
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /ya tiene un diseno general/,
+  );
+  assert.equal(crear.mock.calls.length, 0);
+});
+
 test("cobertura de disenos exige todos los detalles y conserva compatibilidad legacy", () => {
   const detalles = [
     { idDetallePedido: 501 },

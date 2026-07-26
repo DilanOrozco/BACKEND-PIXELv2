@@ -46,6 +46,11 @@ export const cotizacionSelect = {
       descuentoTotal: true,
       subtotalConDescuento: true,
       imagenReferencia: true,
+      requiereDiseno: true,
+      origenDiseno: true,
+      archivoDisenoInicialUrl: true,
+      esDisenoGeneral: true,
+      medioRecepcionDiseno: true,
       observaciones: true,
       tecnica: { select: { idTecnica: true, nombre: true } },
       producto: {

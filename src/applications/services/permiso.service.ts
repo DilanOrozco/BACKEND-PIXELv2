@@ -10,6 +10,7 @@ const PERMISOS_ROL_CLIENTE = [
   "cotizaciones.cliente.ver",
   "pedidos.cliente.ver",
   "abonos.cliente.ver",
+  "abonos.cliente.crear",
   "disenos.cliente.ver",
   "disenos.cliente.aprobar",
   "disenos.cliente.rechazar",

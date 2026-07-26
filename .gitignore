@@ -5,3 +5,6 @@ node_modules
 scripts
 
 /generated/prisma
+
+# Archivos locales subidos por clientes y administradores.
+uploads/

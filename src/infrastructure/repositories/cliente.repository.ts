@@ -162,6 +162,40 @@ export class ClienteRepository {
     return { cotizaciones, pedidos, total: cotizaciones + pedidos };
   }
 
+  async listarPedidosResumen(
+    idCliente: number,
+    pagination: ParsedPagination,
+  ) {
+    const where = { idCliente };
+    const [total, data] = await Promise.all([
+      prisma.pedido.count({ where }),
+      prisma.pedido.findMany({
+        where,
+        select: {
+          idPedido: true,
+          total: true,
+          totalPagado: true,
+          saldoPendiente: true,
+          estadoPedido: true,
+          estadoPago: true,
+          fechaCreacion: true,
+          fechaEntregaEstimada: true,
+          detalles: {
+            select: {
+              descripcion: true,
+              producto: { select: { nombre: true } },
+            },
+          },
+        },
+        orderBy: { fechaCreacion: "desc" },
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
+  }
+
   async desactivarCliente(idCliente: number) {
     return await prisma.cliente.update({
       where: { idCliente },

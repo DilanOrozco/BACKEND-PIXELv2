@@ -46,6 +46,42 @@ export class ClienteService {
     return cliente;
   }
 
+  async listarPedidos(idCliente: number, query: PaginationQuery = {}) {
+    validarId(idCliente);
+
+    if (!(await clienteRepository.buscarPorId(idCliente))) {
+      throw new Error("Cliente no encontrado.");
+    }
+
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "fechaCreacion",
+      allowedSortBy: ["fechaCreacion"],
+      maxLimit: 10,
+    });
+    const resultado = await clienteRepository.listarPedidosResumen(
+      idCliente,
+      pagination,
+    );
+    const data = resultado.data.map((pedido) => {
+      const nombres = pedido.detalles.map(
+        (detalle) => detalle.producto?.nombre ?? detalle.descripcion,
+      );
+
+      return {
+        ...pedido,
+        numeroPedido: pedido.idPedido,
+        productosResumen:
+          nombres.length <= 2
+            ? nombres.join(", ")
+            : `${nombres.slice(0, 2).join(", ")} y ${nombres.length - 2} mas`,
+        totalConfirmado: pedido.totalPagado,
+        detalles: undefined,
+      };
+    });
+
+    return paginatedResponse(data, pagination, resultado.total);
+  }
+
   async desactivarCliente(idCliente: number) {
     validarId(idCliente);
 

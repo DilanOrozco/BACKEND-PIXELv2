@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PedidoService } from "./pedido.service";
-import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
+import {
+  PedidoService,
+  agregarCoberturaDisenoADetalles,
+} from "./pedido.service";
+import {
+  PedidoRepository,
+  prepararDisenosInicialesDesdeDetalles,
+} from "../../infrastructure/repositories/pedido.repository";
 import { buildPedidoCreadoTemplate } from "./email-templates";
 
 const clienteA = {
@@ -59,6 +65,9 @@ test("PedidoService crea pedido desde cotizacion usando idCliente de la cotizaci
         cantidad: 3,
         precioUnitario: 30000,
         subtotal: 90000,
+        costoDiseno: 0,
+        requiereDiseno: false,
+        origenDiseno: "PIXEL",
       },
       {
         idProducto: 2,
@@ -68,6 +77,12 @@ test("PedidoService crea pedido desde cotizacion usando idCliente de la cotizaci
         precioUnitario: 13000,
         subtotal: 26000,
         subtotalConDescuento: 26000,
+        costoDiseno: 5000,
+        requiereDiseno: true,
+        origenDiseno: "CLIENTE",
+        archivoDisenoInicialUrl: "https://pixel.test/disenos/gorra.png",
+        esDisenoGeneral: false,
+        medioRecepcionDiseno: "SISTEMA",
       },
     ],
   };
@@ -83,6 +98,13 @@ test("PedidoService crea pedido desde cotizacion usando idCliente de la cotizaci
   assert.equal(pedido.detalles[0].idTecnica, 1);
   assert.equal(pedido.detalles[1].idTecnica, 1);
   assert.equal(pedido.detalles[1].idProducto, 2);
+  assert.equal(pedido.detalles[1].costoDiseno, 5000);
+  assert.equal(pedido.detalles[0].requiereDiseno, false);
+  assert.equal(pedido.detalles[1].origenDiseno, "CLIENTE");
+  assert.equal(
+    pedido.detalles[1].archivoDisenoInicialUrl,
+    "https://pixel.test/disenos/gorra.png",
+  );
   assert.equal(pedido.total, 116000);
   assert.equal(pedido.saldoPendiente, 116000);
 });
@@ -307,4 +329,230 @@ test("PedidoService mantiene respuesta segura para pedido antiguo sin snapshots"
   assert.equal(respuesta.detalles[0].subtotalBruto, 50000);
   assert.equal(respuesta.detalles[0].subtotalConDescuento, 50000);
   assert.equal(respuesta.detalles[0].subtotalFinal, 50000);
+});
+
+test("PedidoService expediente organiza venta, abonos, disenos y proximas acciones", async (t) => {
+  const pedidoExpediente = {
+    ...pedidoA,
+    total: 100000,
+    totalPagado: 50000,
+    saldoPendiente: 50000,
+    estadoPago: "PARCIAL",
+    detalles: [
+      {
+        idDetallePedido: 11,
+        idProducto: 1,
+        descripcion: "Camiseta",
+        cantidad: 12,
+        precioUnitario: 26000,
+        subtotal: 312000,
+        requiereDiseno: true,
+        producto: { idProducto: 1, nombre: "Camiseta" },
+        tecnica: { idTecnica: 1, nombre: "DTF" },
+      },
+    ],
+    abonos: [
+      {
+        idAbono: 40,
+        estado: "PENDIENTE",
+        monto: null,
+        comprobantePath: "comprobantes/cliente-10/pedido-1/pago.png",
+        nombreOriginalComprobante: "pago.png",
+        fechaCreacion: new Date("2026-07-26"),
+      },
+    ],
+    disenos: [
+      {
+        idDiseno: 30,
+        idDetallePedido: 11,
+        esDisenoGeneral: false,
+        estado: "ENVIADO",
+        fechaCreacion: new Date("2026-07-25"),
+      },
+    ],
+    venta: {
+      idVenta: 5,
+      estado: "PARCIAL",
+      totalPedido: 100000,
+      totalPagado: 50000,
+      saldoPendiente: 50000,
+    },
+  };
+  t.mock.method(
+    PedidoRepository.prototype,
+    "buscarPorId",
+    async () => pedidoExpediente,
+  );
+
+  const expediente = await new PedidoService().obtenerExpediente(1, {
+    idUsuario: 99,
+    rol: "Admin",
+  });
+
+  assert.equal(expediente.venta?.idVenta, 5);
+  assert.equal(expediente.resumenEconomico.totalConfirmado, 50000);
+  assert.equal(expediente.abonos[0].comprobanteDisponible, true);
+  assert.equal(expediente.abonos[0].comprobantePath, undefined);
+  assert.ok(
+    expediente.proximasAcciones.includes("COMPROBANTE_PENDIENTE_REVISION"),
+  );
+  assert.ok(
+    expediente.proximasAcciones.includes("DISENO_PENDIENTE_APROBACION"),
+  );
+  assert.equal(
+    expediente.detalles[0].estadoCoberturaDiseno,
+    "DISENO_ENVIADO",
+  );
+  assert.equal(expediente.detalles[0].diseno.idDiseno, 30);
+});
+
+test("conversion crea solo disenos entregados por cliente y conserva su archivo", () => {
+  const fecha = new Date("2026-07-26T12:00:00.000Z");
+  const disenos = prepararDisenosInicialesDesdeDetalles(
+    [
+      {
+        idDetallePedido: 1,
+        requiereDiseno: false,
+        origenDiseno: "PIXEL",
+        archivoDisenoInicialUrl: null,
+        esDisenoGeneral: false,
+        medioRecepcionDiseno: null,
+      },
+      {
+        idDetallePedido: 2,
+        requiereDiseno: true,
+        origenDiseno: "PIXEL",
+        archivoDisenoInicialUrl: null,
+        esDisenoGeneral: false,
+        medioRecepcionDiseno: null,
+      },
+      {
+        idDetallePedido: 3,
+        requiereDiseno: true,
+        origenDiseno: "CLIENTE",
+        archivoDisenoInicialUrl: "https://pixel.test/cliente.png",
+        esDisenoGeneral: false,
+        medioRecepcionDiseno: "SISTEMA",
+      },
+    ],
+    20,
+    fecha,
+  );
+
+  assert.equal(disenos.length, 1);
+  assert.equal(disenos[0]?.idDetallePedido, 3);
+  assert.equal(disenos[0]?.archivoUrl, "https://pixel.test/cliente.png");
+  assert.equal(disenos[0]?.origenDiseno, "CLIENTE");
+  assert.equal(disenos[0]?.estado, "ENVIADO");
+});
+
+test("conversion usa un solo diseno general sin duplicar disenos especificos", () => {
+  const base = {
+    requiereDiseno: true,
+    origenDiseno: "CLIENTE",
+    medioRecepcionDiseno: "SISTEMA",
+  };
+  const disenos = prepararDisenosInicialesDesdeDetalles(
+    [
+      {
+        ...base,
+        idDetallePedido: 1,
+        archivoDisenoInicialUrl: "https://pixel.test/general.png",
+        esDisenoGeneral: true,
+      },
+      {
+        ...base,
+        idDetallePedido: 2,
+        archivoDisenoInicialUrl: "https://pixel.test/especifico.png",
+        esDisenoGeneral: false,
+      },
+    ],
+    20,
+  );
+
+  assert.equal(disenos.length, 1);
+  assert.equal(disenos[0]?.idDetallePedido, null);
+  assert.equal(disenos[0]?.esDisenoGeneral, true);
+  assert.equal(disenos[0]?.archivoUrl, "https://pixel.test/general.png");
+});
+
+test("cobertura por detalle distingue no requiere, cliente, PIXEL y general", () => {
+  const detalles = [
+    {
+      idDetallePedido: 1,
+      requiereDiseno: false,
+      origenDiseno: "PIXEL",
+    },
+    {
+      idDetallePedido: 2,
+      requiereDiseno: true,
+      origenDiseno: "CLIENTE",
+      archivoDisenoInicialUrl: "https://pixel.test/cliente.png",
+    },
+    {
+      idDetallePedido: 3,
+      requiereDiseno: true,
+      origenDiseno: "PIXEL",
+    },
+  ];
+  const coberturaInicial = agregarCoberturaDisenoADetalles(detalles, [
+    {
+      idDiseno: 8,
+      idDetallePedido: 2,
+      esDisenoGeneral: false,
+      origenDiseno: "CLIENTE",
+      estado: "ENVIADO",
+    },
+  ]);
+
+  assert.equal(coberturaInicial[0]?.estadoCoberturaDiseno, "NO_REQUIERE_DISENO");
+  assert.equal(coberturaInicial[0]?.cubiertoPorDiseno, true);
+  assert.equal(
+    coberturaInicial[1]?.estadoCoberturaDiseno,
+    "DISENO_ENTREGADO_POR_CLIENTE",
+  );
+  assert.equal(
+    coberturaInicial[2]?.estadoCoberturaDiseno,
+    "PENDIENTE_CREACION_PIXEL",
+  );
+
+  const coberturaGeneral = agregarCoberturaDisenoADetalles(detalles, [
+    {
+      idDiseno: 9,
+      idDetallePedido: null,
+      esDisenoGeneral: true,
+      origenDiseno: "CLIENTE",
+      estado: "APROBADO",
+    },
+  ]);
+  assert.equal(
+    coberturaGeneral[1]?.estadoCoberturaDiseno,
+    "CUBIERTO_POR_DISENO_GENERAL",
+  );
+  assert.equal(coberturaGeneral[2]?.cubiertoPorDiseno, true);
+});
+
+test("cobertura conserva diseno antiguo sin idDetallePedido en pedido de un producto", () => {
+  const cobertura = agregarCoberturaDisenoADetalles(
+    [
+      {
+        idDetallePedido: 501,
+        requiereDiseno: true,
+        origenDiseno: "PIXEL",
+      },
+    ],
+    [
+      {
+        idDiseno: 99,
+        idDetallePedido: null,
+        esDisenoGeneral: false,
+        estado: "APROBADO",
+        origenDiseno: "DISENADOR",
+      },
+    ],
+  );
+
+  assert.equal(cobertura[0]?.estadoCoberturaDiseno, "DISENO_APROBADO");
+  assert.equal(cobertura[0]?.cubiertoPorDiseno, true);
+  assert.equal(cobertura[0]?.diseno.idDiseno, 99);
 });

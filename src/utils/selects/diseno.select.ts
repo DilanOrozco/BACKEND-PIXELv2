@@ -30,7 +30,12 @@ export const disenoSelect = {
       cantidad: true,
       precioUnitario: true,
       subtotal: true,
+      costoDiseno: true,
       requiereDiseno: true,
+      origenDiseno: true,
+      archivoDisenoInicialUrl: true,
+      esDisenoGeneral: true,
+      medioRecepcionDiseno: true,
       observaciones: true,
       producto: {
         select: {

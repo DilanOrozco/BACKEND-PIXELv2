@@ -69,6 +69,24 @@ const pedidoResumenSelect = {
       requiereDiseno: true,
     },
   },
+  disenos: {
+    where: {
+      estado: {
+        not: "RECHAZADO",
+      },
+    },
+    select: {
+      idDiseno: true,
+      idDetallePedido: true,
+      esDisenoGeneral: true,
+      estado: true,
+      origenDiseno: true,
+      archivoUrl: true,
+    },
+    orderBy: {
+      fechaCreacion: "desc",
+    },
+  },
   cliente: {
     select: {
       idCliente: true,

@@ -81,6 +81,12 @@ router.get(
 );
 
 router.get(
+  "/:idPedido/expediente",
+  autorizarPermiso("pedidos.ver"),
+  pedidoController.obtenerExpediente,
+);
+
+router.get(
   "/:idPedido/abonos",
   autorizarPermiso("abonos.ver"),
   abonoController.listarPorPedido,

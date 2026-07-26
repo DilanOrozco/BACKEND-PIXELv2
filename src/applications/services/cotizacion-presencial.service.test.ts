@@ -192,7 +192,14 @@ test("CotizacionService calcula varios productos y agrega sus totales", async (t
       idCliente: 7,
       costosAdicionales: 2000,
       detalles: [
-        { ...detalle, idProducto: 3, cantidad: 12, costoDiseno: 10000 },
+        {
+          ...detalle,
+          idProducto: 3,
+          cantidad: 12,
+          costoDiseno: 10000,
+          requiereDiseno: false,
+          origenDiseno: "PIXEL",
+        },
         {
           ...detalle,
           idTecnica: 2,
@@ -200,6 +207,9 @@ test("CotizacionService calcula varios productos y agrega sus totales", async (t
           descripcion: "Gorra",
           cantidad: 2,
           costoDiseno: 5000,
+          requiereDiseno: true,
+          origenDiseno: "CLIENTE",
+          archivoDisenoInicialUrl: "https://pixel.test/disenos/gorra.png",
         },
       ],
     },
@@ -216,6 +226,8 @@ test("CotizacionService calcula varios productos y agrega sus totales", async (t
   assert.equal(payload.detalles.length, 2);
   assert.equal(payload.detalles[0].idTecnica, 1);
   assert.equal(payload.detalles[1].idTecnica, 2);
+  assert.equal(payload.detalles[0].requiereDiseno, false);
+  assert.equal(payload.detalles[1].origenDiseno, "CLIENTE");
   assert.equal(payload.subtotal, 362000);
   assert.equal(payload.descuentoTotal, 23990);
   assert.equal(payload.total, 355010);

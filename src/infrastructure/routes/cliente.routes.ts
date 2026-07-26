@@ -15,6 +15,12 @@ router.get(
 );
 
 router.get(
+  "/:id/pedidos",
+  autorizarPermiso("pedidos.ver"),
+  clienteController.listarPedidos,
+);
+
+router.get(
   "/:id",
   autorizarPermiso("clientes.ver"),
   clienteController.buscarPorId,

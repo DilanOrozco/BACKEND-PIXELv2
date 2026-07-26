@@ -108,11 +108,72 @@ const cotizacionParaPedidoSelect = {
       subtotalBruto: true,
       descuentoTotal: true,
       subtotalConDescuento: true,
+      costoDiseno: true,
+      requiereDiseno: true,
+      origenDiseno: true,
+      archivoDisenoInicialUrl: true,
+      esDisenoGeneral: true,
+      medioRecepcionDiseno: true,
       observaciones: true,
       tecnica: { select: { idTecnica: true, nombre: true } },
       producto: { select: { idProducto: true, nombre: true } },
     },
   },
+};
+
+export const prepararDisenosInicialesDesdeDetalles = (
+  detalles: Array<{
+    idDetallePedido: number;
+    requiereDiseno: boolean;
+    origenDiseno: string;
+    archivoDisenoInicialUrl: string | null;
+    esDisenoGeneral: boolean;
+    medioRecepcionDiseno: string | null;
+  }>,
+  idPedido: number,
+  fecha = new Date(),
+) => {
+  const disenosCliente = detalles.filter(
+    (detalle) =>
+      detalle.requiereDiseno &&
+      detalle.origenDiseno === "CLIENTE" &&
+      Boolean(detalle.archivoDisenoInicialUrl),
+  );
+  const disenoGeneral = disenosCliente.find(
+    (detalle) => detalle.esDisenoGeneral,
+  );
+
+  if (disenoGeneral) {
+    return [
+      {
+        idPedido,
+        idDetallePedido: null,
+        esDisenoGeneral: true,
+        archivoUrl: disenoGeneral.archivoDisenoInicialUrl,
+        descripcion:
+          "Diseno general entregado por el cliente desde la cotizacion.",
+        estado: "ENVIADO" as const,
+        origenDiseno: "CLIENTE" as const,
+        medioRecepcion:
+          disenoGeneral.medioRecepcionDiseno ?? "SISTEMA",
+        fechaRecepcion: fecha,
+        fechaEnvio: fecha,
+      },
+    ];
+  }
+
+  return disenosCliente.map((detalle) => ({
+    idPedido,
+    idDetallePedido: detalle.idDetallePedido,
+    esDisenoGeneral: false,
+    archivoUrl: detalle.archivoDisenoInicialUrl,
+    descripcion: "Diseno entregado por el cliente desde la cotizacion.",
+    estado: "ENVIADO" as const,
+    origenDiseno: "CLIENTE" as const,
+    medioRecepcion: detalle.medioRecepcionDiseno ?? "SISTEMA",
+    fechaRecepcion: fecha,
+    fechaEnvio: fecha,
+  }));
 };
 
 export class PedidoRepository {
@@ -143,15 +204,39 @@ export class PedidoRepository {
         throw new Error("Ya existe un pedido creado para esta cotizacion.");
       }
 
-      return await tx.pedido.create({
+      const pedido = await tx.pedido.create({
         data: {
           ...pedidoData,
           detalles: {
             create: detalles,
           },
         },
-        select: { idPedido: true },
+        select: {
+          idPedido: true,
+          detalles: {
+            select: {
+              idDetallePedido: true,
+              requiereDiseno: true,
+              origenDiseno: true,
+              archivoDisenoInicialUrl: true,
+              esDisenoGeneral: true,
+              medioRecepcionDiseno: true,
+            },
+            orderBy: { idDetallePedido: "asc" },
+          },
+        },
       });
+
+      const disenosIniciales = prepararDisenosInicialesDesdeDetalles(
+        pedido.detalles,
+        pedido.idPedido,
+      );
+
+      for (const diseno of disenosIniciales) {
+        await tx.diseno.create({ data: diseno });
+      }
+
+      return { idPedido: pedido.idPedido };
     });
 
     const pedido = await this.buscarPorId(pedidoCreado.idPedido);

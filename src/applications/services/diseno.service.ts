@@ -244,6 +244,43 @@ export class DisenoService {
       }
     }
 
+    const esDisenoGeneral = data.esDisenoGeneral === true;
+    const detalleFinal = idDetallePedido
+      ? pedido.detalles.find(
+          (detalle) => detalle.idDetallePedido === idDetallePedido,
+        )
+      : null;
+
+    if (detalleFinal?.requiereDiseno === false) {
+      throw new Error(
+        "Este producto fue configurado como que no requiere diseno.",
+      );
+    }
+
+    if (
+      esDisenoGeneral &&
+      !pedido.detalles.some((detalle) => detalle.requiereDiseno)
+    ) {
+      throw new Error(
+        "El pedido no tiene productos que requieran un diseno general.",
+      );
+    }
+
+    const disenoVigente = (pedido.disenos ?? []).find((diseno) =>
+      esDisenoGeneral
+        ? diseno.esDisenoGeneral
+        : diseno.esDisenoGeneral ||
+          Number(diseno.idDetallePedido) === Number(idDetallePedido),
+    );
+
+    if (disenoVigente) {
+      throw new Error(
+        disenoVigente.esDisenoGeneral
+          ? "El pedido ya tiene un diseno general pendiente o aprobado."
+          : "Este producto ya tiene un diseno pendiente o aprobado.",
+      );
+    }
+
     const tienePagoInicial =
       await abonoService.pedidoTienePagoInicialValido(idPedido);
 
@@ -288,7 +325,7 @@ export class DisenoService {
     const dataCrear: CrearDisenoData = {
       idPedido,
       idDetallePedido,
-      esDisenoGeneral: data.esDisenoGeneral === true,
+      esDisenoGeneral,
       idDisenador,
       archivoUrl,
       descripcion: limpiarTextoOpcional(data.descripcion),
