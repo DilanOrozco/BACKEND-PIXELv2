@@ -216,7 +216,14 @@ test("PedidoService devuelve snapshots multiproducto iguales a los usados por em
         cantidad: 100,
         precioUnitario: 27143.4,
         subtotal: 2714340,
-        producto: { idProducto: 1, nombre: "Camiseta" },
+        producto: {
+          idProducto: 1,
+          nombre: "Camiseta",
+          categoriaProducto: {
+            idCategoriaProducto: 1,
+            nombre: "Textiles",
+          },
+        },
         tecnica: { idTecnica: 1, nombre: "Estampado" },
       },
       {
@@ -227,7 +234,14 @@ test("PedidoService devuelve snapshots multiproducto iguales a los usados por em
         cantidad: 100,
         precioUnitario: 6440,
         subtotal: 644000,
-        producto: { idProducto: 2, nombre: "Logo adicional" },
+        producto: {
+          idProducto: 2,
+          nombre: "Logo adicional",
+          categoriaProducto: {
+            idCategoriaProducto: 2,
+            nombre: "Adicionales",
+          },
+        },
         tecnica: { idTecnica: 1, nombre: "Estampado" },
       },
     ],
@@ -252,6 +266,15 @@ test("PedidoService devuelve snapshots multiproducto iguales a los usados por em
           subtotalBruto: 3800000,
           descuentoTotal: 1085660,
           subtotalConDescuento: 2714340,
+          producto: {
+            idProducto: 1,
+            nombre: "Camiseta",
+            categoriaProducto: {
+              idCategoriaProducto: 1,
+              nombre: "Textiles",
+            },
+          },
+          tecnica: { idTecnica: 1, nombre: "Estampado" },
         },
         {
           idProducto: 2,
@@ -267,6 +290,15 @@ test("PedidoService devuelve snapshots multiproducto iguales a los usados por em
           subtotalBruto: 700000,
           descuentoTotal: 56000,
           subtotalConDescuento: 644000,
+          producto: {
+            idProducto: 2,
+            nombre: "Logo adicional",
+            categoriaProducto: {
+              idCategoriaProducto: 2,
+              nombre: "Adicionales",
+            },
+          },
+          tecnica: { idTecnica: 1, nombre: "Estampado" },
         },
       ],
     },
@@ -285,6 +317,8 @@ test("PedidoService devuelve snapshots multiproducto iguales a los usados por em
   const [producto1, producto2] = respuesta.detalles;
 
   assert.equal(Number(producto1.precioBase), 38000);
+  assert.equal(producto1.idCategoriaProducto, 1);
+  assert.equal(producto1.categoriaProducto.nombre, "Textiles");
   assert.equal(producto1.tecnica.nombre, "Estampado");
   assert.equal(Number(producto1.descuentoPorcentaje), 28.57);
   assert.equal(Number(producto1.subtotalBruto), 3800000);
@@ -305,6 +339,8 @@ test("PedidoService devuelve snapshots multiproducto iguales a los usados por em
   assert.match(emailHtml, /3\.800\.000/);
   assert.match(emailHtml, /1\.085\.660/);
   assert.match(emailHtml, /2\.714\.340/);
+  assert.match(emailHtml, /Textiles/);
+  assert.match(emailHtml, /Adicionales/);
   assert.doesNotMatch(emailHtml, /NaN|undefined|null/);
 });
 
@@ -338,6 +374,7 @@ test("PedidoService expediente organiza venta, abonos, disenos y proximas accion
     totalPagado: 50000,
     saldoPendiente: 50000,
     estadoPago: "PARCIAL",
+    fechaEntregaEstimada: new Date("2026-08-15T00:00:00.000Z"),
     detalles: [
       {
         idDetallePedido: 11,
@@ -391,6 +428,11 @@ test("PedidoService expediente organiza venta, abonos, disenos y proximas accion
 
   assert.equal(expediente.venta?.idVenta, 5);
   assert.equal(expediente.resumenEconomico.totalConfirmado, 50000);
+  assert.equal(expediente.resumenEconomico.montoMinimoPrimerAbono, 50000);
+  assert.equal(
+    expediente.pedido.fechaEntregaEstimada,
+    "2026-08-15T00:00:00.000Z",
+  );
   assert.equal(expediente.abonos[0].comprobanteDisponible, true);
   assert.equal(expediente.abonos[0].comprobantePath, undefined);
   assert.ok(
@@ -404,6 +446,24 @@ test("PedidoService expediente organiza venta, abonos, disenos y proximas accion
     "DISENO_ENVIADO",
   );
   assert.equal(expediente.detalles[0].diseno.idDiseno, 30);
+});
+
+test("PedidoService devuelve fecha estimada ISO valida o null", () => {
+  const service = new PedidoService();
+  const conFecha = service.formatearPedido({
+    ...pedidoA,
+    fechaEntregaEstimada: new Date("2026-09-20T00:00:00.000Z"),
+  });
+  const sinFecha = service.formatearPedido({
+    ...pedidoA,
+    fechaEntregaEstimada: "fecha-invalida",
+  });
+
+  assert.equal(
+    conFecha.fechaEntregaEstimada,
+    "2026-09-20T00:00:00.000Z",
+  );
+  assert.equal(sinFecha.fechaEntregaEstimada, null);
 });
 
 test("conversion crea solo disenos entregados por cliente y conserva su archivo", () => {

@@ -56,8 +56,15 @@ export const cotizacionSelect = {
       producto: {
         select: {
           idProducto: true,
+          idCategoriaProducto: true,
           nombre: true,
           precioBase: true,
+          categoriaProducto: {
+            select: {
+              idCategoriaProducto: true,
+              nombre: true,
+            },
+          },
         },
       },
     },

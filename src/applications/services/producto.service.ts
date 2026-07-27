@@ -233,14 +233,9 @@ export class ProductoService {
     const idsProductos = [
       ...new Set(itemsNormalizados.map(({ idProducto }) => idProducto)),
     ];
-    const productos = await Promise.all(
-      idsProductos.map(async (idProducto) => ({
-        idProducto,
-        producto: await productoRepository.buscarActivoPorId(idProducto),
-      })),
-    );
+    const productos = await productoRepository.buscarActivosPorIds(idsProductos);
     const productosPorId = new Map(
-      productos.map(({ idProducto, producto }) => [idProducto, producto]),
+      productos.map((producto) => [producto.idProducto, producto]),
     );
     const resultados = [];
     let subtotalBrutoGeneral = new Prisma.Decimal(0);

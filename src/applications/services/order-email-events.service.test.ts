@@ -177,10 +177,11 @@ test("CotizacionService dispara COTIZACION_MODIFICADA al recotizar una cotizacio
 
 test("CotizacionService recotiza, agrega y conserva varios productos", async (t) => {
   t.mock.method(CotizacionRepository.prototype, "buscarPorId", async () => cotizacion);
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => ({
-    idTecnica: 2,
-    estado: true,
-  }));
+  t.mock.method(
+    TecnicaRepository.prototype,
+    "buscarActivasPorIds",
+    async () => [{ idTecnica: 2, estado: true }],
+  );
   t.mock.method(ProductoService.prototype, "calcularItems", async () => ({
     items: [
       {

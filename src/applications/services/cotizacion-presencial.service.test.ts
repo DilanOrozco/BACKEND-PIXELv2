@@ -36,6 +36,16 @@ const tecnicaBordado = {
   nombre: "Bordado",
 };
 
+const mockTecnicasActivas = (t: any) =>
+  t.mock.method(
+    TecnicaRepository.prototype,
+    "buscarActivasPorIds",
+    async (idsTecnicas: number[]) =>
+      idsTecnicas.map((idTecnica) =>
+        idTecnica === 2 ? tecnicaBordado : tecnica,
+      ),
+  );
+
 const calculoProducto = {
   items: [
     {
@@ -72,12 +82,7 @@ test("CotizacionService mantiene compatibilidad usando idCliente", async (t) => 
     "buscarPorCorreoOTelefono",
     async () => null,
   );
-  t.mock.method(
-    TecnicaRepository.prototype,
-    "buscarPorId",
-    async (idTecnica: number) =>
-      idTecnica === 2 ? tecnicaBordado : tecnica,
-  );
+  mockTecnicasActivas(t);
   const crearCotizacionMock = mockCotizacionCreada(t);
 
   const respuesta = await new CotizacionService().crearCotizacionNormal(
@@ -98,7 +103,7 @@ test("CotizacionService mantiene compatibilidad usando idCliente", async (t) => 
 
 test("CotizacionService calcula y notifica cotizacion presencial con producto", async (t) => {
   t.mock.method(ClienteRepository.prototype, "buscarPorId", async () => cliente);
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculoProducto);
   t.mock.method(ClienteAccessService.prototype, "asegurarAccesoCliente", async () => ({
     usuarioCreado: true,
@@ -140,12 +145,7 @@ test("CotizacionService calcula y notifica cotizacion presencial con producto", 
 
 test("CotizacionService calcula varios productos y agrega sus totales", async (t) => {
   t.mock.method(ClienteRepository.prototype, "buscarPorId", async () => cliente);
-  t.mock.method(
-    TecnicaRepository.prototype,
-    "buscarPorId",
-    async (idTecnica: number) =>
-      idTecnica === 2 ? tecnicaBordado : tecnica,
-  );
+  mockTecnicasActivas(t);
   const calcularMock = t.mock.method(
     ProductoService.prototype,
     "calcularItems",
@@ -238,7 +238,7 @@ test("CotizacionService calcula varios productos y agrega sus totales", async (t
 
 test("CotizacionService conserva solicitud por cotizar cuando no llega idProducto", async (t) => {
   t.mock.method(ClienteRepository.prototype, "buscarPorId", async () => cliente);
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
   const calcularMock = t.mock.method(ProductoService.prototype, "calcularItems", async () => calculoProducto);
   const crearCotizacionMock = mockCotizacionCreada(t);
 
@@ -264,7 +264,7 @@ test("CotizacionService crea Cliente externo si no viene idCliente", async (t) =
     "crearCliente",
     async (data: any) => ({ ...cliente, ...data }),
   );
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
   const crearCotizacionMock = mockCotizacionCreada(t);
 
   const respuesta = await new CotizacionService().crearCotizacionNormal(
@@ -298,7 +298,7 @@ test("CotizacionService reutiliza y actualiza Cliente externo existente", async 
     "actualizarCliente",
     async (_id: number, data: any) => ({ ...cliente, ...data }),
   );
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
   mockCotizacionCreada(t);
 
   await new CotizacionService().crearCotizacionNormal(
@@ -359,7 +359,7 @@ test("CotizacionService exige telefono en Cliente existente para cotizacion pres
     ...cliente,
     telefono: null,
   }));
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
 
   await assert.rejects(
     () =>

@@ -40,7 +40,14 @@ export const disenoSelect = {
       producto: {
         select: {
           idProducto: true,
+          idCategoriaProducto: true,
           nombre: true,
+          categoriaProducto: {
+            select: {
+              idCategoriaProducto: true,
+              nombre: true,
+            },
+          },
         },
       },
       tecnica: {

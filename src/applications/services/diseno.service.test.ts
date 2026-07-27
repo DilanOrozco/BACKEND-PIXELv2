@@ -896,3 +896,159 @@ test("cobertura de disenos exige todos los detalles y conserva compatibilidad le
     true,
   );
 });
+
+test("DisenoService cliente registra URL propia y crea diseno enviado sin duplicarlo", async (t) => {
+  const pedidoCliente = {
+    ...pedidoBase,
+    detalles: [
+      {
+        idDetallePedido: 501,
+        requiereDiseno: true,
+        origenDiseno: "CLIENTE",
+        archivoDisenoInicialUrl: null,
+        esDisenoGeneral: false,
+      },
+    ],
+    disenos: [],
+  };
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedidoCliente,
+  );
+  const actualizarDetalle = t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarArchivoDetallePedido",
+    async () => ({ idDetallePedido: 501 }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarDisenoParaCargaCliente",
+    async () => null,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDisenoOperacion",
+    async () => ({ idDiseno: 80 }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => ({
+      ...disenoBase,
+      idDiseno: 80,
+      origenDiseno: "CLIENTE",
+      estado: "ENVIADO",
+    }),
+  );
+
+  const diseno = await servicio().registrarUrlDisenoCliente(
+    100,
+    501,
+    { archivoDisenoInicialUrl: "https://cdn.pixel.test/cliente.png" },
+    { idUsuario: 70, idCliente: 10, rol: "Cliente" },
+  );
+
+  assert.equal(diseno.idDiseno, 80);
+  assert.equal(actualizarDetalle.mock.calls.length, 1);
+  assert.equal(crear.mock.calls.length, 1);
+  assert.equal((crear.mock.calls[0]?.arguments[0] as any).idDisenador, null);
+  assert.equal((crear.mock.calls[0]?.arguments[0] as any).estado, "ENVIADO");
+});
+
+test("DisenoService cliente actualiza diseno existente y no crea duplicado", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => ({
+      ...pedidoBase,
+      detalles: [
+        {
+          idDetallePedido: 501,
+          requiereDiseno: true,
+          origenDiseno: "CLIENTE",
+          archivoDisenoInicialUrl: "https://pixel.test/anterior.png",
+          esDisenoGeneral: false,
+        },
+      ],
+      disenos: [
+        {
+          idDiseno: 81,
+          idDetallePedido: 501,
+          esDisenoGeneral: false,
+          estado: "RECHAZADO",
+        },
+      ],
+    }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarArchivoDetallePedido",
+    async () => ({ idDetallePedido: 501 }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarDisenoParaCargaCliente",
+    async () => ({ idDiseno: 81, estado: "RECHAZADO" }),
+  );
+  const actualizar = t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarDisenoOperacion",
+    async () => ({ idDiseno: 81 }),
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDisenoOperacion",
+    async () => ({ idDiseno: 99 }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => ({ ...disenoBase, idDiseno: 81, estado: "ENVIADO" }),
+  );
+
+  await servicio().registrarUrlDisenoCliente(
+    100,
+    501,
+    { archivoDisenoInicialUrl: "https://pixel.test/corregido.png" },
+    { idUsuario: 70, idCliente: 10, rol: "Cliente" },
+  );
+
+  assert.equal(actualizar.mock.calls.length, 1);
+  assert.equal(crear.mock.calls.length, 0);
+});
+
+test("DisenoService bloquea URL invalida y detalle de otro cliente", async (t) => {
+  const buscarPedido = t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => ({
+      ...pedidoBase,
+      idCliente: 20,
+      cliente: clienteB,
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().registrarUrlDisenoCliente(
+        100,
+        501,
+        { archivoDisenoInicialUrl: "javascript:alert(1)" },
+        { idUsuario: 70, idCliente: 10, rol: "Cliente" },
+      ),
+    /debe usar http o https/,
+  );
+  assert.equal(buscarPedido.mock.calls.length, 0);
+
+  await assert.rejects(
+    () =>
+      servicio().registrarUrlDisenoCliente(
+        100,
+        501,
+        { archivoDisenoInicialUrl: "https://pixel.test/diseno.png" },
+        { idUsuario: 70, idCliente: 10, rol: "Cliente" },
+      ),
+    /No tienes permiso/,
+  );
+});

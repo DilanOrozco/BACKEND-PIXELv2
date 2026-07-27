@@ -127,6 +127,20 @@ const tecnicaSublimacion = {
   nombre: "Sublimacion",
 };
 
+const mockTecnicasActivas = (
+  t: any,
+  resolver: (idTecnica: number) => typeof tecnica | null = (idTecnica) =>
+    idTecnica === 6 ? tecnicaSublimacion : tecnica,
+) =>
+  t.mock.method(
+    TecnicaRepository.prototype,
+    "buscarActivasPorIds",
+    async (idsTecnicas: number[]) =>
+      idsTecnicas
+        .map(resolver)
+        .filter((item): item is typeof tecnica => item !== null),
+  );
+
 test("PublicCotizacionService lista solo tecnicas activas para landing", async (t) => {
   const listarMock = t.mock.method(
     TecnicaRepository.prototype,
@@ -157,7 +171,7 @@ test("PublicCotizacionService no requiere login y crea cotizacion pendiente con 
     async () => cliente,
   );
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
   t.mock.method(
     ClienteAccessService.prototype,
     "asegurarAccesoCliente",
@@ -251,12 +265,7 @@ test("PublicCotizacionService permite cotizar al Cliente autenticado sin confiar
     },
   );
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  t.mock.method(
-    TecnicaRepository.prototype,
-    "buscarPorId",
-    async (idTecnica: number) =>
-      idTecnica === 6 ? tecnicaSublimacion : tecnica,
-  );
+  mockTecnicasActivas(t);
   const asegurarAccesoMock = t.mock.method(
     ClienteAccessService.prototype,
     "asegurarAccesoCliente",
@@ -320,12 +329,7 @@ test("PublicCotizacionService calcula y crea una cotizacion con varios productos
     async () => cliente,
   );
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculoMultiple);
-  t.mock.method(
-    TecnicaRepository.prototype,
-    "buscarPorId",
-    async (idTecnica: number) =>
-      idTecnica === 6 ? tecnicaSublimacion : tecnica,
-  );
+  const tecnicasBatchMock = mockTecnicasActivas(t);
   const crearCotizacionMock = t.mock.method(
     CotizacionRepository.prototype,
     "crearCotizacionConDetalles",
@@ -395,6 +399,9 @@ test("PublicCotizacionService calcula y crea una cotizacion con varios productos
   assert.equal(creado.cotizacion.cantidadItems, 2);
   assert.equal(creado.cotizacion.productosResumen, "Camiseta, Gorra");
   assert.equal(creado.cotizacion.subtotalFinal, 568287);
+  assert.equal(tecnicasBatchMock.mock.calls.length, 2);
+  assert.deepEqual(tecnicasBatchMock.mock.calls[0]?.arguments[0], [5, 6]);
+  assert.deepEqual(tecnicasBatchMock.mock.calls[1]?.arguments[0], [5, 6]);
   const correo = sendMailMock.mock.calls[0]?.arguments[0];
   assert.ok(correo);
   assert.match(correo.text, /Tecnica: DTF/);
@@ -403,7 +410,7 @@ test("PublicCotizacionService calcula y crea una cotizacion con varios productos
 
 test("PublicCotizacionService exige login si el correo ya existe y no crea duplicados", async (t) => {
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
   t.mock.method(
     ClienteRepository.prototype,
     "buscarPorCorreo",
@@ -470,7 +477,7 @@ test("PublicCotizacionService exige login si el correo ya existe y no crea dupli
 
 test("PublicCotizacionService no usa un Admin autenticado como Cliente", async (t) => {
   t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => tecnica);
+  mockTecnicasActivas(t);
   t.mock.method(ClienteRepository.prototype, "buscarPorCorreo", async () => null);
   t.mock.method(UsuarioRepository.prototype, "buscarPorCorreo", async () => ({
     idUsuario: 77,
@@ -538,10 +545,7 @@ test("PublicCotizacionService falla con tecnica inexistente o inactiva", async (
     "actualizarCliente",
     async () => cliente,
   );
-  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => ({
-    ...tecnica,
-    estado: false,
-  }));
+  mockTecnicasActivas(t, () => null);
 
   await assert.rejects(
     () =>

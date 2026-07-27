@@ -13,6 +13,7 @@ import {
   validarCrearDiseno,
   validarFiltrosDiseno,
   validarRechazarDiseno,
+  validarUrlDisenoCliente,
 } from "../validators/diseno.validator";
 import { AbonoService } from "./abono.service";
 import { NotificationService } from "./notification.service";
@@ -393,6 +394,141 @@ export class DisenoService {
     }
 
     return disenoCreado;
+  }
+
+  async registrarUrlDisenoCliente(
+    idPedido: number,
+    idDetallePedido: number,
+    data: DatosEntrada,
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    const user = this.obtenerUsuario(usuarioAuth);
+    validarId(idPedido, "El pedido debe ser valido.");
+    validarId(idDetallePedido, "El detalle del pedido debe ser valido.");
+
+    if (!esCliente(user)) {
+      throw new Error("Solo un cliente puede registrar su diseno desde este endpoint.");
+    }
+
+    const error = validarUrlDisenoCliente(data);
+
+    if (error) {
+      throw new Error(error);
+    }
+
+    const pedido = await disenoRepository.buscarPedidoPorId(idPedido);
+
+    if (!pedido) {
+      throw new Error("Pedido no encontrado.");
+    }
+
+    this.validarAccesoClienteAlPedido(
+      pedido,
+      user,
+      "No tienes permiso para modificar este pedido.",
+    );
+
+    if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
+      throw new Error(
+        "Solo puedes adjuntar o reemplazar el diseno mientras el pedido esta PENDIENTE.",
+      );
+    }
+
+    const detalle = pedido.detalles.find(
+      (item) => Number(item.idDetallePedido) === idDetallePedido,
+    );
+
+    if (!detalle) {
+      throw new Error("El detalle indicado no pertenece al pedido.");
+    }
+
+    if (!detalle.requiereDiseno) {
+      throw new Error("Este producto no requiere diseno.");
+    }
+
+    if (String(detalle.origenDiseno).toUpperCase() !== ORIGEN_DISENO_CLIENTE) {
+      throw new Error("Este producto no esta configurado con diseno del cliente.");
+    }
+
+    const esDisenoGeneral = detalle.esDisenoGeneral === true;
+    const disenoVigente = (pedido.disenos ?? []).find((diseno) =>
+      esDisenoGeneral
+        ? diseno.esDisenoGeneral
+        : !diseno.esDisenoGeneral &&
+          Number(diseno.idDetallePedido) === idDetallePedido,
+    );
+
+    if (disenoVigente?.estado === ESTADO_APROBADO_DISENO) {
+      throw new Error("El diseno ya fue aprobado y no puede reemplazarse.");
+    }
+
+    const archivoUrl = String(data.archivoDisenoInicialUrl).trim();
+    const ahora = new Date();
+    const resultado = await this.ejecutarTransaccion(
+      async (tx: Prisma.TransactionClient) => {
+        await disenoRepository.actualizarArchivoDetallePedido(
+          idDetallePedido,
+          archivoUrl,
+          tx,
+        );
+        const existente = await disenoRepository.buscarDisenoParaCargaCliente(
+          idPedido,
+          idDetallePedido,
+          esDisenoGeneral,
+          tx,
+        );
+
+        if (existente) {
+          return await disenoRepository.actualizarDisenoOperacion(
+            existente.idDiseno,
+            {
+              idDisenador: null,
+              archivoUrl,
+              estado: ESTADO_DISENO_ENVIADO,
+              origenDiseno: ORIGEN_DISENO_CLIENTE,
+              medioRecepcion: "SISTEMA",
+              recibidoPorId: Number(user.idUsuario),
+              fechaRecepcion: ahora,
+              fechaEnvio: ahora,
+              fechaAprobacion: null,
+              medioRespuestaCliente: null,
+              observacionesCliente: null,
+              fechaRespuestaCliente: null,
+              respuestaRegistradaPorId: null,
+            },
+            tx,
+          );
+        }
+
+        return await disenoRepository.crearDisenoOperacion(
+          {
+            idPedido,
+            idDetallePedido: esDisenoGeneral ? null : idDetallePedido,
+            esDisenoGeneral,
+            idDisenador: null,
+            archivoUrl,
+            descripcion: "Diseno entregado por el cliente desde su panel.",
+            observaciones: null,
+            origenDiseno: ORIGEN_DISENO_CLIENTE,
+            medioRecepcion: "SISTEMA",
+            recibidoPorId: Number(user.idUsuario),
+            fechaRecepcion: ahora,
+            observacionesCliente: null,
+            estado: ESTADO_DISENO_ENVIADO,
+            fechaEnvio: ahora,
+          },
+          tx,
+        );
+      },
+    );
+
+    const diseno = await disenoRepository.buscarPorId(resultado.idDiseno);
+
+    if (!diseno) {
+      throw new Error("No fue posible cargar el diseno actualizado.");
+    }
+
+    return diseno;
   }
 
   async listarDisenos(

@@ -94,6 +94,20 @@ export class ProductoRepository {
     });
   }
 
+  async buscarActivosPorIds(idsProductos: number[]) {
+    if (idsProductos.length === 0) {
+      return [];
+    }
+
+    return await prisma.productoCotizable.findMany({
+      where: {
+        idProducto: { in: idsProductos },
+        estado: true,
+      },
+      select: productoSelect,
+    });
+  }
+
   async buscarPorNombreExacto(nombre: string) {
     return await prisma.productoCotizable.findUnique({
       where: { nombre },

@@ -116,7 +116,7 @@ test("ProductoService edita categoria valida y desactiva producto", async (t) =>
 });
 
 test("ProductoService calcula rangos de descuento y snapshots sin confiar en frontend", async (t) => {
-  t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => producto);
+  t.mock.method(ProductoRepository.prototype, "buscarActivosPorIds", async () => [producto]);
   const service = new ProductoService();
   const casos = [
     { cantidad: 1, descuento: 0, precioUnitario: 28000, subtotal: 28000, descuentoTotal: 0, total: 28000 },
@@ -150,13 +150,13 @@ test("ProductoService calcula rangos de descuento y snapshots sin confiar en fro
 });
 
 test("ProductoService calcula subtotal bruto descuento total y total final", async (t) => {
-  t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => ({
+  t.mock.method(ProductoRepository.prototype, "buscarActivosPorIds", async () => [{
     ...producto,
     precioBase: 30000,
     rangos: [
       { idRango: 1, idProducto: 1, cantidadMin: 1, descuentoPorcentaje: 15, estado: true },
     ],
-  }));
+  }]);
 
   const calculo = await new ProductoService().calcularItems([
     { idProducto: 1, cantidad: 2000 },
@@ -177,27 +177,29 @@ test("ProductoService calcula subtotal bruto descuento total y total final", asy
 });
 
 test("ProductoService calcula y agrega varios productos en una cotizacion", async (t) => {
-  t.mock.method(
+  const buscarProductosMock = t.mock.method(
     ProductoRepository.prototype,
-    "buscarActivoPorId",
-    async (idProducto: number) =>
-      idProducto === 1
-        ? producto
-        : {
-            ...producto,
-            idProducto: 2,
-            nombre: "Gorra",
-            precioBase: 13000,
-            rangos: [
-              {
-                idRango: 10,
-                idProducto: 2,
-                cantidadMin: 1,
-                descuentoPorcentaje: 0,
-                estado: true,
-              },
-            ],
-          },
+    "buscarActivosPorIds",
+    async (idsProductos: number[]) =>
+      idsProductos.map((idProducto) =>
+        idProducto === 1
+          ? producto
+          : {
+              ...producto,
+              idProducto: 2,
+              nombre: "Gorra",
+              precioBase: 13000,
+              rangos: [
+                {
+                  idRango: 10,
+                  idProducto: 2,
+                  cantidadMin: 1,
+                  descuentoPorcentaje: 0,
+                  estado: true,
+                },
+              ],
+            },
+      ),
   );
 
   const calculo = await new ProductoService().calcularItems([
@@ -211,10 +213,12 @@ test("ProductoService calcula y agrega varios productos en una cotizacion", asyn
   assert.equal(calculo.subtotalConDescuento, 338010);
   assert.equal(calculo.costoDiseno, 0);
   assert.equal(calculo.total, 338010);
+  assert.equal(buscarProductosMock.mock.calls.length, 1);
+  assert.deepEqual(buscarProductosMock.mock.calls[0]?.arguments[0], [1, 2]);
 });
 
 test("ProductoService falla con producto inactivo o cantidad invalida", async (t) => {
-  t.mock.method(ProductoRepository.prototype, "buscarActivoPorId", async () => null);
+  t.mock.method(ProductoRepository.prototype, "buscarActivosPorIds", async () => []);
   const service = new ProductoService();
 
   await assert.rejects(

@@ -83,7 +83,11 @@ const normalizarItems = (entidad: any) => {
         detalle?.producto?.nombre ?? detalle?.descripcion,
         "Producto cotizable",
       ),
-      categoria: textoSeguro(detalle?.producto?.categoriaProducto?.nombre, ""),
+      categoria: textoSeguro(
+        detalle?.producto?.categoriaProducto?.nombre ??
+          detalle?.categoriaProducto?.nombre,
+        "No especificada",
+      ),
       tecnica: textoSeguro(detalle?.tecnica?.nombre, "No especificada"),
       cantidad,
       precioBase,

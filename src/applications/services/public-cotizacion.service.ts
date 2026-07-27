@@ -98,6 +98,15 @@ const formatearCotizacionPublica = (cotizacion: any) => {
 
         return {
           ...detalle,
+          idCategoriaProducto:
+            detalle.idCategoriaProducto ??
+            detalle.producto?.idCategoriaProducto ??
+            detalle.producto?.categoriaProducto?.idCategoriaProducto ??
+            null,
+          categoriaProducto:
+            detalle.categoriaProducto ??
+            detalle.producto?.categoriaProducto ??
+            null,
           subtotalBruto,
           descuentoValorUnitario: detalle.descuentoValorUnitario ?? 0,
           descuentoTotal,
@@ -184,22 +193,18 @@ export class PublicCotizacionService {
       ),
     ];
 
-    const tecnicas = await Promise.all(
-      idsTecnicas.map(async (idTecnica) => ({
-        idTecnica,
-        tecnica: await tecnicaRepository.buscarPorId(idTecnica),
-      })),
+    const tecnicas = await tecnicaRepository.buscarActivasPorIds(idsTecnicas);
+    const tecnicasPorId = new Map(
+      tecnicas.map((tecnica) => [tecnica.idTecnica, tecnica]),
     );
 
-    for (const { idTecnica, tecnica } of tecnicas) {
-      if (!tecnica || !tecnica.estado) {
+    for (const idTecnica of idsTecnicas) {
+      if (!tecnicasPorId.has(idTecnica)) {
         throw new Error(`La tecnica con ID ${idTecnica} no existe o esta inactiva.`);
       }
     }
 
-    return new Map(
-      tecnicas.map(({ idTecnica, tecnica }) => [idTecnica, tecnica]),
-    );
+    return tecnicasPorId;
   }
 
   async calcular(data: Record<string, unknown>) {

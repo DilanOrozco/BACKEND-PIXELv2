@@ -50,6 +50,12 @@ router.get(
   abonoController.listarPorPedido,
 );
 
+router.patch(
+  "/pedidos/:idPedido/detalles/:idDetallePedido/diseno-url",
+  autorizarPermiso("disenos.cliente.aprobar"),
+  disenoController.registrarUrlDisenoCliente,
+);
+
 router.get(
   "/abonos/:idAbono/comprobante",
   autorizarPermiso("abonos.cliente.ver"),

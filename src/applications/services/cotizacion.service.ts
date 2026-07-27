@@ -90,6 +90,15 @@ export class CotizacionService {
 
     return {
       ...detalle,
+      idCategoriaProducto:
+        detalle.idCategoriaProducto ??
+        detalle.producto?.idCategoriaProducto ??
+        detalle.producto?.categoriaProducto?.idCategoriaProducto ??
+        null,
+      categoriaProducto:
+        detalle.categoriaProducto ??
+        detalle.producto?.categoriaProducto ??
+        null,
       descuentoValorUnitario: detalle.descuentoValorUnitario ?? 0,
       subtotalBruto: detalle.subtotalBruto ?? subtotal,
       descuentoTotal,
@@ -162,15 +171,13 @@ export class CotizacionService {
       ...new Set(detalles.map((detalle) => Number(detalle.idTecnica))),
     ];
 
-    const tecnicas = await Promise.all(
-      idsTecnicas.map(async (idTecnica) => ({
-        idTecnica,
-        tecnica: await tecnicaRepository.buscarPorId(idTecnica),
-      })),
+    const tecnicas = await tecnicaRepository.buscarActivasPorIds(idsTecnicas);
+    const idsEncontrados = new Set(
+      tecnicas.map((tecnica) => tecnica.idTecnica),
     );
 
-    for (const { idTecnica, tecnica } of tecnicas) {
-      if (!tecnica || !tecnica.estado) {
+    for (const idTecnica of idsTecnicas) {
+      if (!idsEncontrados.has(idTecnica)) {
         throw new Error(
           `La tecnica con ID ${idTecnica} no existe o esta inactiva.`,
         );

@@ -116,7 +116,19 @@ const cotizacionParaPedidoSelect = {
       medioRecepcionDiseno: true,
       observaciones: true,
       tecnica: { select: { idTecnica: true, nombre: true } },
-      producto: { select: { idProducto: true, nombre: true } },
+      producto: {
+        select: {
+          idProducto: true,
+          idCategoriaProducto: true,
+          nombre: true,
+          categoriaProducto: {
+            select: {
+              idCategoriaProducto: true,
+              nombre: true,
+            },
+          },
+        },
+      },
     },
   },
 };

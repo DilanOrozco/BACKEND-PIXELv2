@@ -71,6 +71,20 @@ export class TecnicaRepository {
     });
   }
 
+  async buscarActivasPorIds(idsTecnicas: number[]) {
+    if (idsTecnicas.length === 0) {
+      return [];
+    }
+
+    return await prisma.tecnica.findMany({
+      where: {
+        idTecnica: { in: idsTecnicas },
+        estado: true,
+      },
+      select: tecnicaSelect,
+    });
+  }
+
   async buscarPorNombreExacto(nombre: string) {
     return await prisma.tecnica.findUnique({
       where: { nombre },

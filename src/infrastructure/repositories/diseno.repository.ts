@@ -37,6 +37,7 @@ export interface CrearDisenoData {
 }
 
 export interface ActualizarDisenoData {
+  idDisenador?: number | null;
   archivoUrl?: string | null;
   descripcion?: string | null;
   observaciones?: string | null;
@@ -67,6 +68,9 @@ const pedidoResumenSelect = {
     select: {
       idDetallePedido: true,
       requiereDiseno: true,
+      origenDiseno: true,
+      archivoDisenoInicialUrl: true,
+      esDisenoGeneral: true,
     },
   },
   disenos: {
@@ -224,6 +228,46 @@ export class DisenoRepository {
       orderBy: {
         fechaCreacion: "desc",
       },
+    });
+  }
+
+  async crearDisenoOperacion(
+    data: CrearDisenoData,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).diseno.create({
+      data,
+      select: { idDiseno: true },
+    });
+  }
+
+  async buscarDisenoParaCargaCliente(
+    idPedido: number,
+    idDetallePedido: number,
+    esDisenoGeneral: boolean,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).diseno.findFirst({
+      where: esDisenoGeneral
+        ? { idPedido, esDisenoGeneral: true }
+        : { idPedido, idDetallePedido, esDisenoGeneral: false },
+      select: {
+        idDiseno: true,
+        estado: true,
+      },
+      orderBy: { fechaCreacion: "desc" },
+    });
+  }
+
+  async actualizarArchivoDetallePedido(
+    idDetallePedido: number,
+    archivoDisenoInicialUrl: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).detallePedido.update({
+      where: { idDetallePedido },
+      data: { archivoDisenoInicialUrl },
+      select: { idDetallePedido: true },
     });
   }
 

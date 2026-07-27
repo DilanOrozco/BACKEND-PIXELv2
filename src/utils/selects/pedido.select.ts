@@ -98,8 +98,15 @@ export const pedidoSelect = {
       producto: {
         select: {
           idProducto: true,
+          idCategoriaProducto: true,
           nombre: true,
           precioBase: true,
+          categoriaProducto: {
+            select: {
+              idCategoriaProducto: true,
+              nombre: true,
+            },
+          },
         },
       },
     },
@@ -187,7 +194,14 @@ export const pedidoSelect = {
           producto: {
             select: {
               idProducto: true,
+              idCategoriaProducto: true,
               nombre: true,
+              categoriaProducto: {
+                select: {
+                  idCategoriaProducto: true,
+                  nombre: true,
+                },
+              },
             },
           },
           tecnica: {

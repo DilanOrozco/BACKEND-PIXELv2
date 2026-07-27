@@ -64,6 +64,34 @@ const esTextoOpcional = (valorEntrada: unknown, maximo: number) => {
 const textoNoVacio = (valorEntrada: unknown) =>
   typeof valorEntrada === "string" && valorEntrada.trim() !== "";
 
+export const validarUrlDisenoCliente = (data: DatosEntrada) => {
+  const errorCampos = validarCamposPermitidos(data, [
+    "archivoDisenoInicialUrl",
+  ]);
+
+  if (errorCampos) {
+    return errorCampos;
+  }
+
+  const archivoUrl = valor(data, "archivoDisenoInicialUrl");
+
+  if (!textoNoVacio(archivoUrl) || String(archivoUrl).trim().length > 500) {
+    return "La URL del diseno es obligatoria y debe tener maximo 500 caracteres.";
+  }
+
+  try {
+    const url = new URL(String(archivoUrl).trim());
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return "La URL del diseno debe usar http o https.";
+    }
+  } catch {
+    return "La URL del diseno no es valida.";
+  }
+
+  return null;
+};
+
 const validarCamposPermitidos = (
   data: DatosEntrada,
   camposPermitidos: string[],

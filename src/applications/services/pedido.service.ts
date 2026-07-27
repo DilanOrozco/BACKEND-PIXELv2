@@ -145,6 +145,15 @@ const prepararDetallePedido = (detalle: any) => {
   };
 };
 
+const formatearFechaIso = (valor: any) => {
+  if (!valor) {
+    return null;
+  }
+
+  const fecha = new Date(valor);
+  return Number.isNaN(fecha.getTime()) ? null : fecha.toISOString();
+};
+
 const valorDefinido = (...valores: any[]) =>
   valores.find((valor) => valor !== undefined && valor !== null);
 
@@ -207,6 +216,7 @@ const buscarSnapshotDetalle = (
 };
 
 const formatearDetallePedido = (detalle: any, snapshot: any) => {
+  const producto = detalle?.producto ?? snapshot?.producto ?? null;
   const subtotalConDescuento = valorDefinido(
     snapshot?.subtotalConDescuento,
     detalle?.subtotal,
@@ -219,7 +229,18 @@ const formatearDetallePedido = (detalle: any, snapshot: any) => {
 
   return {
     ...detalle,
-    producto: detalle?.producto ?? snapshot?.producto ?? null,
+    producto,
+    idCategoriaProducto:
+      detalle?.idCategoriaProducto ??
+      producto?.idCategoriaProducto ??
+      producto?.categoriaProducto?.idCategoriaProducto ??
+      snapshot?.idCategoriaProducto ??
+      null,
+    categoriaProducto:
+      detalle?.categoriaProducto ??
+      producto?.categoriaProducto ??
+      snapshot?.categoriaProducto ??
+      null,
     tecnica: detalle?.tecnica ?? snapshot?.tecnica ?? null,
     precioBase: valorDefinido(snapshot?.precioBase, detalle?.precioBase) ?? null,
     descuentoPorcentaje:
@@ -493,7 +514,7 @@ export class PedidoService {
         ) ?? 0,
       costoDiseno,
       fechaCreacion: formatearFechaLegible(pedido.fechaCreacion),
-      fechaEntregaEstimada: formatearFechaLegible(
+      fechaEntregaEstimada: formatearFechaIso(
         pedido.fechaEntregaEstimada,
       ),
       fechaFinalizado: formatearFechaLegible(pedido.fechaFinalizado),
@@ -751,6 +772,7 @@ export class PedidoService {
         totalConfirmado: aNumero(pedido.totalPagado),
         saldoPendiente: aNumero(pedido.saldoPendiente),
         estadoPago: pedido.estadoPago,
+        montoMinimoPrimerAbono: redondearMoneda(aNumero(pedido.total) * 0.5),
       },
       venta: pedido.venta ?? null,
       abonos: formateado.abonos ?? [],
