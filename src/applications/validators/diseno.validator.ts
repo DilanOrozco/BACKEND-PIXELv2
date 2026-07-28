@@ -67,6 +67,8 @@ const textoNoVacio = (valorEntrada: unknown) =>
 export const validarUrlDisenoCliente = (data: DatosEntrada) => {
   const errorCampos = validarCamposPermitidos(data, [
     "archivoDisenoInicialUrl",
+    "observaciones",
+    "medioRecepcion",
   ]);
 
   if (errorCampos) {
@@ -87,6 +89,19 @@ export const validarUrlDisenoCliente = (data: DatosEntrada) => {
     }
   } catch {
     return "La URL del diseno no es valida.";
+  }
+
+  if (!esTextoOpcional(valor(data, "observaciones"), 1000)) {
+    return "Las observaciones deben tener maximo 1000 caracteres.";
+  }
+
+  const medioRecepcion = valor(data, "medioRecepcion");
+
+  if (
+    medioRecepcion !== undefined &&
+    !esMedioRecepcionPermitido(normalizarMayuscula(medioRecepcion))
+  ) {
+    return "El medio de recepcion no es valido.";
   }
 
   return null;

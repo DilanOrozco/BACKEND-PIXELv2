@@ -63,6 +63,12 @@ router.patch(
 );
 
 router.patch(
+  "/:idPedido/detalles/:idDetallePedido/diseno-recibido-cliente",
+  autorizarPermiso("disenos.crear"),
+  disenoController.registrarUrlDisenoRecibidoAdmin,
+);
+
+router.patch(
   "/:id",
   autorizarPermiso("pedidos.editar"),
   pedidoController.actualizarPedido,

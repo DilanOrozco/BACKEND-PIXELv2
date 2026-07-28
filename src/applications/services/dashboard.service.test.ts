@@ -67,7 +67,32 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
         total: 50000,
         saldoPendiente: 25000,
         abonos: [],
-        disenos: [],
+        detalles: [
+          {
+            idDetallePedido: 501,
+            requiereDiseno: false,
+            origenDiseno: "PIXEL",
+          },
+          {
+            idDetallePedido: 502,
+            requiereDiseno: true,
+            origenDiseno: "PIXEL",
+          },
+          {
+            idDetallePedido: 503,
+            requiereDiseno: true,
+            origenDiseno: "PIXEL",
+          },
+        ],
+        disenos: [
+          {
+            idDiseno: 90,
+            idDetallePedido: 502,
+            esDisenoGeneral: false,
+            estado: "APROBADO",
+            fechaCreacion: new Date("2026-07-18T12:00:00.000Z"),
+          },
+        ],
       },
       {
         idPedido: 4,
@@ -113,6 +138,13 @@ test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", as
   assert.equal(dashboard.pedidosActivos.length, 2);
   assert.equal(dashboard.pedidosActivos[1]?.idPedido, 4);
   assert.equal(dashboard.pedidosActivos[1]?.estadoPedido, "PENDIENTE_SALDO_FINAL");
+  assert.equal(dashboard.pedidoActivo?.totalDisenosRequeridos, 2);
+  assert.equal(dashboard.pedidoActivo?.totalDisenosAprobados, 1);
+  assert.equal(dashboard.pedidoActivo?.totalDisenosPendientes, 1);
+  assert.equal(
+    dashboard.pedidoActivo?.detalles[0]?.estadoCoberturaDiseno,
+    "NO_REQUIERE_DISENO",
+  );
   assert.ok(
     dashboard.pedidosActivos.every((pedido: any) => pedido.cliente.idCliente === 10),
   );

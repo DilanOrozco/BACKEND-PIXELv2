@@ -401,13 +401,22 @@ export class DisenoService {
     idDetallePedido: number,
     data: DatosEntrada,
     usuarioAuth: AuthUser | undefined,
+    registroInterno = false,
   ) {
     const user = this.obtenerUsuario(usuarioAuth);
     validarId(idPedido, "El pedido debe ser valido.");
     validarId(idDetallePedido, "El detalle del pedido debe ser valido.");
 
-    if (!esCliente(user)) {
-      throw new Error("Solo un cliente puede registrar su diseno desde este endpoint.");
+    if (
+      registroInterno
+        ? !puedeGestionarDisenos(user) && !esDisenador(user)
+        : !esCliente(user)
+    ) {
+      throw new Error(
+        registroInterno
+          ? "No tienes permiso para registrar disenos recibidos del cliente."
+          : "Solo un cliente puede registrar su diseno desde este endpoint.",
+      );
     }
 
     const error = validarUrlDisenoCliente(data);
@@ -422,11 +431,13 @@ export class DisenoService {
       throw new Error("Pedido no encontrado.");
     }
 
-    this.validarAccesoClienteAlPedido(
-      pedido,
-      user,
-      "No tienes permiso para modificar este pedido.",
-    );
+    if (!registroInterno) {
+      this.validarAccesoClienteAlPedido(
+        pedido,
+        user,
+        "No tienes permiso para modificar este pedido.",
+      );
+    }
 
     if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
       throw new Error(
@@ -463,6 +474,10 @@ export class DisenoService {
     }
 
     const archivoUrl = String(data.archivoDisenoInicialUrl).trim();
+    const medioRecepcion = registroInterno
+      ? normalizarMayusculaOpcional(data.medioRecepcion) ?? "OTRO"
+      : "SISTEMA";
+    const observaciones = limpiarTextoOpcional(data.observaciones);
     const ahora = new Date();
     const resultado = await this.ejecutarTransaccion(
       async (tx: Prisma.TransactionClient) => {
@@ -478,15 +493,16 @@ export class DisenoService {
           tx,
         );
 
-        if (existente) {
+        if (existente && existente.estado !== ESTADO_RECHAZADO_DISENO) {
           return await disenoRepository.actualizarDisenoOperacion(
             existente.idDiseno,
             {
               idDisenador: null,
               archivoUrl,
+              observaciones,
               estado: ESTADO_DISENO_ENVIADO,
               origenDiseno: ORIGEN_DISENO_CLIENTE,
-              medioRecepcion: "SISTEMA",
+              medioRecepcion,
               recibidoPorId: Number(user.idUsuario),
               fechaRecepcion: ahora,
               fechaEnvio: ahora,
@@ -507,10 +523,12 @@ export class DisenoService {
             esDisenoGeneral,
             idDisenador: null,
             archivoUrl,
-            descripcion: "Diseno entregado por el cliente desde su panel.",
-            observaciones: null,
+            descripcion: registroInterno
+              ? "Diseno del cliente registrado por un usuario interno."
+              : "Diseno entregado por el cliente desde su panel.",
+            observaciones,
             origenDiseno: ORIGEN_DISENO_CLIENTE,
-            medioRecepcion: "SISTEMA",
+            medioRecepcion,
             recibidoPorId: Number(user.idUsuario),
             fechaRecepcion: ahora,
             observacionesCliente: null,
@@ -529,6 +547,21 @@ export class DisenoService {
     }
 
     return diseno;
+  }
+
+  async registrarUrlDisenoRecibidoAdmin(
+    idPedido: number,
+    idDetallePedido: number,
+    data: DatosEntrada,
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    return await this.registrarUrlDisenoCliente(
+      idPedido,
+      idDetallePedido,
+      data,
+      usuarioAuth,
+      true,
+    );
   }
 
   async listarDisenos(

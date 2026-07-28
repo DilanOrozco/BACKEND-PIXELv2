@@ -6,6 +6,11 @@ import type {
 } from "../../applications/validators/diseno.validator";
 import { disenoSelect } from "../../utils/selects/diseno.select";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
+import {
+  agregarCoberturaDisenoADetalles,
+  evaluarCoberturaDisenosAprobados,
+  resumirCoberturaDisenos,
+} from "../../utils/design-coverage.util";
 
 type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 
@@ -133,38 +138,7 @@ const pedidoEstadoSelect = {
   estadoPedido: true,
 } as const;
 
-export const evaluarCoberturaDisenos = (
-  detalles: Array<{ idDetallePedido: number }>,
-  disenos: Array<{
-    idDetallePedido: number | null;
-    esDisenoGeneral: boolean;
-  }>,
-) => {
-  if (detalles.length === 0) {
-    return true;
-  }
-
-  if (disenos.some((diseno) => diseno.esDisenoGeneral)) {
-    return true;
-  }
-
-  if (
-    detalles.length === 1 &&
-    disenos.some((diseno) => diseno.idDetallePedido === null)
-  ) {
-    return true;
-  }
-
-  const detallesAprobados = new Set(
-    disenos
-      .map((diseno) => diseno.idDetallePedido)
-      .filter((id): id is number => id !== null),
-  );
-
-  return detalles.every((detalle) =>
-    detallesAprobados.has(detalle.idDetallePedido),
-  );
-};
+export { evaluarCoberturaDisenosAprobados as evaluarCoberturaDisenos };
 
 export class DisenoRepository {
   async buscarPedidoPorId(idPedido: number, tx?: Prisma.TransactionClient) {
@@ -249,8 +223,17 @@ export class DisenoRepository {
   ) {
     return await db(tx).diseno.findFirst({
       where: esDisenoGeneral
-        ? { idPedido, esDisenoGeneral: true }
-        : { idPedido, idDetallePedido, esDisenoGeneral: false },
+        ? {
+            idPedido,
+            esDisenoGeneral: true,
+            estado: { not: "RECHAZADO" },
+          }
+        : {
+            idPedido,
+            idDetallePedido,
+            esDisenoGeneral: false,
+            estado: { not: "RECHAZADO" },
+          },
       select: {
         idDiseno: true,
         estado: true,
@@ -369,13 +352,20 @@ export class DisenoRepository {
       select: {
         detalles: {
           where: { requiereDiseno: true },
-          select: { idDetallePedido: true },
-        },
-        disenos: {
-          where: { estado: "APROBADO" },
           select: {
             idDetallePedido: true,
+            requiereDiseno: true,
+          },
+        },
+        disenos: {
+          select: {
+            idDiseno: true,
+            idDetallePedido: true,
             esDisenoGeneral: true,
+            estado: true,
+            fechaCreacion: true,
+            fechaActualizacion: true,
+            fechaEnvio: true,
           },
         },
       },
@@ -385,7 +375,12 @@ export class DisenoRepository {
       return false;
     }
 
-    return evaluarCoberturaDisenos(pedido.detalles, pedido.disenos);
+    const cobertura = agregarCoberturaDisenoADetalles(
+      pedido.detalles,
+      pedido.disenos,
+    );
+
+    return resumirCoberturaDisenos(cobertura).totalDisenosPendientes === 0;
   }
 
   async actualizarDisenoOperacion(

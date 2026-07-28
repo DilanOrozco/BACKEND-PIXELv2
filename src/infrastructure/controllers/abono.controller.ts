@@ -164,7 +164,7 @@ export class AbonoController {
       const resultado = await abonoService.crearDesdeComprobanteCliente(
         Number(req.params.idPedido),
         req.file,
-        req.body?.observaciones,
+        req.body,
         req.user,
       );
 

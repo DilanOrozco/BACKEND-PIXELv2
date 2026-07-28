@@ -47,6 +47,10 @@ const detallePedidoClienteSelect = {
   cantidad: true,
   precioUnitario: true,
   subtotal: true,
+  requiereDiseno: true,
+  origenDiseno: true,
+  archivoDisenoInicialUrl: true,
+  esDisenoGeneral: true,
   observaciones: true,
   tecnica: {
     select: {
@@ -77,10 +81,14 @@ const abonoClienteSelect = {
 const disenoClienteSelect = {
   idDiseno: true,
   idPedido: true,
+  idDetallePedido: true,
+  esDisenoGeneral: true,
   archivoUrl: true,
   descripcion: true,
   observaciones: true,
   estado: true,
+  origenDiseno: true,
+  medioRecepcion: true,
   fechaCreacion: true,
   fechaActualizacion: true,
   fechaEnvio: true,

@@ -39,6 +39,13 @@ const abonoPendiente = {
   rechazadoPorId: null,
   fechaRechazo: null,
   motivoRechazo: null,
+  montoDetectadoOcr: 49000,
+  referenciaDetectadaOcr: "REF-PIXEL-1",
+  fechaDetectadaOcr: new Date("2026-07-27T00:00:00.000Z"),
+  bancoDetectadoOcr: "Nequi",
+  confianzaOcr: 82,
+  requiereRevisionManual: true,
+  origenRegistro: "FRONTEND",
   pedido: pedidoBase,
   confirmadoPor: null,
   rechazadoPor: null,
@@ -84,6 +91,18 @@ test("AbonoService registra abono sin confirmar", async (t) => {
   assert.equal((abono as any).saldoPendiente, 100000);
   assert.equal((abono as any).montoMinimoPrimerAbono, 50000);
   assert.equal((abono as any).estadoPago, "PENDIENTE");
+  assert.equal((abono as any).pedido.cliente.idCliente, 10);
+  assert.equal((abono as any).pedido.total, 100000);
+  assert.equal((abono as any).pedido.totalPagadoConfirmado, 0);
+  assert.equal((abono as any).pedido.saldoPendiente, 100000);
+  assert.equal((abono as any).datosDetectados.monto, 49000);
+  assert.equal((abono as any).datosDetectados.referencia, "REF-PIXEL-1");
+  assert.equal((abono as any).datosDefinitivos.monto, 50000);
+  assert.equal((abono as any).origenRegistroCodigo, "PORTAL_CLIENTE");
+  assert.equal(
+    (abono as any).origenRegistroLabel,
+    "Enviado desde el portal del cliente",
+  );
 });
 
 test("AbonoService registra abono confirmado y envia evento despues de DB", async (t) => {
@@ -360,6 +379,16 @@ test("AbonoService pago completo deja saldo cero y estado COMPLETO", async () =>
 });
 
 test("AbonoService cliente sube comprobante propio y OCR no confirma el pago", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_WITH_BACKEND_FALLBACK";
+  t.after(() => {
+    if (modoAnterior === undefined) {
+      delete process.env.RECEIPT_ANALYSIS_MODE;
+    } else {
+      process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+    }
+  });
+
   let transacciones = 0;
   const transaction = async <T>(
     handler: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -417,10 +446,339 @@ test("AbonoService cliente sube comprobante propio y OCR no confirma el pago", a
   assert.equal(resultado.ocr.montoDetectado, 50000);
   assert.equal(creado.monto, null);
   assert.equal(creado.estado, "PENDIENTE");
-  assert.equal(creado.origenRegistro, "CLIENTE_OCR");
+  assert.equal(creado.origenRegistro, "BACKEND");
+  assert.equal(resultado.datosDetectados.origenAnalisis, "BACKEND");
   assert.equal(resultado.abono.comprobantePath, undefined);
   assert.equal(resultado.abono.comprobanteDisponible, true);
   assert.equal(transacciones, 0);
+});
+
+test("AbonoService usa sugerencias frontend sin ejecutar OCR ni confirmar", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_ONLY";
+  t.after(() => {
+    if (modoAnterior === undefined) {
+      delete process.env.RECEIPT_ANALYSIS_MODE;
+    } else {
+      process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+    }
+  });
+
+  let ejecucionesOcr = 0;
+  const storage = {
+    savePaymentReceipt: async () => ({
+      relativePath: "comprobantes/cliente-10/pedido-1/frontend.jpg",
+      originalName: "frontend.jpg",
+      safeName: "frontend.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 100,
+      sha256: "hash-frontend",
+    }),
+    resolveSafePath: () => "C:\\temp\\frontend.jpg",
+    deleteFile: async () => true,
+  };
+  const ocr = {
+    analyzePaymentReceipt: async () => {
+      ejecucionesOcr += 1;
+      return assert.fail("OCR no debe ejecutarse con analisis frontend");
+    },
+  };
+
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  const crearMock = t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async (data: any) => ({ idAbono: 51, ...data }),
+  );
+
+  const resultado = await new AbonoService(
+    transaccionFake,
+    storage as any,
+    ocr as any,
+  ).crearDesdeComprobanteCliente(
+    1,
+    { originalname: "frontend.jpg" } as Express.Multer.File,
+    {
+      montoDetectado: "100000",
+      referenciaDetectada: "M123456",
+      fechaDetectada: "2026-07-26",
+      bancoDetectado: "Nequi",
+      calidadLectura: "82",
+      requiereRevisionManual: "false",
+      origenAnalisis: "FRONTEND",
+    },
+    { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+  );
+  const creado = crearMock.mock.calls[0]?.arguments[0] as any;
+
+  assert.equal(ejecucionesOcr, 0);
+  assert.equal(creado.estado, "PENDIENTE");
+  assert.equal(creado.monto, null);
+  assert.equal(creado.referencia, null);
+  assert.equal(creado.fechaPago, null);
+  assert.equal(creado.montoDetectadoOcr, 100000);
+  assert.equal(creado.referenciaDetectadaOcr, "M123456");
+  assert.equal(creado.origenRegistro, "FRONTEND");
+  assert.equal(resultado.datosDetectados.monto, 100000);
+  assert.equal(resultado.datosDetectados.fecha, "2026-07-26");
+  assert.equal(resultado.datosDetectados.origenAnalisis, "FRONTEND");
+});
+
+test("AbonoService rechaza sugerencias frontend invalidas antes de guardar archivo", async (t) => {
+  let archivosGuardados = 0;
+  const storage = {
+    savePaymentReceipt: async () => {
+      archivosGuardados += 1;
+      return assert.fail("No debe guardar archivo con datos invalidos");
+    },
+  };
+
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  const service = new AbonoService(transaccionFake, storage as any, {} as any);
+  const usuarioCliente = { idUsuario: 7, idCliente: 10, rol: "Cliente" };
+  const archivo = { originalname: "invalido.png" } as Express.Multer.File;
+
+  await assert.rejects(
+    () =>
+      service.crearDesdeComprobanteCliente(
+        1,
+        archivo,
+        { montoDetectado: "0", origenAnalisis: "FRONTEND" },
+        usuarioCliente,
+      ),
+    /monto detectado debe ser numerico y mayor a 0/i,
+  );
+  await assert.rejects(
+    () =>
+      service.crearDesdeComprobanteCliente(
+        1,
+        archivo,
+        {
+          fechaDetectada: "2026-02-30T10:00:00Z",
+          origenAnalisis: "FRONTEND",
+        },
+        usuarioCliente,
+      ),
+    /fecha detectada debe tener formato ISO valido/i,
+  );
+  await assert.rejects(
+    () =>
+      service.crearDesdeComprobanteCliente(
+        1,
+        archivo,
+        { calidadLectura: "101", origenAnalisis: "FRONTEND" },
+        usuarioCliente,
+      ),
+    /calidad de lectura debe estar entre 0 y 100/i,
+  );
+
+  assert.equal(archivosGuardados, 0);
+});
+
+test("AbonoService conserva PDF frontend para revision manual sin ejecutar OCR", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_ONLY";
+  t.after(() => {
+    if (modoAnterior === undefined) {
+      delete process.env.RECEIPT_ANALYSIS_MODE;
+    } else {
+      process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+    }
+  });
+
+  const storage = {
+    savePaymentReceipt: async () => ({
+      relativePath: "comprobantes/cliente-10/pedido-1/manual.pdf",
+      originalName: "manual.pdf",
+      safeName: "manual.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 100,
+      sha256: "hash-pdf-manual",
+    }),
+    resolveSafePath: () => "C:\\temp\\manual.pdf",
+    deleteFile: async () => true,
+  };
+  const ocr = {
+    analyzePaymentReceipt: async () =>
+      assert.fail("OCR no debe ejecutarse para PDF marcado como manual"),
+  };
+
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  const crearMock = t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async (data: any) => ({ idAbono: 52, ...data }),
+  );
+
+  const resultado = await new AbonoService(
+    transaccionFake,
+    storage as any,
+    ocr as any,
+  ).crearDesdeComprobanteCliente(
+    1,
+    { originalname: "manual.pdf" } as Express.Multer.File,
+    {
+      montoDetectado: "50000",
+      requiereRevisionManual: "false",
+      origenAnalisis: "FRONTEND",
+    },
+    { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+  );
+  const creado = crearMock.mock.calls[0]?.arguments[0] as any;
+
+  assert.equal(creado.estado, "PENDIENTE");
+  assert.equal(creado.monto, null);
+  assert.equal(creado.requiereRevisionManual, true);
+  assert.equal(creado.origenRegistro, "FRONTEND");
+  assert.equal(resultado.datosDetectados.requiereRevisionManual, true);
+});
+
+test("AbonoService FRONTEND_ONLY sin sugerencias crea revision manual sin OCR", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_ONLY";
+  t.after(() => {
+    if (modoAnterior === undefined) {
+      delete process.env.RECEIPT_ANALYSIS_MODE;
+    } else {
+      process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+    }
+  });
+
+  const storage = {
+    savePaymentReceipt: async () => ({
+      relativePath: "comprobantes/cliente-10/pedido-1/sin-datos.png",
+      originalName: "sin-datos.png",
+      safeName: "sin-datos.png",
+      mimeType: "image/png",
+      sizeBytes: 100,
+      sha256: "hash-sin-datos",
+    }),
+    resolveSafePath: () => "C:\\temp\\sin-datos.png",
+    deleteFile: async () => true,
+  };
+  const ocr = {
+    analyzePaymentReceipt: async () =>
+      assert.fail("OCR no debe ejecutarse en modo FRONTEND_ONLY"),
+  };
+
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  const crearMock = t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async (data: any) => ({ idAbono: 53, ...data }),
+  );
+
+  const resultado = await new AbonoService(
+    transaccionFake,
+    storage as any,
+    ocr as any,
+  ).crearDesdeComprobanteCliente(
+    1,
+    { originalname: "sin-datos.png" } as Express.Multer.File,
+    null,
+    { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+  );
+  const creado = crearMock.mock.calls[0]?.arguments[0] as any;
+
+  assert.equal(creado.estado, "PENDIENTE");
+  assert.equal(creado.origenRegistro, "MANUAL");
+  assert.equal(creado.requiereRevisionManual, true);
+  assert.equal(resultado.datosDetectados.origenAnalisis, "MANUAL");
+});
+
+test("AbonoService FRONTEND_ONLY envia lecturas parciales o dudosas a revision sin OCR", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_ONLY";
+  t.after(() => {
+    if (modoAnterior === undefined) {
+      delete process.env.RECEIPT_ANALYSIS_MODE;
+    } else {
+      process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+    }
+  });
+
+  let archivosGuardados = 0;
+  let ejecucionesOcr = 0;
+  const logs: string[] = [];
+  const storage = {
+    savePaymentReceipt: async () => {
+      archivosGuardados += 1;
+      return {
+        relativePath: `comprobantes/cliente-10/pedido-1/caso-${archivosGuardados}.png`,
+        originalName: `caso-${archivosGuardados}.png`,
+        safeName: `caso-${archivosGuardados}.png`,
+        mimeType: "image/png",
+        sizeBytes: 100,
+        sha256: `hash-caso-${archivosGuardados}`,
+      };
+    },
+    resolveSafePath: () => "C:\\temp\\caso.png",
+    deleteFile: async () => true,
+  };
+  const ocr = {
+    analyzePaymentReceipt: async () => {
+      ejecucionesOcr += 1;
+      return assert.fail("Tesseract no debe ejecutarse en FRONTEND_ONLY");
+    },
+  };
+
+  t.mock.method(console, "info", (message: unknown) => {
+    logs.push(String(message));
+  });
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async (data: any) => ({ idAbono: 60 + archivosGuardados, ...data }),
+  );
+
+  const service = new AbonoService(transaccionFake, storage as any, ocr as any);
+  const usuarioCliente = { idUsuario: 7, idCliente: 10, rol: "Cliente" };
+  const casos = [
+    {
+      referenciaDetectada: "PARCIAL123",
+      origenAnalisis: "FRONTEND",
+    },
+    {
+      montoDetectado: "50000",
+      calidadLectura: "25",
+      origenAnalisis: "FRONTEND",
+    },
+    {
+      montoDetectado: "50000",
+      calidadLectura: "90",
+      requiereRevisionManual: "true",
+      origenAnalisis: "FRONTEND",
+    },
+  ];
+
+  for (const [indice, datos] of casos.entries()) {
+    const resultado = await service.crearDesdeComprobanteCliente(
+      1,
+      { originalname: `caso-${indice + 1}.png` } as Express.Multer.File,
+      datos,
+      usuarioCliente,
+    );
+
+    assert.equal(resultado.abono.estado, "PENDIENTE");
+    assert.equal(resultado.datosDetectados.requiereRevisionManual, true);
+  }
+
+  assert.equal(archivosGuardados, casos.length);
+  assert.equal(ejecucionesOcr, 0);
+  assert.equal(logs.length, casos.length);
+  assert.ok(
+    logs.every(
+      (log) =>
+        log ===
+        "[ReceiptAnalysis] mode=FRONTEND_ONLY source=MANUAL_REVIEW backendFallback=SKIPPED",
+    ),
+  );
+  assert.ok(logs.every((log) => !log.includes("PARCIAL123")));
 });
 
 test("AbonoService bloquea comprobante ajeno y deduplica por hash", async (t) => {

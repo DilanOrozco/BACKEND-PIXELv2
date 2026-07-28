@@ -956,7 +956,72 @@ test("DisenoService cliente registra URL propia y crea diseno enviado sin duplic
   assert.equal((crear.mock.calls[0]?.arguments[0] as any).estado, "ENVIADO");
 });
 
-test("DisenoService cliente actualiza diseno existente y no crea duplicado", async (t) => {
+test("DisenoService permite que Admin registre un diseno recibido del cliente", async (t) => {
+  const pedidoCliente = {
+    ...pedidoBase,
+    detalles: [
+      {
+        idDetallePedido: 501,
+        requiereDiseno: true,
+        origenDiseno: "CLIENTE",
+        archivoDisenoInicialUrl: null,
+        esDisenoGeneral: false,
+      },
+    ],
+    disenos: [],
+  };
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedidoCliente,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarArchivoDetallePedido",
+    async () => ({ idDetallePedido: 501 }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarDisenoParaCargaCliente",
+    async () => null,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDisenoOperacion",
+    async () => ({ idDiseno: 82 }),
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => ({
+      ...disenoBase,
+      idDiseno: 82,
+      origenDiseno: "CLIENTE",
+      estado: "ENVIADO",
+    }),
+  );
+
+  const diseno = await servicio().registrarUrlDisenoRecibidoAdmin(
+    100,
+    501,
+    {
+      archivoDisenoInicialUrl: "https://cdn.pixel.test/whatsapp.png",
+      medioRecepcion: "WHATSAPP",
+      observaciones: "Recibido por WhatsApp.",
+    },
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  const datosCreacion = crear.mock.calls[0]?.arguments[0] as any;
+  assert.equal(diseno.estado, "ENVIADO");
+  assert.equal(datosCreacion.idDisenador, null);
+  assert.equal(datosCreacion.estado, "ENVIADO");
+  assert.equal(datosCreacion.medioRecepcion, "WHATSAPP");
+  assert.equal(datosCreacion.recibidoPorId, 99);
+  assert.equal(datosCreacion.observaciones, "Recibido por WhatsApp.");
+});
+
+test("DisenoService conserva rechazo y crea una nueva version activa", async (t) => {
   t.mock.method(
     DisenoRepository.prototype,
     "buscarPedidoPorId",
@@ -1004,7 +1069,7 @@ test("DisenoService cliente actualiza diseno existente y no crea duplicado", asy
   t.mock.method(
     DisenoRepository.prototype,
     "buscarPorId",
-    async () => ({ ...disenoBase, idDiseno: 81, estado: "ENVIADO" }),
+    async () => ({ ...disenoBase, idDiseno: 99, estado: "ENVIADO" }),
   );
 
   await servicio().registrarUrlDisenoCliente(
@@ -1014,8 +1079,8 @@ test("DisenoService cliente actualiza diseno existente y no crea duplicado", asy
     { idUsuario: 70, idCliente: 10, rol: "Cliente" },
   );
 
-  assert.equal(actualizar.mock.calls.length, 1);
-  assert.equal(crear.mock.calls.length, 0);
+  assert.equal(actualizar.mock.calls.length, 0);
+  assert.equal(crear.mock.calls.length, 1);
 });
 
 test("DisenoService bloquea URL invalida y detalle de otro cliente", async (t) => {

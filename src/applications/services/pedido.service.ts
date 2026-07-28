@@ -20,6 +20,17 @@ import {
   parsePaginationQuery,
   type PaginationQuery,
 } from "../../utils/pagination.util";
+import {
+  agregarCoberturaDisenoADetalles,
+  resumirCoberturaDisenos,
+} from "../../utils/design-coverage.util";
+import {
+  formatearFechaCalendario,
+  prepararFechaCalendario,
+} from "../../utils/date.util";
+import { describirOrigenAnalisis } from "../../utils/receipt-analysis.util";
+
+export { agregarCoberturaDisenoADetalles } from "../../utils/design-coverage.util";
 
 const pedidoRepository = new PedidoRepository();
 const abonoRepository = new AbonoRepository();
@@ -145,15 +156,6 @@ const prepararDetallePedido = (detalle: any) => {
   };
 };
 
-const formatearFechaIso = (valor: any) => {
-  if (!valor) {
-    return null;
-  }
-
-  const fecha = new Date(valor);
-  return Number.isNaN(fecha.getTime()) ? null : fecha.toISOString();
-};
-
 const valorDefinido = (...valores: any[]) =>
   valores.find((valor) => valor !== undefined && valor !== null);
 
@@ -266,140 +268,6 @@ const formatearDetallePedido = (detalle: any, snapshot: any) => {
   };
 };
 
-const estadoDesdeDiseno = (diseno: any, esGeneral = false) => {
-  if (diseno?.estado === "APROBADO") {
-    return esGeneral
-      ? "CUBIERTO_POR_DISENO_GENERAL"
-      : "DISENO_APROBADO";
-  }
-
-  if (
-    diseno?.estado === "ENVIADO" &&
-    String(diseno?.origenDiseno).toUpperCase() === "CLIENTE"
-  ) {
-    return esGeneral
-      ? "DISENO_GENERAL_ENTREGADO_POR_CLIENTE"
-      : "DISENO_ENTREGADO_POR_CLIENTE";
-  }
-
-  const prefijo = esGeneral ? "DISENO_GENERAL_" : "DISENO_";
-  return `${prefijo}${String(diseno?.estado ?? "PENDIENTE").toUpperCase()}`;
-};
-
-export const agregarCoberturaDisenoADetalles = (
-  detalles: any[],
-  disenos: any[] = [],
-) => {
-  const detallesRequierenDiseno = detalles.filter(
-    (detalle) => detalle.requiereDiseno !== false,
-  );
-  const disenoLegacyUnico =
-    detallesRequierenDiseno.length === 1
-      ? disenos.find(
-          (diseno) =>
-            diseno.idDetallePedido === null && !diseno.esDisenoGeneral,
-        )
-      : null;
-  const disenoGeneralAprobado = disenos.find(
-    (diseno) => diseno.esDisenoGeneral && diseno.estado === "APROBADO",
-  );
-  const disenoGeneralVigente =
-    disenoGeneralAprobado ??
-    disenos.find(
-      (diseno) =>
-        diseno.esDisenoGeneral && diseno.estado !== "RECHAZADO",
-    ) ??
-    disenos.find((diseno) => diseno.esDisenoGeneral);
-
-  return detalles.map((detalle) => {
-    if (detalle.requiereDiseno === false) {
-      return {
-        ...detalle,
-        diseno: null,
-        estadoCoberturaDiseno: "NO_REQUIERE_DISENO",
-        mensajeEstadoDiseno: "No requiere diseno.",
-        cubiertoPorDiseno: true,
-      };
-    }
-
-    const disenosEspecificos = disenos.filter(
-      (diseno) =>
-        Number(diseno.idDetallePedido) === Number(detalle.idDetallePedido) &&
-        !diseno.esDisenoGeneral,
-    );
-    if (
-      disenoLegacyUnico &&
-      Number(detalle.idDetallePedido) ===
-        Number(detallesRequierenDiseno[0]?.idDetallePedido)
-    ) {
-      disenosEspecificos.push(disenoLegacyUnico);
-    }
-    const disenoEspecificoAprobado = disenosEspecificos.find(
-      (diseno) => diseno.estado === "APROBADO",
-    );
-
-    if (disenoEspecificoAprobado) {
-      return {
-        ...detalle,
-        diseno: disenoEspecificoAprobado,
-        estadoCoberturaDiseno: "DISENO_APROBADO",
-        mensajeEstadoDiseno: "Diseno especifico aprobado.",
-        cubiertoPorDiseno: true,
-      };
-    }
-
-    if (disenoGeneralAprobado) {
-      return {
-        ...detalle,
-        diseno: disenoGeneralAprobado,
-        estadoCoberturaDiseno: "CUBIERTO_POR_DISENO_GENERAL",
-        mensajeEstadoDiseno: "Cubierto por un diseno general aprobado.",
-        cubiertoPorDiseno: true,
-      };
-    }
-
-    const disenoEspecifico = disenosEspecificos[0];
-    const disenoRelacionado = disenoEspecifico ?? disenoGeneralVigente;
-
-    if (disenoRelacionado) {
-      const esGeneral = Boolean(disenoRelacionado.esDisenoGeneral);
-
-      return {
-        ...detalle,
-        diseno: disenoRelacionado,
-        estadoCoberturaDiseno: estadoDesdeDiseno(
-          disenoRelacionado,
-          esGeneral,
-        ),
-        mensajeEstadoDiseno: esGeneral
-          ? "El diseno general esta pendiente de aprobacion."
-          : "El diseno del producto esta pendiente de aprobacion.",
-        cubiertoPorDiseno: false,
-      };
-    }
-
-    const origenCliente =
-      String(detalle.origenDiseno ?? "PIXEL").toUpperCase() === "CLIENTE";
-    const tieneArchivoCliente = Boolean(detalle.archivoDisenoInicialUrl);
-
-    return {
-      ...detalle,
-      diseno: null,
-      estadoCoberturaDiseno: origenCliente
-        ? tieneArchivoCliente
-          ? "DISENO_CLIENTE_PENDIENTE_VINCULACION"
-          : "PENDIENTE_ARCHIVO_CLIENTE"
-        : "PENDIENTE_CREACION_PIXEL",
-      mensajeEstadoDiseno: origenCliente
-        ? tieneArchivoCliente
-          ? "El cliente entrego un diseno pendiente de vinculacion."
-          : "Pendiente de que el cliente entregue el diseno."
-        : "PIXEL debe crear y enviar el diseno.",
-      cubiertoPorDiseno: false,
-    };
-  });
-};
-
 const pedidoPagadoCompleto = (pedido: any) =>
   redondearMoneda(aNumero(pedido?.saldoPendiente)) <= 0 &&
   redondearMoneda(aNumero(pedido?.totalPagado)) >=
@@ -464,6 +332,7 @@ export class PedidoService {
       detallesBase,
       Array.isArray(pedido.disenos) ? pedido.disenos : [],
     );
+    const resumenDisenos = resumirCoberturaDisenos(detalles);
     const subtotalBruto =
       valorDefinido(pedido?.subtotalBruto, pedido?.cotizacion?.subtotal) ?? null;
     const descuentoTotal =
@@ -487,9 +356,12 @@ export class PedidoService {
             textoOcr: _textoOcr,
             ...respuesta
           } = abono;
+          const origen = describirOrigenAnalisis(abono.origenRegistro);
 
           return {
             ...respuesta,
+            origenRegistroCodigo: origen.codigo,
+            origenRegistroLabel: origen.etiqueta,
             comprobanteDisponible: Boolean(
               abono.comprobantePath ??
                 abono.nombreOriginalComprobante ??
@@ -513,8 +385,9 @@ export class PedidoService {
           pedido?.cotizacion?.costosAdicionales,
         ) ?? 0,
       costoDiseno,
+      ...resumenDisenos,
       fechaCreacion: formatearFechaLegible(pedido.fechaCreacion),
-      fechaEntregaEstimada: formatearFechaIso(
+      fechaEntregaEstimada: formatearFechaCalendario(
         pedido.fechaEntregaEstimada,
       ),
       fechaFinalizado: formatearFechaLegible(pedido.fechaFinalizado),
@@ -572,7 +445,9 @@ export class PedidoService {
       total,
       totalPagado: 0,
       saldoPendiente: total,
-      fechaEntregaEstimada: prepararFechaOpcional(data?.fechaEntregaEstimada),
+      fechaEntregaEstimada: prepararFechaCalendario(
+        data?.fechaEntregaEstimada,
+      ),
       observaciones: agregarObservacionAuditoria(
         null,
         observacionesIniciales,
@@ -774,6 +649,9 @@ export class PedidoService {
         estadoPago: pedido.estadoPago,
         montoMinimoPrimerAbono: redondearMoneda(aNumero(pedido.total) * 0.5),
       },
+      totalDisenosRequeridos: formateado.totalDisenosRequeridos,
+      totalDisenosAprobados: formateado.totalDisenosAprobados,
+      totalDisenosPendientes: formateado.totalDisenosPendientes,
       venta: pedido.venta ?? null,
       abonos: formateado.abonos ?? [],
       disenos: pedido.disenos ?? [],
@@ -849,7 +727,7 @@ export class PedidoService {
     }
 
     if (data.fechaEntregaEstimada !== undefined) {
-      dataActualizar.fechaEntregaEstimada = prepararFechaOpcional(
+      dataActualizar.fechaEntregaEstimada = prepararFechaCalendario(
         data.fechaEntregaEstimada,
       );
 

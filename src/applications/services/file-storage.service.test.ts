@@ -8,6 +8,7 @@ import { FileStorageService } from "./file-storage.service";
 const pngBuffer = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
 ]);
+const jpegBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]);
 
 test("FileStorageService guarda comprobantes con ruta relativa segura", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "pixel-storage-"));
@@ -35,6 +36,35 @@ test("FileStorageService guarda comprobantes con ruta relativa segura", async ()
     assert.equal(stored.originalName, "comprobante.png");
     assert.equal(stored.mimeType, "image/png");
     assert.equal(metadata.sizeBytes, pngBuffer.length);
+  } finally {
+    if (previousRoot === undefined) {
+      delete process.env.UPLOADS_ROOT_PATH;
+    } else {
+      process.env.UPLOADS_ROOT_PATH = previousRoot;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("FileStorageService valida y guarda comprobantes JPG reales", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "pixel-storage-"));
+  const previousRoot = process.env.UPLOADS_ROOT_PATH;
+  process.env.UPLOADS_ROOT_PATH = root;
+
+  try {
+    const stored = await new FileStorageService().savePaymentReceipt(
+      {
+        buffer: jpegBuffer,
+        originalname: "comprobante.jpg",
+        mimetype: "image/jpeg",
+        size: jpegBuffer.length,
+      },
+      { idCliente: 4, idPedido: 9 },
+    );
+
+    assert.equal(stored.mimeType, "image/jpeg");
+    assert.match(stored.safeName, /\.jpg$/);
+    assert.equal(stored.sizeBytes, jpegBuffer.length);
   } finally {
     if (previousRoot === undefined) {
       delete process.env.UPLOADS_ROOT_PATH;

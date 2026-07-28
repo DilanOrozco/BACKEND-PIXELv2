@@ -5,6 +5,15 @@ type DatosEntrada = Record<string, unknown> | undefined;
 
 export type MetodoPagoPermitido = (typeof METODOS_PAGO_PERMITIDOS)[number];
 export type EstadoAbonoPermitido = (typeof ESTADOS_ABONO)[number];
+export type SugerenciasComprobante = {
+  montoDetectado: number | null;
+  referenciaDetectada: string | null;
+  fechaDetectada: Date | null;
+  bancoDetectado: string | null;
+  calidadLectura: number | null;
+  requiereRevisionManual: boolean;
+  tieneAnalisisFrontend: boolean;
+};
 
 const valor = (data: DatosEntrada, campo: string) => data?.[campo];
 
@@ -86,6 +95,175 @@ const validarCamposPermitidos = (
   }
 
   return null;
+};
+
+const textoFormDataOpcional = (valorEntrada: unknown) => {
+  if (valorEntrada === undefined || valorEntrada === null) {
+    return null;
+  }
+
+  if (typeof valorEntrada !== "string") {
+    return undefined;
+  }
+
+  const texto = valorEntrada.trim();
+  return texto === "" ? null : texto;
+};
+
+const fechaDetectadaValida = (valorEntrada: string) => {
+  const componentes = valorEntrada.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (!componentes) {
+    return null;
+  }
+
+  const fechaCalendario = new Date(
+    Date.UTC(
+      Number(componentes[1]),
+      Number(componentes[2]) - 1,
+      Number(componentes[3]),
+    ),
+  );
+  const fechaCalendarioValida =
+    fechaCalendario.getUTCFullYear() === Number(componentes[1]) &&
+    fechaCalendario.getUTCMonth() + 1 === Number(componentes[2]) &&
+    fechaCalendario.getUTCDate() === Number(componentes[3]);
+
+  if (!fechaCalendarioValida) {
+    return null;
+  }
+
+  const fecha = new Date(valorEntrada);
+
+  if (Number.isNaN(fecha.getTime())) {
+    return null;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(valorEntrada)) {
+    return fecha.toISOString().slice(0, 10) === valorEntrada ? fecha : null;
+  }
+
+  return /^\d{4}-\d{2}-\d{2}T/.test(valorEntrada) ? fecha : null;
+};
+
+export const normalizarSugerenciasComprobante = (
+  data: DatosEntrada,
+): SugerenciasComprobante => {
+  const permitidos = [
+    "observaciones",
+    "montoDetectado",
+    "referenciaDetectada",
+    "fechaDetectada",
+    "bancoDetectado",
+    "calidadLectura",
+    "requiereRevisionManual",
+    "origenAnalisis",
+  ];
+  const campoNoPermitido = Object.keys(data ?? {}).find(
+    (campo) => !permitidos.includes(campo),
+  );
+
+  if (campoNoPermitido) {
+    throw new Error(
+      `El campo ${campoNoPermitido} no se puede enviar con el comprobante.`,
+    );
+  }
+
+  const montoTexto = textoFormDataOpcional(valor(data, "montoDetectado"));
+  const referencia = textoFormDataOpcional(valor(data, "referenciaDetectada"));
+  const fechaTexto = textoFormDataOpcional(valor(data, "fechaDetectada"));
+  const banco = textoFormDataOpcional(valor(data, "bancoDetectado"));
+  const calidadTexto = textoFormDataOpcional(valor(data, "calidadLectura"));
+  const revisionEntrada = valor(data, "requiereRevisionManual");
+  const origen = textoFormDataOpcional(valor(data, "origenAnalisis"));
+
+  if (montoTexto === undefined) {
+    throw new Error("El monto detectado debe enviarse como texto numerico.");
+  }
+
+  const monto = montoTexto === null ? null : Number(montoTexto);
+
+  if (
+    monto !== null &&
+    (!Number.isFinite(monto) || monto <= 0 || monto > 99_999_999.99)
+  ) {
+    throw new Error("El monto detectado debe ser numerico y mayor a 0.");
+  }
+
+  if (referencia === undefined || (referencia && referencia.length > 100)) {
+    throw new Error("La referencia detectada debe tener maximo 100 caracteres.");
+  }
+
+  if (banco === undefined || (banco && banco.length > 100)) {
+    throw new Error("El banco detectado debe tener maximo 100 caracteres.");
+  }
+
+  if (fechaTexto === undefined) {
+    throw new Error("La fecha detectada debe enviarse como texto ISO.");
+  }
+
+  const fechaDetectada =
+    fechaTexto === null ? null : fechaDetectadaValida(fechaTexto);
+
+  if (fechaTexto !== null && !fechaDetectada) {
+    throw new Error("La fecha detectada debe tener formato ISO valido.");
+  }
+
+  if (calidadTexto === undefined) {
+    throw new Error("La calidad de lectura debe enviarse como texto numerico.");
+  }
+
+  const calidad = calidadTexto === null ? null : Number(calidadTexto);
+
+  if (
+    calidad !== null &&
+    (!Number.isFinite(calidad) || calidad < 0 || calidad > 100)
+  ) {
+    throw new Error("La calidad de lectura debe estar entre 0 y 100.");
+  }
+
+  if (
+    revisionEntrada !== undefined &&
+    revisionEntrada !== true &&
+    revisionEntrada !== false &&
+    revisionEntrada !== "true" &&
+    revisionEntrada !== "false"
+  ) {
+    throw new Error("requiereRevisionManual debe ser true o false.");
+  }
+
+  if (origen === undefined || (origen && origen.toUpperCase() !== "FRONTEND")) {
+    throw new Error("El origen del analisis debe ser FRONTEND.");
+  }
+
+  const tieneAnalisisFrontend =
+    origen?.toUpperCase() === "FRONTEND" ||
+    [
+      montoTexto,
+      referencia,
+      fechaTexto,
+      banco,
+      calidadTexto,
+      revisionEntrada,
+    ].some((item) => item !== null && item !== undefined);
+  const revisionExplicita =
+    revisionEntrada === true || revisionEntrada === "true"
+      ? true
+      : revisionEntrada === false || revisionEntrada === "false"
+        ? false
+        : null;
+
+  return {
+    montoDetectado: monto,
+    referenciaDetectada: referencia,
+    fechaDetectada,
+    bancoDetectado: banco,
+    calidadLectura: calidad,
+    requiereRevisionManual:
+      revisionExplicita ??
+      (monto === null || (calidad !== null && calidad < 60)),
+    tieneAnalisisFrontend,
+  };
 };
 
 export const validarCrearAbono = (

@@ -151,6 +151,26 @@ export class DisenoController {
     }
   }
 
+  async registrarUrlDisenoRecibidoAdmin(req: AuthRequest, res: Response) {
+    try {
+      const diseno = await disenoService.registrarUrlDisenoRecibidoAdmin(
+        Number(req.params.idPedido),
+        Number(req.params.idDetallePedido),
+        req.body,
+        req.user,
+      );
+
+      return res.status(200).json({
+        message: "Diseno recibido del cliente registrado correctamente.",
+        data: diseno,
+      });
+    } catch (error: unknown) {
+      return res.status(400).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
   async rechazarDiseno(req: AuthRequest, res: Response) {
     try {
       const idDiseno = Number(req.params.id ?? req.params.idDiseno);

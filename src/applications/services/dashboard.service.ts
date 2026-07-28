@@ -3,6 +3,11 @@ import {
   type VentaPorMesRaw,
 } from "../../infrastructure/repositories/dashboard.repository";
 import { ClienteAccessService } from "./cliente-access.service";
+import {
+  agregarCoberturaDisenoADetalles,
+  resumirCoberturaDisenos,
+} from "../../utils/design-coverage.util";
+import { formatearFechaCalendario } from "../../utils/date.util";
 
 const dashboardRepository = new DashboardRepository();
 const clienteAccessService = new ClienteAccessService();
@@ -233,6 +238,22 @@ const obtenerIdUsuario = (user: AuthUser | undefined) => {
   return idCliente;
 };
 
+const prepararPedidoCliente = (pedido: any) => {
+  const detalles = agregarCoberturaDisenoADetalles(
+    Array.isArray(pedido?.detalles) ? pedido.detalles : [],
+    Array.isArray(pedido?.disenos) ? pedido.disenos : [],
+  );
+
+  return {
+    ...pedido,
+    detalles,
+    ...resumirCoberturaDisenos(detalles),
+    fechaEntregaEstimada: formatearFechaCalendario(
+      pedido?.fechaEntregaEstimada,
+    ),
+  };
+};
+
 export class DashboardService {
   async obtenerDashboardAdmin(query: Record<string, unknown> = {}) {
     const anio = validarAnio(query);
@@ -356,6 +377,8 @@ export class DashboardService {
     ]);
 
     const conteos = normalizarConteosPorEstado(conteosPedidos as any[]);
+    const pedidosActivosFormateados = pedidosActivos.map(prepararPedidoCliente);
+    const historialFormateado = historialPedidos.map(prepararPedidoCliente);
 
     return {
       kpis: {
@@ -373,9 +396,9 @@ export class DashboardService {
         correo: cliente.correo,
         telefono: cliente.telefono,
       },
-      pedidoActivo: pedidosActivos[0] ?? null,
-      pedidosActivos,
-      historialPedidos,
+      pedidoActivo: pedidosActivosFormateados[0] ?? null,
+      pedidosActivos: pedidosActivosFormateados,
+      historialPedidos: historialFormateado,
       cotizacionesPendientes,
     };
   }

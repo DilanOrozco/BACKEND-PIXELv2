@@ -12,8 +12,11 @@ import {
   limpiarTextoOpcional,
 } from "./text.util";
 import {
+  esFechaCalendarioValida,
   esFechaOpcionalValida,
+  formatearFechaCalendario,
   formatearFechaLegible,
+  prepararFechaCalendario,
   prepararFechaOpcional,
 } from "./date.util";
 import {
@@ -51,6 +54,16 @@ test("helpers de fecha validan y preparan fechas opcionales", () => {
   assert.equal(prepararFechaOpcional(""), null);
   assert.ok(prepararFechaOpcional("2026-01-01") instanceof Date);
   assert.equal(formatearFechaLegible("2026-01-01"), "1 de enero de 2026");
+  assert.equal(esFechaCalendarioValida("2026-07-28"), true);
+  assert.equal(esFechaCalendarioValida("2026-02-30"), false);
+  assert.equal(
+    prepararFechaCalendario("2026-07-28")?.toISOString(),
+    "2026-07-28T00:00:00.000Z",
+  );
+  assert.equal(
+    formatearFechaCalendario(new Date("2026-07-28T00:00:00.000Z")),
+    "2026-07-28",
+  );
 });
 
 test("helpers de validacion reportan campos no permitidos e ids invalidos", () => {

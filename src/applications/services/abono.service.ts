@@ -25,7 +25,10 @@ import {
   validarCrearAbono,
   validarFiltrosAbono,
   validarRechazarAbono,
+  normalizarSugerenciasComprobante,
+  type SugerenciasComprobante,
 } from "../validators/abono.validator";
+import { describirOrigenAnalisis } from "../../utils/receipt-analysis.util";
 
 const abonoRepository = new AbonoRepository();
 const notificationService = new NotificationService();
@@ -95,6 +98,105 @@ const validarId = (id: number, mensaje: string) => {
   if (!Number.isInteger(id) || id <= 0) {
     throw new Error(mensaje);
   }
+};
+
+type ReceiptAnalysisMode =
+  | "FRONTEND_ONLY"
+  | "FRONTEND_WITH_BACKEND_FALLBACK"
+  | "BACKEND_ONLY";
+type ReceiptAnalysisSource =
+  | "FRONTEND"
+  | "MANUAL_REVIEW"
+  | "BACKEND_FALLBACK";
+
+const obtenerModoAnalisisComprobante = (): ReceiptAnalysisMode => {
+  const modo = String(
+    process.env.RECEIPT_ANALYSIS_MODE ??
+      "FRONTEND_WITH_BACKEND_FALLBACK",
+  ).toUpperCase();
+
+  return [
+    "FRONTEND_ONLY",
+    "FRONTEND_WITH_BACKEND_FALLBACK",
+    "BACKEND_ONLY",
+  ].includes(modo)
+    ? (modo as ReceiptAnalysisMode)
+    : "FRONTEND_WITH_BACKEND_FALLBACK";
+};
+
+const resultadoManual = (): PaymentReceiptOcrResult => ({
+  textoCompleto: "",
+  montoDetectado: null,
+  referenciaDetectada: null,
+  fechaDetectada: null,
+  bancoDetectado: null,
+  confianza: null,
+  candidatosMonto: [],
+  requiereRevisionManual: true,
+  advertencias: ["El comprobante requiere revision manual."],
+});
+
+const registrarDecisionAnalisis = (
+  modo: ReceiptAnalysisMode,
+  fuente: ReceiptAnalysisSource,
+) => {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  const backendFallback =
+    fuente === "BACKEND_FALLBACK" ? "EXECUTED" : "SKIPPED";
+  console.info(
+    `[ReceiptAnalysis] mode=${modo} source=${fuente} backendFallback=${backendFallback}`,
+  );
+};
+
+const resultadoDesdeFrontend = (
+  sugerencias: SugerenciasComprobante,
+): PaymentReceiptOcrResult => ({
+  textoCompleto: "",
+  montoDetectado: sugerencias.montoDetectado,
+  referenciaDetectada: sugerencias.referenciaDetectada,
+  fechaDetectada: sugerencias.fechaDetectada,
+  bancoDetectado: sugerencias.bancoDetectado,
+  confianza: sugerencias.calidadLectura,
+  candidatosMonto: sugerencias.montoDetectado
+    ? [sugerencias.montoDetectado]
+    : [],
+  requiereRevisionManual: sugerencias.requiereRevisionManual,
+  advertencias: [],
+});
+
+const fechaDetectadaRespuesta = (fecha: Date | null) =>
+  fecha ? fecha.toISOString().slice(0, 10) : null;
+
+const prepararDatosDetectados = (
+  analisis: PaymentReceiptOcrResult,
+  origenAnalisis: "FRONTEND" | "BACKEND" | "MANUAL",
+) => ({
+  monto: analisis.montoDetectado,
+  referencia: analisis.referenciaDetectada,
+  fecha: fechaDetectadaRespuesta(analisis.fechaDetectada),
+  banco: analisis.bancoDetectado,
+  calidadLectura: analisis.confianza,
+  requiereRevisionManual: analisis.requiereRevisionManual,
+  origenAnalisis,
+});
+
+const origenAnalisisGuardado = (
+  origenRegistro: unknown,
+): "FRONTEND" | "BACKEND" | "MANUAL" => {
+  const origen = String(origenRegistro ?? "").toUpperCase();
+
+  if (origen.includes("FRONTEND")) {
+    return "FRONTEND";
+  }
+
+  if (origen.includes("BACKEND") || origen.includes("OCR")) {
+    return "BACKEND";
+  }
+
+  return "MANUAL";
 };
 
 const notificarPrimerAbonoConfirmado = async (abono: unknown) => {
@@ -287,6 +389,31 @@ export class AbonoService {
   }
 
   private prepararRespuestaAbono(abono: any) {
+    const origen = describirOrigenAnalisis(abono?.origenRegistro);
+    const datosDetectados = {
+      monto:
+        abono?.montoDetectadoOcr === null ||
+        abono?.montoDetectadoOcr === undefined
+          ? null
+          : aNumero(abono.montoDetectadoOcr),
+      referencia: abono?.referenciaDetectadaOcr ?? null,
+      fecha: fechaDetectadaRespuesta(abono?.fechaDetectadaOcr ?? null),
+      banco: abono?.bancoDetectadoOcr ?? null,
+      calidadLectura:
+        abono?.confianzaOcr === null || abono?.confianzaOcr === undefined
+          ? null
+          : aNumero(abono.confianzaOcr),
+      requiereRevisionManual: abono?.requiereRevisionManual ?? false,
+    };
+    const datosDefinitivos = {
+      monto:
+        abono?.monto === null || abono?.monto === undefined
+          ? null
+          : aNumero(abono.monto),
+      referencia: abono?.referencia ?? null,
+      fecha: abono?.fechaPago ?? null,
+    };
+
     if (!abono?.pedido) {
       const {
         comprobantePath: _comprobantePath,
@@ -297,6 +424,10 @@ export class AbonoService {
 
       return {
         ...respuesta,
+        origenRegistroCodigo: origen.codigo,
+        origenRegistroLabel: origen.etiqueta,
+        datosDetectados,
+        datosDefinitivos,
         comprobanteDisponible: Boolean(
           abono?.comprobantePath ??
             abono?.nombreOriginalComprobante ??
@@ -317,6 +448,14 @@ export class AbonoService {
 
     return {
       ...respuesta,
+      pedido: {
+        ...respuesta.pedido,
+        totalPagadoConfirmado: totalConfirmado,
+      },
+      origenRegistroCodigo: origen.codigo,
+      origenRegistroLabel: origen.etiqueta,
+      datosDetectados,
+      datosDefinitivos,
       comprobanteDisponible: Boolean(
         abono.comprobantePath ??
           abono.nombreOriginalComprobante ??
@@ -590,7 +729,7 @@ export class AbonoService {
   async crearDesdeComprobanteCliente(
     idPedido: number,
     file: Express.Multer.File | undefined,
-    observaciones: unknown,
+    datosEntrada: unknown,
     usuarioAuth: AuthUser | undefined,
   ) {
     const user = this.obtenerUsuario(usuarioAuth);
@@ -628,6 +767,15 @@ export class AbonoService {
       throw new Error("El pedido no tiene saldo pendiente.");
     }
 
+    const data =
+      datosEntrada &&
+      typeof datosEntrada === "object" &&
+      !Array.isArray(datosEntrada)
+        ? (datosEntrada as DatosEntrada)
+        : { observaciones: datosEntrada };
+    const sugerencias = normalizarSugerenciasComprobante(data);
+    const modoAnalisis = obtenerModoAnalisisComprobante();
+
     const stored = await this.fileStorage.savePaymentReceipt(file, {
       idCliente: idClienteAutenticado(user),
       idPedido,
@@ -636,44 +784,85 @@ export class AbonoService {
 
     if (duplicado) {
       await this.fileStorage.deleteFile(stored.relativePath);
+      const analisisDuplicado: PaymentReceiptOcrResult = {
+        textoCompleto: "",
+        montoDetectado: aNumero(duplicado.montoDetectadoOcr) || null,
+        referenciaDetectada: duplicado.referenciaDetectadaOcr,
+        fechaDetectada: duplicado.fechaDetectadaOcr,
+        bancoDetectado: duplicado.bancoDetectadoOcr,
+        confianza: aNumero(duplicado.confianzaOcr) || null,
+        candidatosMonto: [],
+        requiereRevisionManual: duplicado.requiereRevisionManual,
+        advertencias: ["El comprobante ya habia sido registrado."],
+      };
+      const origenAnalisis = origenAnalisisGuardado(
+        duplicado.origenRegistro,
+      );
+
       return {
         abono: this.prepararRespuestaAbono(duplicado),
+        datosDetectados: prepararDatosDetectados(
+          analisisDuplicado,
+          origenAnalisis,
+        ),
         ocr: {
-          montoDetectado: aNumero(duplicado.montoDetectadoOcr) || null,
-          referenciaDetectada: duplicado.referenciaDetectadaOcr,
-          fechaDetectada: duplicado.fechaDetectadaOcr,
-          bancoDetectado: duplicado.bancoDetectadoOcr,
-          confianza: aNumero(duplicado.confianzaOcr) || null,
-          requiereRevisionManual: duplicado.requiereRevisionManual,
-          advertencias: ["El comprobante ya habia sido registrado."],
+          montoDetectado: analisisDuplicado.montoDetectado,
+          referenciaDetectada: analisisDuplicado.referenciaDetectada,
+          fechaDetectada: analisisDuplicado.fechaDetectada,
+          bancoDetectado: analisisDuplicado.bancoDetectado,
+          confianza: analisisDuplicado.confianza,
+          requiereRevisionManual: analisisDuplicado.requiereRevisionManual,
+          advertencias: analisisDuplicado.advertencias,
         },
         duplicado: true,
       };
     }
 
     let ocr: PaymentReceiptOcrResult;
+    let origenAnalisis: "FRONTEND" | "BACKEND" | "MANUAL";
 
-    try {
-      ocr = await this.ocrService.analyzePaymentReceipt(
-        this.fileStorage.resolveSafePath(stored.relativePath),
-      );
-    } catch (error) {
-      console.error(
-        "OCR de comprobante no disponible; se requiere revision manual:",
-        error instanceof Error ? error.message : "error desconocido",
-      );
-      ocr = {
-        textoCompleto: "",
-        montoDetectado: null,
-        referenciaDetectada: null,
-        fechaDetectada: null,
-        bancoDetectado: null,
-        confianza: null,
-        candidatosMonto: [],
-        requiereRevisionManual: true,
-        advertencias: ["No fue posible procesar el OCR."],
-      };
+    if (
+      modoAnalisis !== "BACKEND_ONLY" &&
+      sugerencias.tieneAnalisisFrontend
+    ) {
+      ocr = resultadoDesdeFrontend(sugerencias);
+      if (stored.mimeType === "application/pdf") {
+        ocr = {
+          ...ocr,
+          requiereRevisionManual: true,
+          advertencias: ["Los comprobantes PDF requieren revision manual."],
+        };
+      }
+      origenAnalisis = "FRONTEND";
+    } else if (modoAnalisis === "FRONTEND_ONLY") {
+      ocr = resultadoManual();
+      origenAnalisis = "MANUAL";
+    } else {
+      try {
+        ocr = await this.ocrService.analyzePaymentReceipt(
+          this.fileStorage.resolveSafePath(stored.relativePath),
+        );
+        origenAnalisis = ocr.requiereRevisionManual &&
+          ocr.montoDetectado === null
+          ? "MANUAL"
+          : "BACKEND";
+      } catch (error) {
+        console.error(
+          "OCR de comprobante no disponible; se requiere revision manual:",
+          error instanceof Error ? error.message : "error desconocido",
+        );
+        ocr = resultadoManual();
+        origenAnalisis = "MANUAL";
+      }
     }
+    registrarDecisionAnalisis(
+      modoAnalisis,
+      origenAnalisis === "BACKEND"
+        ? "BACKEND_FALLBACK"
+        : ocr.requiereRevisionManual
+          ? "MANUAL_REVIEW"
+          : "FRONTEND",
+    );
 
     try {
       const abono = await abonoRepository.crearAbono({
@@ -690,20 +879,21 @@ export class AbonoService {
         comprobanteSizeBytes: stored.sizeBytes,
         comprobanteHash: stored.sha256,
         comprobanteSubidoEn: new Date(),
-        textoOcr: ocr.textoCompleto || null,
+        textoOcr: origenAnalisis === "BACKEND" ? ocr.textoCompleto || null : null,
         montoDetectadoOcr: ocr.montoDetectado,
         referenciaDetectadaOcr: ocr.referenciaDetectada,
         fechaDetectadaOcr: ocr.fechaDetectada,
         bancoDetectadoOcr: ocr.bancoDetectado,
         confianzaOcr: ocr.confianza,
         requiereRevisionManual: ocr.requiereRevisionManual,
-        origenRegistro: "CLIENTE_OCR",
-        observaciones: limpiarTextoOpcional(observaciones),
+        origenRegistro: origenAnalisis,
+        observaciones: limpiarTextoOpcional(data.observaciones),
         estado: ESTADO_ABONO_PENDIENTE,
       });
 
       return {
         abono: this.prepararRespuestaAbono(abono),
+        datosDetectados: prepararDatosDetectados(ocr, origenAnalisis),
         ocr: {
           montoDetectado: ocr.montoDetectado,
           referenciaDetectada: ocr.referenciaDetectada,

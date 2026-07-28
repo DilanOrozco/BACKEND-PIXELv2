@@ -1,4 +1,8 @@
-import { esFechaOpcionalValida } from "../../utils/date.util";
+import {
+  esFechaCalendarioValida,
+  esFechaOpcionalValida,
+  prepararFechaCalendario,
+} from "../../utils/date.util";
 import { esEnteroPositivo, esMontoValido } from "../../utils/number.util";
 import { esTextoNoVacio, esTextoOpcional } from "../../utils/text.util";
 import { validarCamposPermitidos } from "../../utils/validation.util";
@@ -8,7 +12,12 @@ const esMetodoPagoPermitido = (valor: any) => {
 };
 
 const esFechaPasada = (valor: any) => {
-  const fecha = new Date(valor);
+  const fecha = prepararFechaCalendario(valor);
+
+  if (!fecha) {
+    return false;
+  }
+
   const hoy = new Date();
   const diaFecha = Date.UTC(
     fecha.getUTCFullYear(),
@@ -33,8 +42,8 @@ const validarFechaEntregaEstimada = (valor: any) => {
     return "La fecha de entrega estimada no puede estar vacia.";
   }
 
-  if (!esFechaOpcionalValida(valor)) {
-    return "La fecha de entrega estimada no es valida.";
+  if (!esFechaCalendarioValida(valor)) {
+    return "La fecha de entrega estimada debe usar el formato YYYY-MM-DD.";
   }
 
   if (esFechaPasada(valor)) {

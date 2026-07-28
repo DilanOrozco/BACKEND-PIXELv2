@@ -431,7 +431,7 @@ test("PedidoService expediente organiza venta, abonos, disenos y proximas accion
   assert.equal(expediente.resumenEconomico.montoMinimoPrimerAbono, 50000);
   assert.equal(
     expediente.pedido.fechaEntregaEstimada,
-    "2026-08-15T00:00:00.000Z",
+    "2026-08-15",
   );
   assert.equal(expediente.abonos[0].comprobanteDisponible, true);
   assert.equal(expediente.abonos[0].comprobantePath, undefined);
@@ -448,11 +448,11 @@ test("PedidoService expediente organiza venta, abonos, disenos y proximas accion
   assert.equal(expediente.detalles[0].diseno.idDiseno, 30);
 });
 
-test("PedidoService devuelve fecha estimada ISO valida o null", () => {
+test("PedidoService conserva la fecha calendario sin desplazarla por zona horaria", () => {
   const service = new PedidoService();
   const conFecha = service.formatearPedido({
     ...pedidoA,
-    fechaEntregaEstimada: new Date("2026-09-20T00:00:00.000Z"),
+    fechaEntregaEstimada: new Date("2026-07-28T00:00:00.000Z"),
   });
   const sinFecha = service.formatearPedido({
     ...pedidoA,
@@ -461,7 +461,7 @@ test("PedidoService devuelve fecha estimada ISO valida o null", () => {
 
   assert.equal(
     conFecha.fechaEntregaEstimada,
-    "2026-09-20T00:00:00.000Z",
+    "2026-07-28",
   );
   assert.equal(sinFecha.fechaEntregaEstimada, null);
 });
@@ -615,4 +615,36 @@ test("cobertura conserva diseno antiguo sin idDetallePedido en pedido de un prod
   assert.equal(cobertura[0]?.estadoCoberturaDiseno, "DISENO_APROBADO");
   assert.equal(cobertura[0]?.cubiertoPorDiseno, true);
   assert.equal(cobertura[0]?.diseno.idDiseno, 99);
+});
+
+test("cobertura usa la version vigente y un rechazo posterior invalida la aprobacion anterior", () => {
+  const cobertura = agregarCoberturaDisenoADetalles(
+    [
+      {
+        idDetallePedido: 501,
+        requiereDiseno: true,
+        origenDiseno: "PIXEL",
+      },
+    ],
+    [
+      {
+        idDiseno: 10,
+        idDetallePedido: 501,
+        esDisenoGeneral: false,
+        estado: "APROBADO",
+        fechaCreacion: new Date("2026-07-20T12:00:00.000Z"),
+      },
+      {
+        idDiseno: 11,
+        idDetallePedido: 501,
+        esDisenoGeneral: false,
+        estado: "RECHAZADO",
+        fechaCreacion: new Date("2026-07-21T12:00:00.000Z"),
+      },
+    ],
+  );
+
+  assert.equal(cobertura[0]?.estadoCoberturaDiseno, "DISENO_RECHAZADO");
+  assert.equal(cobertura[0]?.cubiertoPorDiseno, false);
+  assert.equal(cobertura[0]?.diseno.idDiseno, 11);
 });
