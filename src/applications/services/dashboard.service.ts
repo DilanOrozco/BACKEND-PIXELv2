@@ -8,6 +8,7 @@ import {
   resumirCoberturaDisenos,
 } from "../../utils/design-coverage.util";
 import { formatearFechaCalendario } from "../../utils/date.util";
+import { obtenerAccionesFinancierasPedido } from "../../utils/pedido-actions.util";
 
 const dashboardRepository = new DashboardRepository();
 const clienteAccessService = new ClienteAccessService();
@@ -244,10 +245,17 @@ const prepararPedidoCliente = (pedido: any) => {
     Array.isArray(pedido?.disenos) ? pedido.disenos : [],
   );
 
+  const resumenDisenos = resumirCoberturaDisenos(detalles);
+
   return {
     ...pedido,
     detalles,
-    ...resumirCoberturaDisenos(detalles),
+    ...resumenDisenos,
+    ...obtenerAccionesFinancierasPedido(
+      pedido,
+      resumenDisenos.totalDisenosPendientes,
+    ),
+    totalPagadoConfirmado: aNumero(pedido?.totalPagado),
     fechaEntregaEstimada: formatearFechaCalendario(
       pedido?.fechaEntregaEstimada,
     ),

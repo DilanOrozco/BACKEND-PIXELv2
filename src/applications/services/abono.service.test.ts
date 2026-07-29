@@ -295,7 +295,7 @@ test("AbonoService confirmar segundo abono no reenvia evento de primer abono", a
     "sumarAbonosConfirmados",
     async () => 50000,
   );
-  t.mock.method(
+  const actualizarPagoMock = t.mock.method(
     AbonoRepository.prototype,
     "actualizarResumenPagoPedido",
     async (_idPedido: number, data: unknown) => data,
@@ -328,6 +328,12 @@ test("AbonoService confirmar segundo abono no reenvia evento de primer abono", a
 
   await new AbonoService(transaccionFake).confirmarAbono(6, admin);
 
+  const resumenPago = actualizarPagoMock.mock.calls[0]?.arguments[1] as any;
+  const venta = ventaMock.mock.calls[0]?.arguments[0] as any;
+  assert.equal(resumenPago.totalPagado, 100000);
+  assert.equal(resumenPago.saldoPendiente, 0);
+  assert.equal(resumenPago.estadoPago, "COMPLETO");
+  assert.equal(venta.estado, "COMPLETA");
   assert.equal(notificationMock.mock.calls.length, 0);
   assert.equal(ventaMock.mock.calls.length, 1);
 });

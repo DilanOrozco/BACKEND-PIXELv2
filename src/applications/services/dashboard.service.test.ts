@@ -191,10 +191,13 @@ test("DashboardService cliente A y cliente B no mezclan ownership de pedidos", a
         idPedido: idCliente === 10 ? 1 : 2,
         idCliente,
         cliente: idCliente === 10 ? clienteA : clienteB,
-        estadoPedido: "PENDIENTE",
+        estadoPedido: "EN_PROCESO",
+        estadoPago: "COMPLETO",
         total: 10000,
-        saldoPendiente: 10000,
+        totalPagado: 10000,
+        saldoPendiente: 0,
         abonos: [],
+        detalles: [],
         disenos: [],
       },
     ],
@@ -229,6 +232,9 @@ test("DashboardService cliente A y cliente B no mezclan ownership de pedidos", a
   assert.equal(pedidoA.cliente.nombre, "Cliente A");
   assert.equal(pedidoB.cliente.idCliente, 20);
   assert.equal(pedidoB.cliente.nombre, "Cliente B");
+  assert.equal(pedidoA.puedeSolicitarSaldoFinal, false);
+  assert.equal(pedidoA.puedeFinalizar, true);
+  assert.equal(pedidoA.estadoPasoSaldoFinal, "NO_APLICA");
 });
 
 test("DashboardService cliente rechaza usuarios no Cliente", async () => {

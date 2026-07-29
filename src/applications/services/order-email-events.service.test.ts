@@ -55,12 +55,15 @@ const pedido = {
   cliente,
   detalles: [
     {
+      idDetallePedido: 1,
       descripcion: "Camiseta",
       cantidad: 2,
       precioUnitario: 25000,
       subtotal: 50000,
+      requiereDiseno: false,
     },
   ],
+  disenos: [],
 };
 
 test("CotizacionService dispara PEDIDO_CREADO_DESDE_COTIZACION al aprobar", async (t) => {
@@ -409,6 +412,172 @@ test("PedidoService marca pedido en proceso como pendiente de saldo final y noti
   assert.equal(resultado.estadoPedido, "PENDIENTE_SALDO_FINAL");
   assert.equal(actualizarMock.mock.calls[0]?.arguments[1].estadoPedido, "PENDIENTE_SALDO_FINAL");
   assert.equal(notificationMock.mock.calls.length, 1);
+});
+
+test("PedidoService no solicita saldo final si el pedido ya esta pagado", async (t) => {
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido: "EN_PROCESO",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+  }));
+  const actualizarMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async () => pedido,
+  );
+  const notificationMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoPendienteSaldoFinal",
+    async () => ({ event: "PEDIDO_PENDIENTE_SALDO_FINAL" }),
+  );
+
+  await assert.rejects(
+    () =>
+      new PedidoService().marcarPendienteSaldoFinal(
+        20,
+        {},
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /completamente pagado y no requiere solicitar saldo final/,
+  );
+
+  assert.equal(actualizarMock.mock.calls.length, 0);
+  assert.equal(notificationMock.mock.calls.length, 0);
+});
+
+test("PedidoService finaliza pedido antiguo pendiente de saldo cuando el pago esta completo", async (t) => {
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido: "PENDIENTE_SALDO_FINAL",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+  }));
+  t.mock.method(PedidoRepository.prototype, "actualizarPedido", async () => ({
+    ...pedido,
+    estadoPedido: "FINALIZADO",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+    fechaFinalizado: new Date("2026-01-02"),
+  }));
+  const notificationMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoFinalizado",
+    async () => ({ event: "PEDIDO_FINALIZADO" }),
+  );
+
+  const resultado = await new PedidoService().finalizarPedido(
+    20,
+    {},
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.equal(resultado.estadoPedido, "FINALIZADO");
+  assert.equal(notificationMock.mock.calls.length, 1);
+});
+
+test("PedidoService bloquea finalizacion con disenos requeridos pendientes", async (t) => {
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido: "EN_PROCESO",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+    detalles: [
+      {
+        idDetallePedido: 1,
+        requiereDiseno: true,
+        origenDiseno: "PIXEL",
+      },
+    ],
+    disenos: [],
+  }));
+  const actualizarMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async () => pedido,
+  );
+  const notificationMock = t.mock.method(
+    NotificationService.prototype,
+    "pedidoFinalizado",
+    async () => ({ event: "PEDIDO_FINALIZADO" }),
+  );
+
+  await assert.rejects(
+    () =>
+      new PedidoService().finalizarPedido(
+        20,
+        {},
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /disenos requeridos pendientes/,
+  );
+
+  assert.equal(actualizarMock.mock.calls.length, 0);
+  assert.equal(notificationMock.mock.calls.length, 0);
+});
+
+test("PedidoService no finaliza pedidos pendientes, anulados o entregados", async (t) => {
+  let estadoPedido = "PENDIENTE";
+  t.mock.method(PedidoRepository.prototype, "buscarPorId", async () => ({
+    ...pedido,
+    estadoPedido,
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+  }));
+  const actualizarMock = t.mock.method(
+    PedidoRepository.prototype,
+    "actualizarPedido",
+    async () => pedido,
+  );
+
+  for (const estado of ["PENDIENTE", "ANULADO", "ENTREGADO"]) {
+    estadoPedido = estado;
+    await assert.rejects(
+      () =>
+        new PedidoService().finalizarPedido(
+          20,
+          {},
+          { idUsuario: 99, rol: "Admin" },
+        ),
+      /Solo se pueden finalizar pedidos en proceso/,
+    );
+  }
+
+  assert.equal(actualizarMock.mock.calls.length, 0);
+});
+
+test("PedidoService expone capacidades financieras sin exigir saldo final al pago completo", () => {
+  const service = new PedidoService();
+  const pagado = service.formatearPedido({
+    ...pedido,
+    estadoPedido: "EN_PROCESO",
+    estadoPago: "COMPLETO",
+    totalPagado: 50000,
+    saldoPendiente: 0,
+  });
+  const parcial = service.formatearPedido({
+    ...pedido,
+    estadoPedido: "EN_PROCESO",
+    estadoPago: "PARCIAL",
+    totalPagado: 25000,
+    saldoPendiente: 25000,
+  });
+
+  assert.equal(pagado.puedeSolicitarSaldoFinal, false);
+  assert.equal(pagado.puedeFinalizar, true);
+  assert.equal(pagado.motivoBloqueoFinalizacion, null);
+  assert.equal(pagado.estadoPasoSaldoFinal, "NO_APLICA");
+  assert.equal(parcial.puedeSolicitarSaldoFinal, true);
+  assert.equal(parcial.puedeFinalizar, false);
+  assert.equal(
+    parcial.motivoBloqueoFinalizacion,
+    "El pedido tiene saldo pendiente.",
+  );
 });
 
 test("PedidoService no finaliza pedidos con saldo pendiente ni envia correo de finalizacion", async (t) => {

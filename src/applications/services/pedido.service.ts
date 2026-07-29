@@ -29,6 +29,10 @@ import {
   prepararFechaCalendario,
 } from "../../utils/date.util";
 import { describirOrigenAnalisis } from "../../utils/receipt-analysis.util";
+import {
+  obtenerAccionesFinancierasPedido,
+  pedidoTienePagoCompleto,
+} from "../../utils/pedido-actions.util";
 
 export { agregarCoberturaDisenoADetalles } from "../../utils/design-coverage.util";
 
@@ -268,12 +272,6 @@ const formatearDetallePedido = (detalle: any, snapshot: any) => {
   };
 };
 
-const pedidoPagadoCompleto = (pedido: any) =>
-  redondearMoneda(aNumero(pedido?.saldoPendiente)) <= 0 &&
-  redondearMoneda(aNumero(pedido?.totalPagado)) >=
-    redondearMoneda(aNumero(pedido?.total)) &&
-  pedido?.estadoPago === ESTADO_PAGO_COMPLETO;
-
 const notificarSaldoFinalPendiente = async (pedido: any) => {
   try {
     await notificationService.pedidoPendienteSaldoFinal(pedido);
@@ -333,6 +331,10 @@ export class PedidoService {
       Array.isArray(pedido.disenos) ? pedido.disenos : [],
     );
     const resumenDisenos = resumirCoberturaDisenos(detalles);
+    const accionesPedido = obtenerAccionesFinancierasPedido(
+      pedido,
+      resumenDisenos.totalDisenosPendientes,
+    );
     const subtotalBruto =
       valorDefinido(pedido?.subtotalBruto, pedido?.cotizacion?.subtotal) ?? null;
     const descuentoTotal =
@@ -386,6 +388,8 @@ export class PedidoService {
         ) ?? 0,
       costoDiseno,
       ...resumenDisenos,
+      ...accionesPedido,
+      totalPagadoConfirmado: aNumero(pedido.totalPagado),
       fechaCreacion: formatearFechaLegible(pedido.fechaCreacion),
       fechaEntregaEstimada: formatearFechaCalendario(
         pedido.fechaEntregaEstimada,
@@ -587,9 +591,12 @@ export class PedidoService {
         proximasAcciones.push("EN_PRODUCCION");
       }
       if (
-        pedido.estadoPedido === ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL ||
-        (pedido.estadoPedido === ESTADO_PEDIDO_EN_PROCESO &&
-          aNumero(pedido.saldoPendiente) > 0)
+        aNumero(pedido.saldoPendiente) > 0 &&
+        pedido.estadoPago !== ESTADO_PAGO_COMPLETO &&
+        (
+          pedido.estadoPedido === ESTADO_PEDIDO_PENDIENTE_SALDO_FINAL ||
+          pedido.estadoPedido === ESTADO_PEDIDO_EN_PROCESO
+        )
       ) {
         proximasAcciones.push("PENDIENTE_SALDO_FINAL");
       }
@@ -639,12 +646,18 @@ export class PedidoService {
         fechaCreacion: formateado.fechaCreacion,
         fechaEntregaEstimada: formateado.fechaEntregaEstimada,
         observaciones: formateado.observaciones,
+        puedeSolicitarSaldoFinal: formateado.puedeSolicitarSaldoFinal,
+        puedeFinalizar: formateado.puedeFinalizar,
+        motivoBloqueoFinalizacion:
+          formateado.motivoBloqueoFinalizacion,
+        estadoPasoSaldoFinal: formateado.estadoPasoSaldoFinal,
       },
       cliente: pedido.cliente,
       detalles: formateado.detalles,
       resumenEconomico: {
         total: aNumero(pedido.total),
         totalConfirmado: aNumero(pedido.totalPagado),
+        totalPagadoConfirmado: aNumero(pedido.totalPagado),
         saldoPendiente: aNumero(pedido.saldoPendiente),
         estadoPago: pedido.estadoPago,
         montoMinimoPrimerAbono: redondearMoneda(aNumero(pedido.total) * 0.5),
@@ -652,6 +665,10 @@ export class PedidoService {
       totalDisenosRequeridos: formateado.totalDisenosRequeridos,
       totalDisenosAprobados: formateado.totalDisenosAprobados,
       totalDisenosPendientes: formateado.totalDisenosPendientes,
+      puedeSolicitarSaldoFinal: formateado.puedeSolicitarSaldoFinal,
+      puedeFinalizar: formateado.puedeFinalizar,
+      motivoBloqueoFinalizacion: formateado.motivoBloqueoFinalizacion,
+      estadoPasoSaldoFinal: formateado.estadoPasoSaldoFinal,
       venta: pedido.venta ?? null,
       abonos: formateado.abonos ?? [],
       disenos: pedido.disenos ?? [],
@@ -953,8 +970,10 @@ export class PedidoService {
       throw new Error("Solo pedidos EN_PROCESO pueden quedar pendientes de saldo final.");
     }
 
-    if (pedidoPagadoCompleto(pedido)) {
-      throw new Error("El pedido ya esta pagado completo; puedes finalizarlo directamente.");
+    if (pedidoTienePagoCompleto(pedido)) {
+      throw new Error(
+        "El pedido ya esta completamente pagado y no requiere solicitar saldo final.",
+      );
     }
 
     const observacion = limpiarTextoOpcional(data?.observaciones)
@@ -995,8 +1014,16 @@ export class PedidoService {
       throw new Error("Solo se pueden finalizar pedidos en proceso o pendientes de saldo final.");
     }
 
-    if (!pedidoPagadoCompleto(pedido)) {
+    const pedidoFormateado = this.formatearPedido(pedido);
+
+    if (!pedidoTienePagoCompleto(pedido)) {
       throw new Error("No se puede finalizar el pedido porque aun tiene saldo pendiente.");
+    }
+
+    if (pedidoFormateado.totalDisenosPendientes > 0) {
+      throw new Error(
+        "No se puede finalizar el pedido porque tiene disenos requeridos pendientes de aprobacion.",
+      );
     }
 
     const observacion = limpiarTextoOpcional(data?.observaciones)
@@ -1037,7 +1064,7 @@ export class PedidoService {
       throw new Error("Solo se pueden entregar pedidos FINALIZADO.");
     }
 
-    if (!pedidoPagadoCompleto(pedido)) {
+    if (!pedidoTienePagoCompleto(pedido)) {
       throw new Error("No se puede entregar el pedido porque aun tiene saldo pendiente.");
     }
 
