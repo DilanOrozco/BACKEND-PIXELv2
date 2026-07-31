@@ -23,6 +23,8 @@ export interface DisenoFiltros {
 export interface CrearDisenoData {
   idPedido: number;
   idDetallePedido: number | null;
+  idDetalleEstampadoPedido?: number | null;
+  grupoDisenoCompartido?: string | null;
   esDisenoGeneral: boolean;
   idDisenador: number | null;
   archivoUrl: string | null;
@@ -72,25 +74,54 @@ const pedidoResumenSelect = {
   detalles: {
     select: {
       idDetallePedido: true,
+      idPedido: true,
+      descripcion: true,
+      cantidad: true,
       requiereDiseno: true,
       origenDiseno: true,
       archivoDisenoInicialUrl: true,
       esDisenoGeneral: true,
+      producto: {
+        select: {
+          idProducto: true,
+          nombre: true,
+        },
+      },
+      estampados: {
+        select: {
+          idDetalleEstampadoPedido: true,
+          idDetallePedido: true,
+          idTecnica: true,
+          ubicacion: true,
+          anchoCm: true,
+          altoCm: true,
+          descripcion: true,
+          observaciones: true,
+          origenDiseno: true,
+          grupoDisenoCompartido: true,
+          tecnica: {
+            select: {
+              idTecnica: true,
+              nombre: true,
+            },
+          },
+        },
+      },
     },
   },
   disenos: {
-    where: {
-      estado: {
-        not: "RECHAZADO",
-      },
-    },
     select: {
       idDiseno: true,
       idDetallePedido: true,
+      idDetalleEstampadoPedido: true,
+      grupoDisenoCompartido: true,
       esDisenoGeneral: true,
       estado: true,
       origenDiseno: true,
       archivoUrl: true,
+      fechaCreacion: true,
+      fechaActualizacion: true,
+      fechaEnvio: true,
     },
     orderBy: {
       fechaCreacion: "desc",
@@ -112,6 +143,8 @@ const disenoOperacionSelect = {
   idDiseno: true,
   idPedido: true,
   idDetallePedido: true,
+  idDetalleEstampadoPedido: true,
+  grupoDisenoCompartido: true,
   esDisenoGeneral: true,
   idDisenador: true,
   estado: true,
@@ -268,6 +301,48 @@ export class DisenoRepository {
     });
   }
 
+  async buscarPedidosParaRequerimientos(idsPedido: number[]) {
+    if (idsPedido.length === 0) {
+      return [];
+    }
+
+    return await prisma.pedido.findMany({
+      where: {
+        idPedido: {
+          in: idsPedido,
+        },
+      },
+      select: pedidoResumenSelect,
+    });
+  }
+
+  async actualizarOrigenDetallePedido(
+    idDetallePedido: number,
+    origenDiseno: "CLIENTE" | "PIXEL",
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).detallePedido.update({
+      where: { idDetallePedido },
+      data: { origenDiseno },
+      select: { idDetallePedido: true },
+    });
+  }
+
+  async actualizarOrigenEstampadosPedido(
+    idsEstampadoPedido: number[],
+    origenDiseno: "CLIENTE" | "PIXEL",
+    tx?: Prisma.TransactionClient,
+  ) {
+    return await db(tx).detalleEstampadoPedido.updateMany({
+      where: {
+        idDetalleEstampadoPedido: {
+          in: idsEstampadoPedido,
+        },
+      },
+      data: { origenDiseno },
+    });
+  }
+
   async buscarPorId(idDiseno: number, tx?: Prisma.TransactionClient) {
     return await db(tx).diseno.findUnique({
       where: { idDiseno },
@@ -354,13 +429,33 @@ export class DisenoRepository {
           where: { requiereDiseno: true },
           select: {
             idDetallePedido: true,
+            idPedido: true,
             requiereDiseno: true,
+            origenDiseno: true,
+            archivoDisenoInicialUrl: true,
+            esDisenoGeneral: true,
+            estampados: {
+              select: {
+                idDetalleEstampadoPedido: true,
+                idDetallePedido: true,
+                idTecnica: true,
+                ubicacion: true,
+                anchoCm: true,
+                altoCm: true,
+                descripcion: true,
+                observaciones: true,
+                origenDiseno: true,
+                grupoDisenoCompartido: true,
+              },
+            },
           },
         },
         disenos: {
           select: {
             idDiseno: true,
             idDetallePedido: true,
+            idDetalleEstampadoPedido: true,
+            grupoDisenoCompartido: true,
             esDisenoGeneral: true,
             estado: true,
             fechaCreacion: true,

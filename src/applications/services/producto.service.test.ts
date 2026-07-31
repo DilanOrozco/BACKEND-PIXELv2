@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { ProductoService } from "./producto.service";
 import { ProductoRepository } from "../../infrastructure/repositories/producto.repository";
 import { CategoriaProductoRepository } from "../../infrastructure/repositories/categoria-producto.repository";
+import { productoPublicSelect } from "../../utils/selects/producto.select";
 
 const categoria = {
   idCategoriaProducto: 1,
@@ -29,6 +30,15 @@ const producto = {
   categoriaProducto: categoria,
   rangos,
 };
+
+test("select publico de producto expone catalogo sin precios internos", () => {
+  assert.equal(productoPublicSelect.idProducto, true);
+  assert.equal(productoPublicSelect.descripcion, true);
+  assert.equal(productoPublicSelect.requiereDiseno, true);
+  assert.equal(productoPublicSelect.estado, true);
+  assert.equal("precioBase" in productoPublicSelect, false);
+  assert.equal("rangos" in productoPublicSelect, false);
+});
 
 test("ProductoService crea producto con categoria y falla sin categoria", async (t) => {
   t.mock.method(ProductoRepository.prototype, "buscarPorNombreExacto", async () => null);
@@ -81,6 +91,8 @@ test("ProductoService lista con categoria, filtro, paginacion, search y sort", a
   assert.equal(pagination.search, "cam");
   assert.deepEqual(filtros, { idCategoriaProducto: 1 });
   assert.equal(respuesta.data[0]?.categoriaProducto?.nombre, "General");
+  assert.equal(respuesta.data[0]?.rangosDescuento[1].cantidadMinima, 12);
+  assert.equal(respuesta.data[0]?.rangosDescuento[1].porcentaje, 7.14);
 });
 
 test("ProductoService edita categoria valida y desactiva producto", async (t) => {
@@ -109,10 +121,40 @@ test("ProductoService edita categoria valida y desactiva producto", async (t) =>
   });
   const desactivado = await service.desactivarProducto(1);
 
-  assert.equal(editado.precioBase.toNumber(), 30000);
+  assert.equal(editado.precioBase?.toNumber(), 30000);
   assert.equal(actualizarMock.mock.calls[0]?.arguments[1].idCategoriaProducto, 1);
   assert.equal(desactivado.estado, false);
   assert.equal(desactivarMock.mock.calls[0]?.arguments[0], 1);
+});
+
+test("ProductoService gestiona rangos con nombres nuevos y conserva aliases legacy", async (t) => {
+  t.mock.method(ProductoRepository.prototype, "buscarPorId", async () => producto);
+  t.mock.method(
+    ProductoRepository.prototype,
+    "listarRangos",
+    async () => rangos as any,
+  );
+  const reemplazar = t.mock.method(
+    ProductoRepository.prototype,
+    "reemplazarRangos",
+    async () => producto as any,
+  );
+  const service = new ProductoService();
+  const listado = await service.listarRangos(1);
+  const actualizado = await service.reemplazarRangos(1, {
+    rangos: [
+      { cantidadMinima: 1, porcentaje: 0 },
+      { cantidadMinima: 10, porcentaje: 8 },
+    ],
+  });
+  const payload = reemplazar.mock.calls[0]!.arguments[1] as any[];
+
+  assert.equal(listado[1].cantidadMinima, 12);
+  assert.equal(listado[1].cantidadMin, 12);
+  assert.equal(listado[1].porcentaje, 7.14);
+  assert.equal(payload[1].cantidadMin, 10);
+  assert.equal(Number(payload[1].descuentoPorcentaje), 8);
+  assert.equal(actualizado.rangosDescuento[1].cantidadMinima, 12);
 });
 
 test("ProductoService calcula rangos de descuento y snapshots sin confiar en frontend", async (t) => {

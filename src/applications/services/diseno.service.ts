@@ -17,6 +17,10 @@ import {
 } from "../validators/diseno.validator";
 import { AbonoService } from "./abono.service";
 import { NotificationService } from "./notification.service";
+import {
+  resolverRequerimientosDiseno,
+  type TipoObjetivoDiseno,
+} from "../../utils/design-coverage.util";
 
 const disenoRepository = new DisenoRepository();
 const abonoService = new AbonoService();
@@ -94,7 +98,12 @@ const limpiarOrigenDiseno = (valor: unknown, user: AuthUser) => {
   const origen = normalizarMayusculaOpcional(valor);
 
   if (origen) {
-    return origen as "DISENADOR" | "CLIENTE" | "ADMIN" | "OTRO";
+    return origen as
+      | "DISENADOR"
+      | "PIXEL"
+      | "CLIENTE"
+      | "ADMIN"
+      | "OTRO";
   }
 
   if (esDisenador(user)) {
@@ -200,6 +209,657 @@ export class DisenoService {
     return disenador;
   }
 
+  private resolverObjetivoDiseno(pedido: any, data: DatosEntrada) {
+    const detalles = pedido.detalles ?? [];
+    const estampados = detalles.flatMap((detalle: any) =>
+      (detalle.estampados ?? []).map((estampado: any) => ({
+        ...estampado,
+        detalle,
+      })),
+    );
+    const idDetalleEntrada =
+      data.idDetallePedido == null ? null : Number(data.idDetallePedido);
+    const idEstampadoEntrada =
+      (data.idDetalleEstampadoPedido ?? data.idEstampadoPedido) == null
+        ? null
+        : Number(
+            data.idDetalleEstampadoPedido ??
+              data.idEstampadoPedido,
+          );
+    const grupoEntrada = limpiarTextoOpcional(data.grupoDisenoCompartido);
+    let tipo = normalizarMayusculaOpcional(
+      data.tipoObjetivo,
+    ) as TipoObjetivoDiseno | null;
+    let detalle = idDetalleEntrada
+      ? detalles.find(
+          (item: any) =>
+            Number(item.idDetallePedido) === idDetalleEntrada,
+        )
+      : null;
+    let estampado = idEstampadoEntrada
+      ? estampados.find(
+          (item: any) =>
+            Number(item.idDetalleEstampadoPedido) ===
+            idEstampadoEntrada,
+        )
+      : null;
+
+    if (idDetalleEntrada && !detalle) {
+      throw new Error("El detalle indicado no pertenece al pedido.");
+    }
+    if (idEstampadoEntrada && !estampado) {
+      throw new Error("El estampado indicado no pertenece al pedido.");
+    }
+    if (
+      estampado &&
+      detalle &&
+      Number(estampado.detalle.idDetallePedido) !==
+        Number(detalle.idDetallePedido)
+    ) {
+      throw new Error(
+        "El estampado no pertenece al producto indicado.",
+      );
+    }
+
+    if (!tipo) {
+      if (idEstampadoEntrada) tipo = "ESTAMPADO";
+      else if (grupoEntrada) tipo = "GRUPO_COMPARTIDO";
+      else if (data.esDisenoGeneral === true && idDetalleEntrada) {
+        tipo = "PRODUCTO_GENERAL";
+      } else if (data.esDisenoGeneral === true) {
+        tipo = "PEDIDO_GENERAL";
+      } else if (idDetalleEntrada) {
+        tipo = (detalle?.estampados ?? []).length > 0
+          ? "PRODUCTO_GENERAL"
+          : "LEGACY_PRODUCTO";
+      } else if (detalles.length === 1) {
+        detalle = detalles[0];
+        tipo = (detalle.estampados ?? []).length > 0
+          ? "PRODUCTO_GENERAL"
+          : "LEGACY_PRODUCTO";
+      } else {
+        throw new Error(
+          "Debes indicar el objetivo real del diseno.",
+        );
+      }
+    }
+
+    let grupo = grupoEntrada;
+    let estampadosCubiertos: any[] = [];
+    if (tipo === "ESTAMPADO") {
+      if (!estampado) {
+        throw new Error(
+          "Para un diseno de estampado debes indicar idDetalleEstampadoPedido.",
+        );
+      }
+      if (estampado.grupoDisenoCompartido) {
+        throw new Error(
+          `El estampado pertenece al grupo ${estampado.grupoDisenoCompartido}; crea un diseno de tipo GRUPO_COMPARTIDO.`,
+        );
+      }
+      detalle = estampado.detalle;
+      estampadosCubiertos = [estampado];
+    } else if (tipo === "GRUPO_COMPARTIDO") {
+      if (!grupo) {
+        throw new Error(
+          "Para un diseno compartido debes indicar grupoDisenoCompartido.",
+        );
+      }
+      estampadosCubiertos = estampados.filter(
+        (item: any) => item.grupoDisenoCompartido === grupo,
+      );
+      if (estampadosCubiertos.length === 0) {
+        throw new Error(
+          "El grupo de diseno no pertenece al pedido.",
+        );
+      }
+      const idsDetalle = new Set(
+        estampadosCubiertos.map((item: any) =>
+          Number(item.detalle.idDetallePedido),
+        ),
+      );
+      detalle =
+        idsDetalle.size === 1 ? estampadosCubiertos[0].detalle : null;
+    } else if (tipo === "PRODUCTO_GENERAL") {
+      if (!detalle) {
+        throw new Error(
+          "Para un diseno general de producto debes indicar idDetallePedido.",
+        );
+      }
+      estampadosCubiertos = detalle.estampados ?? [];
+    } else if (tipo === "PEDIDO_GENERAL") {
+      detalle = null;
+      estampadosCubiertos = estampados;
+    } else {
+      if (!detalle) {
+        throw new Error(
+          "Para un diseno legacy debes indicar idDetallePedido.",
+        );
+      }
+      if ((detalle.estampados ?? []).length > 0) {
+        throw new Error(
+          "El producto tiene estampados; selecciona un objetivo de diseno actual.",
+        );
+      }
+    }
+
+    const detallesCubiertos = new Set(
+      [
+        ...(detalle ? [detalle] : []),
+        ...(tipo === "PEDIDO_GENERAL"
+          ? detalles.filter(
+              (item: any) => item.requiereDiseno !== false,
+            )
+          : []),
+        ...estampadosCubiertos.map((item: any) => item.detalle),
+      ].map((item: any) => Number(item.idDetallePedido)),
+    );
+    const requiereDiseno = [...detallesCubiertos].every((idDetalle) =>
+      detalles.some(
+        (item: any) =>
+          Number(item.idDetallePedido) === idDetalle &&
+          item.requiereDiseno !== false,
+      ),
+    );
+    if (!requiereDiseno || detallesCubiertos.size === 0) {
+      throw new Error(
+        "El objetivo seleccionado no requiere diseno.",
+      );
+    }
+    if (
+      estampadosCubiertos.some(
+        (item: any) =>
+          String(item.origenDiseno).toUpperCase() === "NO_REQUIERE",
+      )
+    ) {
+      throw new Error(
+        "No puedes crear un diseno sobre un estampado NO_REQUIERE.",
+      );
+    }
+
+    const disenoGeneralPedidoActivo = (pedido.disenos ?? []).find(
+      (diseno: any) =>
+        diseno.esDisenoGeneral &&
+        diseno.idDetallePedido == null &&
+        diseno.estado !== "RECHAZADO",
+    );
+    const disenoGeneralProductoActivo =
+      detalle &&
+      tipo !== "PRODUCTO_GENERAL" &&
+      (pedido.disenos ?? []).find(
+        (diseno: any) =>
+          diseno.esDisenoGeneral &&
+          Number(diseno.idDetallePedido) ===
+            Number(detalle.idDetallePedido) &&
+          diseno.estado !== "RECHAZADO",
+      );
+
+    if (
+      tipo !== "PEDIDO_GENERAL" &&
+      (disenoGeneralPedidoActivo || disenoGeneralProductoActivo)
+    ) {
+      throw new Error(
+        "El pedido ya tiene un diseno general pendiente o aprobado que cubre este objetivo.",
+      );
+    }
+
+    const disenosActivos = (pedido.disenos ?? []).filter(
+      (diseno: any) => diseno.estado !== "RECHAZADO",
+    );
+    if (tipo === "PEDIDO_GENERAL" && disenosActivos.length > 0) {
+      throw new Error(
+        "No puedes crear un diseno general del pedido mientras existan disenos activos para objetivos especificos.",
+      );
+    }
+    if (tipo === "PRODUCTO_GENERAL" && detalle) {
+      const idsEstampados = new Set(
+        (detalle.estampados ?? []).map((item: any) =>
+          Number(item.idDetalleEstampadoPedido),
+        ),
+      );
+      const gruposDetalle = new Set(
+        (detalle.estampados ?? [])
+          .map((item: any) => item.grupoDisenoCompartido)
+          .filter(Boolean),
+      );
+      const tieneCoberturaActiva = disenosActivos.some(
+        (diseno: any) =>
+          Number(diseno.idDetallePedido) ===
+            Number(detalle.idDetallePedido) ||
+          idsEstampados.has(
+            Number(diseno.idDetalleEstampadoPedido),
+          ) ||
+          gruposDetalle.has(diseno.grupoDisenoCompartido),
+      );
+      if (tieneCoberturaActiva) {
+        throw new Error(
+          "No puedes crear un diseno general del producto mientras existan disenos activos para sus estampados.",
+        );
+      }
+    }
+
+    const origenes = new Set(
+      (estampadosCubiertos.length > 0
+        ? estampadosCubiertos.map((item: any) => item.origenDiseno)
+        : [detalle?.origenDiseno]
+      ).map((origen) => {
+        const valor = String(origen ?? "PENDIENTE_DEFINIR").toUpperCase();
+        if (valor === "CLIENTE") return "CLIENTE";
+        if (["PIXEL", "DISENADOR", "ADMIN"].includes(valor)) return "PIXEL";
+        return "PENDIENTE_DEFINIR";
+      }),
+    );
+    const origenConfigurado =
+      origenes.size === 1 ? [...origenes][0] : "PENDIENTE_DEFINIR";
+    if (
+      origenConfigurado === "PENDIENTE_DEFINIR" &&
+      data.origenDiseno === undefined
+    ) {
+      throw new Error(
+        "Debes definir si el diseno sera suministrado por CLIENTE o creado por PIXEL.",
+      );
+    }
+
+    const coincideObjetivo = (diseno: any) => {
+      const estampadoDiseno = estampados.find(
+        (item: any) =>
+          Number(item.idDetalleEstampadoPedido) ===
+          Number(diseno.idDetalleEstampadoPedido),
+      );
+      const grupoDiseno =
+        diseno.grupoDisenoCompartido ??
+        estampadoDiseno?.grupoDisenoCompartido ??
+        null;
+      if (tipo === "PEDIDO_GENERAL") {
+        return diseno.esDisenoGeneral && diseno.idDetallePedido == null;
+      }
+      if (tipo === "PRODUCTO_GENERAL") {
+        return (
+          Number(diseno.idDetallePedido) ===
+            Number(detalle.idDetallePedido) &&
+          (diseno.esDisenoGeneral ||
+            (!diseno.idDetalleEstampadoPedido && !grupoDiseno))
+        );
+      }
+      if (tipo === "GRUPO_COMPARTIDO") {
+        return grupoDiseno === grupo;
+      }
+      if (tipo === "ESTAMPADO") {
+        return (
+          Number(diseno.idDetalleEstampadoPedido) ===
+          Number(estampado.idDetalleEstampadoPedido)
+        );
+      }
+      return (
+        Number(diseno.idDetallePedido) ===
+          Number(detalle.idDetallePedido) &&
+        !diseno.esDisenoGeneral &&
+        !diseno.idDetalleEstampadoPedido &&
+        !grupoDiseno
+      );
+    };
+    const versionVigente = [...(pedido.disenos ?? [])]
+      .filter(coincideObjetivo)
+      .sort(
+        (a: any, b: any) =>
+          Number(b.idDiseno) - Number(a.idDiseno),
+      )[0];
+    if (versionVigente && versionVigente.estado !== "RECHAZADO") {
+      throw new Error(
+        "Este requerimiento ya tiene un diseno activo.",
+      );
+    }
+
+    return {
+      tipoObjetivo: tipo,
+      idDetallePedido:
+        tipo === "PEDIDO_GENERAL"
+          ? null
+          : tipo === "GRUPO_COMPARTIDO"
+            ? detalle?.idDetallePedido ?? null
+            : detalle?.idDetallePedido ?? null,
+      idDetalleEstampadoPedido:
+        tipo === "ESTAMPADO"
+          ? estampado.idDetalleEstampadoPedido
+          : null,
+      grupoDisenoCompartido:
+        tipo === "GRUPO_COMPARTIDO" ? grupo : null,
+      esDisenoGeneral:
+        tipo === "PRODUCTO_GENERAL" || tipo === "PEDIDO_GENERAL",
+      detalle,
+      estampadosCubiertos,
+      origenConfigurado,
+    };
+  }
+
+  private async enriquecerDisenosConObjetivo(disenos: any[]) {
+    const idsPedido = [
+      ...new Set(
+        disenos
+          .map((diseno) => Number(diseno.idPedido))
+          .filter((idPedido) => Number.isInteger(idPedido) && idPedido > 0),
+      ),
+    ];
+    const pedidos =
+      await disenoRepository.buscarPedidosParaRequerimientos(idsPedido);
+    const pedidoPorId = new Map(
+      pedidos.map((pedido) => [Number(pedido.idPedido), pedido]),
+    );
+
+    return disenos.map((diseno) => {
+      const pedido = pedidoPorId.get(Number(diseno.idPedido));
+      if (!pedido) {
+        return diseno;
+      }
+
+      const resolucion = resolverRequerimientosDiseno(
+        pedido.idPedido,
+        pedido.detalles,
+        pedido.disenos,
+      );
+      const requerimiento = resolucion.requerimientos.find(
+        (item) =>
+          item.versiones.some(
+            (version: any) =>
+              Number(version.idDiseno) === Number(diseno.idDiseno),
+          ) ||
+          Number(item.disenoCobertura?.idDiseno) ===
+            Number(diseno.idDiseno),
+      );
+      const tipoObjetivo: TipoObjetivoDiseno =
+        diseno.esDisenoGeneral && diseno.idDetallePedido == null
+          ? "PEDIDO_GENERAL"
+          : diseno.esDisenoGeneral
+            ? "PRODUCTO_GENERAL"
+            : diseno.grupoDisenoCompartido
+              ? "GRUPO_COMPARTIDO"
+              : diseno.idDetalleEstampadoPedido
+                ? "ESTAMPADO"
+                : "LEGACY_PRODUCTO";
+      const versiones = requerimiento?.versiones ?? [diseno];
+      const ordenCronologico = [...versiones].reverse();
+
+      return {
+        ...diseno,
+        tipoObjetivo,
+        idRequerimientoDiseno:
+          requerimiento?.idRequerimientoDiseno ??
+          (tipoObjetivo === "PEDIDO_GENERAL"
+            ? `ORDER-${diseno.idPedido}`
+            : null),
+        version:
+          ordenCronologico.findIndex(
+            (item: any) =>
+              Number(item.idDiseno) === Number(diseno.idDiseno),
+          ) + 1,
+        estampadosCubiertos:
+          requerimiento?.estampadosCubiertos ??
+          resolucion.requerimientos.flatMap((item) =>
+            Number(item.disenoCobertura?.idDiseno) ===
+            Number(diseno.idDiseno)
+              ? item.estampadosCubiertos
+              : [],
+          ),
+        acciones: requerimiento
+          ? {
+              puedeCrearDiseno: requerimiento.puedeCrearDiseno,
+              puedeCargarCorreccion:
+                requerimiento.puedeCargarCorreccion,
+              puedeRegistrarDisenoCliente:
+                requerimiento.puedeRegistrarDisenoCliente,
+              puedeDefinirOrigen:
+                requerimiento.puedeDefinirOrigen,
+              puedeAprobar: requerimiento.puedeAprobar,
+            }
+          : null,
+      };
+    });
+  }
+
+  async obtenerRequerimientosPedido(
+    idPedido: number,
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    const user = this.obtenerUsuario(usuarioAuth);
+    validarId(idPedido, "El ID del pedido no es valido.");
+    const pedido = await disenoRepository.buscarPedidoPorId(idPedido);
+
+    if (!pedido) {
+      throw new Error("Pedido no encontrado.");
+    }
+
+    this.validarAccesoClienteAlPedido(pedido, user);
+
+    return resolverRequerimientosDiseno(
+      pedido.idPedido,
+      pedido.detalles,
+      pedido.disenos,
+    );
+  }
+
+  async definirOrigenRequerimiento(
+    idPedido: number,
+    idRequerimientoDiseno: string,
+    data: DatosEntrada,
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    this.obtenerUsuario(usuarioAuth);
+    validarId(idPedido, "El ID del pedido no es valido.");
+    const campos = Object.keys(data ?? {});
+    if (
+      campos.length !== 1 ||
+      campos[0] !== "origenDiseno"
+    ) {
+      throw new Error("Debes enviar solamente origenDiseno.");
+    }
+    const origenDiseno = normalizarMayusculaOpcional(
+      data.origenDiseno,
+    );
+    if (origenDiseno !== "CLIENTE" && origenDiseno !== "PIXEL") {
+      throw new Error("origenDiseno debe ser CLIENTE o PIXEL.");
+    }
+    const idRequerimiento = String(
+      idRequerimientoDiseno ?? "",
+    ).trim();
+    if (
+      !/^(STAMP|GROUP|PRODUCT|LEGACY)-.+$/.test(idRequerimiento)
+    ) {
+      throw new Error("El requerimiento de diseno no es valido.");
+    }
+
+    const pedido = await disenoRepository.buscarPedidoPorId(idPedido);
+    if (!pedido) {
+      throw new Error("Pedido no encontrado.");
+    }
+    const resolucion = resolverRequerimientosDiseno(
+      pedido.idPedido,
+      pedido.detalles,
+      pedido.disenos,
+    );
+    const requerimiento = resolucion.requerimientos.find(
+      (item) =>
+        item.idRequerimientoDiseno === idRequerimiento,
+    );
+    if (!requerimiento) {
+      throw new Error(
+        "El requerimiento no pertenece al pedido.",
+      );
+    }
+    if (requerimiento.origenDiseno !== "PENDIENTE_DEFINIR") {
+      throw new Error(
+        "El origen de este requerimiento ya fue definido.",
+      );
+    }
+    if (requerimiento.disenoVigente) {
+      throw new Error(
+        "No puedes cambiar el origen de un requerimiento con un diseno activo.",
+      );
+    }
+
+    const idsEstampados = requerimiento.estampadosCubiertos.map(
+      (item: any) => Number(item.idEstampadoPedido),
+    );
+    await this.ejecutarTransaccion(
+      async (tx: Prisma.TransactionClient) => {
+        if (idsEstampados.length > 0) {
+          await disenoRepository.actualizarOrigenEstampadosPedido(
+            idsEstampados,
+            origenDiseno,
+            tx,
+          );
+        }
+        if (
+          requerimiento.tipo === "PRODUCTO_GENERAL" ||
+          requerimiento.tipo === "LEGACY_PRODUCTO"
+        ) {
+          await disenoRepository.actualizarOrigenDetallePedido(
+            Number(requerimiento.idDetallePedido),
+            origenDiseno,
+            tx,
+          );
+        }
+      },
+    );
+
+    const pedidoActualizado =
+      await disenoRepository.buscarPedidoPorId(idPedido);
+    if (!pedidoActualizado) {
+      throw new Error("Pedido no encontrado.");
+    }
+    const requerimientoActualizado = resolverRequerimientosDiseno(
+      pedidoActualizado.idPedido,
+      pedidoActualizado.detalles,
+      pedidoActualizado.disenos,
+    ).requerimientos.find(
+      (item) =>
+        item.idRequerimientoDiseno === idRequerimiento,
+    );
+
+    if (!requerimientoActualizado) {
+      throw new Error(
+        "No fue posible recargar el requerimiento actualizado.",
+      );
+    }
+
+    return requerimientoActualizado;
+  }
+
+  async registrarDisenoClientePorRequerimiento(
+    idPedido: number,
+    idRequerimientoDiseno: string,
+    data: DatosEntrada,
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    const user = this.obtenerUsuario(usuarioAuth);
+    validarId(idPedido, "El ID del pedido no es valido.");
+    if (!puedeGestionarDisenos(user) && !esDisenador(user)) {
+      throw new Error(
+        "No tienes permiso para registrar disenos recibidos del cliente.",
+      );
+    }
+    const error = validarUrlDisenoCliente(data);
+    if (error) {
+      throw new Error(error);
+    }
+    const idRequerimiento = String(
+      idRequerimientoDiseno ?? "",
+    ).trim();
+    if (
+      !/^(STAMP|GROUP|PRODUCT|LEGACY)-.+$/.test(idRequerimiento)
+    ) {
+      throw new Error("El requerimiento de diseno no es valido.");
+    }
+
+    const pedido = await disenoRepository.buscarPedidoPorId(idPedido);
+    if (!pedido) {
+      throw new Error("Pedido no encontrado.");
+    }
+    const resolucion = resolverRequerimientosDiseno(
+      pedido.idPedido,
+      pedido.detalles,
+      pedido.disenos,
+    );
+    const requerimiento = resolucion.requerimientos.find(
+      (item) =>
+        item.idRequerimientoDiseno === idRequerimiento,
+    );
+    if (!requerimiento) {
+      throw new Error(
+        "El requerimiento no pertenece al pedido.",
+      );
+    }
+    if (requerimiento.origenDiseno !== "CLIENTE") {
+      throw new Error(
+        "Este requerimiento no esta configurado con diseno del cliente.",
+      );
+    }
+    if (
+      requerimiento.disenoVigente &&
+      requerimiento.disenoVigente.estado !== ESTADO_RECHAZADO_DISENO
+    ) {
+      throw new Error(
+        "Este requerimiento ya tiene un diseno activo.",
+      );
+    }
+
+    const ahora = new Date();
+    const medioRecepcion =
+      normalizarMayusculaOpcional(data.medioRecepcion) ?? "OTRO";
+    const dataCrear: CrearDisenoData = {
+      idPedido,
+      idDetallePedido: requerimiento.idDetallePedido ?? null,
+      idDetalleEstampadoPedido:
+        requerimiento.tipo === "ESTAMPADO"
+          ? requerimiento.idEstampadoPedido
+          : null,
+      grupoDisenoCompartido:
+        requerimiento.tipo === "GRUPO_COMPARTIDO"
+          ? requerimiento.grupoDisenoCompartido
+          : null,
+      esDisenoGeneral:
+        requerimiento.tipo === "PRODUCTO_GENERAL",
+      idDisenador: null,
+      archivoUrl: String(data.archivoDisenoInicialUrl).trim(),
+      descripcion:
+        "Diseno del cliente registrado por un usuario interno.",
+      observaciones: limpiarTextoOpcional(data.observaciones),
+      origenDiseno: ORIGEN_DISENO_CLIENTE,
+      medioRecepcion,
+      recibidoPorId: Number(user.idUsuario),
+      fechaRecepcion: ahora,
+      observacionesCliente: null,
+      estado: ESTADO_DISENO_ENVIADO,
+      fechaEnvio: ahora,
+    };
+
+    await this.ejecutarTransaccion(
+      async (tx: Prisma.TransactionClient) => {
+        await disenoRepository.crearDisenoOperacion(dataCrear, tx);
+      },
+    );
+
+    const pedidoActualizado =
+      await disenoRepository.buscarPedidoPorId(idPedido);
+    if (!pedidoActualizado) {
+      throw new Error("Pedido no encontrado.");
+    }
+    const requerimientoActualizado = resolverRequerimientosDiseno(
+      pedidoActualizado.idPedido,
+      pedidoActualizado.detalles,
+      pedidoActualizado.disenos,
+    ).requerimientos.find(
+      (item) =>
+        item.idRequerimientoDiseno === idRequerimiento,
+    );
+    if (!requerimientoActualizado) {
+      throw new Error(
+        "No fue posible recargar el requerimiento actualizado.",
+      );
+    }
+
+    return requerimientoActualizado;
+  }
+
   async crearDiseno(data: DatosEntrada, usuarioAuth: AuthUser | undefined) {
     const user = this.obtenerUsuario(usuarioAuth);
     const error = validarCrearDiseno(data, user.rol);
@@ -219,68 +879,7 @@ export class DisenoService {
       throw new Error("Solo se pueden crear disenos para pedidos PENDIENTE.");
     }
 
-    const idDetalleSolicitado =
-      data.idDetallePedido === undefined || data.idDetallePedido === null
-        ? null
-        : Number(data.idDetallePedido);
-    const detalleSolicitado = idDetalleSolicitado
-      ? pedido.detalles.find(
-          (detalle) => detalle.idDetallePedido === idDetalleSolicitado,
-        )
-      : null;
-
-    if (idDetalleSolicitado && !detalleSolicitado) {
-      throw new Error("El detalle indicado no pertenece al pedido.");
-    }
-
-    let idDetallePedido = idDetalleSolicitado;
-
-    if (!idDetallePedido && data.esDisenoGeneral !== true) {
-      if (pedido.detalles.length === 1) {
-        idDetallePedido = pedido.detalles[0]?.idDetallePedido ?? null;
-      } else {
-        throw new Error(
-          "Debes indicar idDetallePedido para pedidos con varios productos o marcar esDisenoGeneral=true.",
-        );
-      }
-    }
-
-    const esDisenoGeneral = data.esDisenoGeneral === true;
-    const detalleFinal = idDetallePedido
-      ? pedido.detalles.find(
-          (detalle) => detalle.idDetallePedido === idDetallePedido,
-        )
-      : null;
-
-    if (detalleFinal?.requiereDiseno === false) {
-      throw new Error(
-        "Este producto fue configurado como que no requiere diseno.",
-      );
-    }
-
-    if (
-      esDisenoGeneral &&
-      !pedido.detalles.some((detalle) => detalle.requiereDiseno)
-    ) {
-      throw new Error(
-        "El pedido no tiene productos que requieran un diseno general.",
-      );
-    }
-
-    const disenoVigente = (pedido.disenos ?? []).find((diseno) =>
-      esDisenoGeneral
-        ? diseno.esDisenoGeneral
-        : diseno.esDisenoGeneral ||
-          Number(diseno.idDetallePedido) === Number(idDetallePedido),
-    );
-
-    if (disenoVigente) {
-      throw new Error(
-        disenoVigente.esDisenoGeneral
-          ? "El pedido ya tiene un diseno general pendiente o aprobado."
-          : "Este producto ya tiene un diseno pendiente o aprobado.",
-      );
-    }
+    const objetivo = this.resolverObjetivoDiseno(pedido, data);
 
     const tienePagoInicial =
       await abonoService.pedidoTienePagoInicialValido(idPedido);
@@ -291,7 +890,14 @@ export class DisenoService {
       );
     }
 
-    const origenDiseno = limpiarOrigenDiseno(data.origenDiseno, user);
+    const origenDiseno =
+      data.origenDiseno === undefined &&
+      objetivo.origenConfigurado === "PIXEL"
+        ? "PIXEL"
+        : data.origenDiseno === undefined &&
+            objetivo.origenConfigurado === "CLIENTE"
+          ? ORIGEN_DISENO_CLIENTE
+          : limpiarOrigenDiseno(data.origenDiseno, user);
     let idDisenador: number | null = null;
 
     if (origenDiseno === ORIGEN_DISENO_CLIENTE) {
@@ -325,8 +931,12 @@ export class DisenoService {
 
     const dataCrear: CrearDisenoData = {
       idPedido,
-      idDetallePedido,
-      esDisenoGeneral,
+      idDetallePedido: objetivo.idDetallePedido,
+      idDetalleEstampadoPedido:
+        objetivo.idDetalleEstampadoPedido,
+      grupoDisenoCompartido:
+        objetivo.grupoDisenoCompartido,
+      esDisenoGeneral: objetivo.esDisenoGeneral,
       idDisenador,
       archivoUrl,
       descripcion: limpiarTextoOpcional(data.descripcion),
@@ -598,7 +1208,7 @@ export class DisenoService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return disenos;
+    return await this.enriquecerDisenosConObjetivo(disenos);
   }
 
   async listarPorPedido(idPedido: number, usuarioAuth: AuthUser | undefined) {
@@ -613,10 +1223,11 @@ export class DisenoService {
 
     this.validarAccesoClienteAlPedido(pedido, user);
 
-    return await disenoRepository.listarPorPedido(
+    const disenos = await disenoRepository.listarPorPedido(
       idPedido,
       esDisenador(user) ? Number(user.idUsuario) : undefined,
     );
+    return await this.enriquecerDisenosConObjetivo(disenos);
   }
 
   async listarDisenosCliente(usuarioAuth: AuthUser | undefined) {
@@ -626,7 +1237,10 @@ export class DisenoService {
       throw new Error("Solo clientes pueden consultar sus disenos en este endpoint.");
     }
 
-    return await disenoRepository.listarPorCliente(idClienteAutenticado(user));
+    const disenos = await disenoRepository.listarPorCliente(
+      idClienteAutenticado(user),
+    );
+    return await this.enriquecerDisenosConObjetivo(disenos);
   }
 
   async buscarPorId(idDiseno: number, usuarioAuth: AuthUser | undefined) {
@@ -641,7 +1255,7 @@ export class DisenoService {
 
     this.validarAccesoConsultaDiseno(diseno, user);
 
-    return diseno;
+    return (await this.enriquecerDisenosConObjetivo([diseno]))[0];
   }
 
   async actualizarDiseno(
@@ -808,22 +1422,6 @@ export class DisenoService {
         throw new Error("El pedido debe estar PENDIENTE para aprobar diseno.");
       }
 
-      if (decision === "APROBAR") {
-        const disenoAprobadoExistente =
-          await disenoRepository.buscarDisenoAprobadoPorDetalle(
-            diseno.idPedido,
-            diseno.idDetallePedido,
-            tx,
-          );
-
-        if (
-          disenoAprobadoExistente &&
-          disenoAprobadoExistente.idDiseno !== idDiseno
-        ) {
-          throw new Error("El pedido ya tiene un diseno aprobado.");
-        }
-      }
-
       const fechaRespuestaCliente = new Date();
       const dataActualizar: ActualizarDisenoData = {
         estado:
@@ -919,8 +1517,13 @@ export class DisenoService {
       throw new Error("Diseno no encontrado.");
     }
 
-    if (diseno.estado === ESTADO_APROBADO_DISENO) {
-      throw new Error("Solo se pueden eliminar disenos no aprobados.");
+    if (
+      diseno.estado === ESTADO_APROBADO_DISENO ||
+      diseno.estado === ESTADO_RECHAZADO_DISENO
+    ) {
+      throw new Error(
+        "Los disenos aprobados o rechazados se conservan como historial.",
+      );
     }
 
     await disenoRepository.eliminarDiseno(idDiseno);

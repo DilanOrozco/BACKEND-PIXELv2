@@ -105,6 +105,24 @@ router.get(
 );
 
 router.get(
+  "/:idPedido/requerimientos-diseno",
+  autorizarPermiso("disenos.ver"),
+  disenoController.obtenerRequerimientosPedido,
+);
+
+router.patch(
+  "/:idPedido/requerimientos-diseno/:idRequerimientoDiseno/origen",
+  autorizarPermiso("disenos.crear"),
+  disenoController.definirOrigenRequerimiento,
+);
+
+router.patch(
+  "/:idPedido/requerimientos-diseno/:idRequerimientoDiseno/diseno-recibido-cliente",
+  autorizarPermiso("disenos.crear"),
+  disenoController.registrarDisenoClientePorRequerimiento,
+);
+
+router.get(
   "/:idPedido/compras",
   autorizarPermiso("compras.ver"),
   compraController.listarPorPedido,

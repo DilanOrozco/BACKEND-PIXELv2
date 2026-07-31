@@ -1,10 +1,74 @@
 import type { Response } from "express";
 import { CotizacionService } from "../../applications/services/cotizacion.service";
+import { CotizacionWorkflowService } from "../../applications/services/cotizacion-workflow.service";
 import type { AuthRequest } from "../middlewares/auth.middleware";
 
 const cotizacionService = new CotizacionService();
+const workflowService = new CotizacionWorkflowService();
 
 export class CotizacionController {
+  async enviarPropuesta(req: AuthRequest, res: Response) {
+    try {
+      const resultado = await workflowService.enviarPropuesta(
+        Number(req.params.id),
+        req.body,
+        req.user,
+      );
+      return res.status(201).json({
+        message: "Propuesta oficial enviada correctamente.",
+        data: resultado,
+      });
+    } catch (error: any) {
+      return res.status(400).json({
+        message: error.message,
+        ...(error.code ? { code: error.code } : {}),
+      });
+    }
+  }
+
+  async listarVersiones(req: AuthRequest, res: Response) {
+    try {
+      const versiones = await workflowService.listarVersiones(
+        Number(req.params.id),
+      );
+      return res.status(200).json({ data: versiones });
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+  }
+
+  async responderPropuestaCliente(req: AuthRequest, res: Response) {
+    try {
+      const resultado = await workflowService.responderComoCliente(
+        Number(req.params.id),
+        req.body,
+        req.user,
+      );
+      return res.status(200).json({
+        message: "Respuesta registrada correctamente.",
+        data: resultado,
+      });
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+  }
+
+  async registrarRespuestaCliente(req: AuthRequest, res: Response) {
+    try {
+      const resultado = await workflowService.responderComoInterno(
+        Number(req.params.id),
+        req.body,
+        req.user,
+      );
+      return res.status(200).json({
+        message: "Respuesta del cliente registrada correctamente.",
+        data: resultado,
+      });
+    } catch (error: any) {
+      return res.status(400).json({ message: error.message });
+    }
+  }
+
   async crearSolicitudCliente(req: AuthRequest, res: Response) {
     try {
       const cotizacion = await cotizacionService.crearSolicitudCliente(
@@ -142,6 +206,7 @@ export class CotizacionController {
       const cotizacion = await cotizacionService.cotizarCotizacion(
         idCotizacion,
         req.body,
+        req.user,
       );
 
       return res.status(200).json({

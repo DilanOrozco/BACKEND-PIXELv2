@@ -51,6 +51,7 @@ export const validarCrearProducto = (data: DatosEntrada) => {
     "nombre",
     "descripcion",
     "precioBase",
+    "requiereDiseno",
     "idCategoriaProducto",
     "estado",
   ]);
@@ -65,7 +66,11 @@ export const validarCrearProducto = (data: DatosEntrada) => {
     return "La descripcion debe ser texto de maximo 255 caracteres, null u omitirse.";
   }
 
-  if (!esMontoPositivo(valor(data, "precioBase"))) {
+  if (
+    valor(data, "precioBase") !== undefined &&
+    valor(data, "precioBase") !== null &&
+    !esMontoPositivo(valor(data, "precioBase"))
+  ) {
     return "El precio base debe ser mayor a 0.";
   }
 
@@ -77,6 +82,10 @@ export const validarCrearProducto = (data: DatosEntrada) => {
     return "El estado debe ser booleano.";
   }
 
+  if (!esBooleanoOpcional(valor(data, "requiereDiseno"))) {
+    return "requiereDiseno debe ser booleano.";
+  }
+
   return null;
 };
 
@@ -85,6 +94,7 @@ export const validarActualizarProducto = (data: DatosEntrada) => {
     "nombre",
     "descripcion",
     "precioBase",
+    "requiereDiseno",
     "idCategoriaProducto",
     "estado",
   ]);
@@ -118,6 +128,10 @@ export const validarActualizarProducto = (data: DatosEntrada) => {
     return "El estado debe ser booleano.";
   }
 
+  if (!esBooleanoOpcional(valor(data, "requiereDiseno"))) {
+    return "requiereDiseno debe ser booleano.";
+  }
+
   return null;
 };
 
@@ -129,11 +143,15 @@ export const validarRangosProducto = (data: DatosEntrada) => {
   const cantidades = new Set<number>();
 
   for (const rango of valor(data, "rangos") as any[]) {
-    if (!esEnteroPositivo(rango?.cantidadMin)) {
+    const cantidadEntrada = rango?.cantidadMin ?? rango?.cantidadMinima;
+    const porcentajeEntrada =
+      rango?.descuentoPorcentaje ?? rango?.porcentaje;
+
+    if (!esEnteroPositivo(cantidadEntrada)) {
       return "La cantidad minima debe ser mayor a 0.";
     }
 
-    const cantidadMin = Number(rango.cantidadMin);
+    const cantidadMin = Number(cantidadEntrada);
 
     if (cantidades.has(cantidadMin)) {
       return "No se pueden repetir cantidades minimas para el mismo producto.";
@@ -141,7 +159,7 @@ export const validarRangosProducto = (data: DatosEntrada) => {
 
     cantidades.add(cantidadMin);
 
-    if (!esDescuentoValido(rango?.descuentoPorcentaje)) {
+    if (!esDescuentoValido(porcentajeEntrada)) {
       return "El descuento debe estar entre 0 y 100.";
     }
 

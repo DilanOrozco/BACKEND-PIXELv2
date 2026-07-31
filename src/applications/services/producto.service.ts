@@ -16,6 +16,23 @@ import { limpiarTextoOpcional } from "../../utils/text.util";
 const productoRepository = new ProductoRepository();
 const categoriaProductoRepository = new CategoriaProductoRepository();
 
+const presentarRangoDescuento = (rango: any) => ({
+  ...rango,
+  id: rango.idRango,
+  cantidadMinima: rango.cantidadMin,
+  porcentaje: rango.descuentoPorcentaje,
+});
+
+const presentarProductoAdmin = (producto: any) =>
+  producto
+    ? {
+        ...producto,
+        rangosDescuento: Array.isArray(producto.rangos)
+          ? producto.rangos.map(presentarRangoDescuento)
+          : [],
+      }
+    : producto;
+
 type ItemCalculoEntrada = {
   idProducto: number;
   idTecnica?: number | null;
@@ -60,7 +77,11 @@ export class ProductoService {
       parseFiltroCategoria(query),
     );
 
-    return paginatedResponse(resultado.data, pagination, resultado.total);
+    return paginatedResponse(
+      resultado.data.map(presentarProductoAdmin),
+      pagination,
+      resultado.total,
+    );
   }
 
   async listarProductosPublicos(query: PaginationQuery = {}) {
@@ -78,7 +99,7 @@ export class ProductoService {
       throw new Error("Producto no encontrado.");
     }
 
-    return producto;
+    return presentarProductoAdmin(producto);
   }
 
   async crearProducto(data: Record<string, unknown>) {
@@ -104,13 +125,21 @@ export class ProductoService {
       throw new Error("La categoria del producto no existe o esta inactiva.");
     }
 
-    return await productoRepository.crearProducto({
+    const productoCreado = await productoRepository.crearProducto({
       nombre,
       idCategoriaProducto,
       descripcion: limpiarTextoOpcional(data.descripcion),
-      precioBase: normalizarDecimal(data.precioBase),
+      precioBase:
+        data.precioBase === undefined || data.precioBase === null
+          ? null
+          : normalizarDecimal(data.precioBase),
+      requiereDiseno:
+        data.requiereDiseno === undefined
+          ? true
+          : Boolean(data.requiereDiseno),
       estado: data.estado === undefined ? true : Boolean(data.estado),
     });
+    return presentarProductoAdmin(productoCreado);
   }
 
   async actualizarProducto(idProducto: number, data: Record<string, unknown>) {
@@ -166,31 +195,42 @@ export class ProductoService {
       dataActualizar.estado = Boolean(data.estado);
     }
 
-    return await productoRepository.actualizarProducto(
+    if (data.requiereDiseno !== undefined) {
+      dataActualizar.requiereDiseno = Boolean(data.requiereDiseno);
+    }
+
+    const productoActualizado = await productoRepository.actualizarProducto(
       idProducto,
       dataActualizar,
     );
+    return presentarProductoAdmin(productoActualizado);
   }
 
   async desactivarProducto(idProducto: number) {
     validarId(idProducto, "El ID del producto no es valido.");
     await this.buscarPorId(idProducto);
 
-    return await productoRepository.desactivarProducto(idProducto);
+    return presentarProductoAdmin(
+      await productoRepository.desactivarProducto(idProducto),
+    );
   }
 
   async eliminarProducto(idProducto: number) {
     validarId(idProducto, "El ID del producto no es valido.");
     await this.buscarPorId(idProducto);
 
-    return await productoRepository.eliminarProducto(idProducto);
+    return presentarProductoAdmin(
+      await productoRepository.eliminarProducto(idProducto),
+    );
   }
 
   async listarRangos(idProducto: number) {
     validarId(idProducto, "El ID del producto no es valido.");
     await this.buscarPorId(idProducto);
 
-    return await productoRepository.listarRangos(idProducto);
+    return (
+      await productoRepository.listarRangos(idProducto)
+    ).map(presentarRangoDescuento);
   }
 
   async reemplazarRangos(idProducto: number, data: Record<string, unknown>) {
@@ -205,12 +245,16 @@ export class ProductoService {
     await this.buscarPorId(idProducto);
 
     const rangos = (data.rangos as any[]).map((rango) => ({
-      cantidadMin: Number(rango.cantidadMin),
-      descuentoPorcentaje: normalizarDecimal(rango.descuentoPorcentaje),
+      cantidadMin: Number(rango.cantidadMin ?? rango.cantidadMinima),
+      descuentoPorcentaje: normalizarDecimal(
+        rango.descuentoPorcentaje ?? rango.porcentaje,
+      ),
       estado: rango.estado === undefined ? true : Boolean(rango.estado),
     }));
 
-    return await productoRepository.reemplazarRangos(idProducto, rangos);
+    return presentarProductoAdmin(
+      await productoRepository.reemplazarRangos(idProducto, rangos),
+    );
   }
 
   async calcularItems(items: ItemCalculoEntrada[]) {
@@ -256,6 +300,12 @@ export class ProductoService {
 
       if (!rango) {
         throw new Error(`El producto ${producto.nombre} no tiene rangos activos para cotizar.`);
+      }
+
+      if (producto.precioBase === null) {
+        throw new Error(
+          `El producto ${producto.nombre} usa el nuevo esquema de tarifas por tecnica y no tiene precio base legado.`,
+        );
       }
 
       const precioBase = new Prisma.Decimal(producto.precioBase);

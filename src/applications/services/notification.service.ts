@@ -12,6 +12,9 @@ import {
   buildPedidoAnuladoTemplate,
   buildPedidoPendienteSaldoFinalTemplate,
   buildPrimerAbonoConfirmadoTemplate,
+  buildSolicitudCotizacionRecibidaTemplate,
+  buildPropuestaCotizacionEnviadaTemplate,
+  buildRespuestaCotizacionTemplate,
   EMAIL_EVENTS,
   type EmailEvent,
 } from "./email-templates";
@@ -71,6 +74,84 @@ export class NotificationService {
     }
 
     return estado;
+  }
+
+  async solicitudCotizacionRecibida(
+    payload: any,
+  ): Promise<ResultadoEvento> {
+    const resultado: ResultadoEvento = {
+      event: EMAIL_EVENTS.SOLICITUD_COTIZACION_RECIBIDA,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.SOLICITUD_COTIZACION_RECIBIDA,
+        payload.cliente,
+        () => buildSolicitudCotizacionRecibidaTemplate(payload),
+      ),
+      staff: "omitido",
+    };
+
+    if (process.env.STAFF_EMAIL) {
+      try {
+        const template = buildSolicitudCotizacionRecibidaTemplate(payload);
+        const envio = await emailService.sendMail({
+          ...template,
+          to: process.env.STAFF_EMAIL,
+          subject: `[Interno] Nueva solicitud de cotizacion - PIXEL`,
+        });
+        resultado.staff = envio.sent ? "enviado" : "omitido";
+      } catch (error) {
+        console.error("Error notificando solicitud al staff:", error);
+        resultado.staff = "error";
+      }
+    }
+
+    return resultado;
+  }
+
+  async propuestaCotizacionEnviada(
+    payload: any,
+  ): Promise<ResultadoEvento> {
+    return {
+      event: EMAIL_EVENTS.PROPUESTA_COTIZACION_ENVIADA,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.PROPUESTA_COTIZACION_ENVIADA,
+        payload.cliente,
+        () => buildPropuestaCotizacionEnviadaTemplate(payload),
+      ),
+    };
+  }
+
+  async respuestaCotizacionRegistrada(
+    payload: any,
+  ): Promise<ResultadoEvento> {
+    const resultado: ResultadoEvento = {
+      event: EMAIL_EVENTS.RESPUESTA_COTIZACION_REGISTRADA,
+      cliente: await this.enviarCliente(
+        EMAIL_EVENTS.RESPUESTA_COTIZACION_REGISTRADA,
+        payload.cliente,
+        () => buildRespuestaCotizacionTemplate(payload),
+      ),
+      staff: "omitido",
+    };
+
+    if (
+      payload?.respuesta?.decision === "SOLICITAR_AJUSTE" &&
+      process.env.STAFF_EMAIL
+    ) {
+      try {
+        const template = buildRespuestaCotizacionTemplate(payload);
+        const envio = await emailService.sendMail({
+          ...template,
+          to: process.env.STAFF_EMAIL,
+          subject: "[Interno] Cliente solicito ajuste de cotizacion - PIXEL",
+        });
+        resultado.staff = envio.sent ? "enviado" : "omitido";
+      } catch (error) {
+        console.error("Error notificando ajuste al staff:", error);
+        resultado.staff = "error";
+      }
+    }
+
+    return resultado;
   }
 
   async cotizacionPresencialCreada(payload: any): Promise<ResultadoEvento> {

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EmailService } from "./email.service";
+import { buildPropuestaCotizacionEnviadaTemplate } from "./email-templates";
 import { NotificationService } from "./notification.service";
 
 const cliente = {
@@ -641,4 +642,55 @@ test("NotificationService omite sin correo y no rompe si SMTP falla", async (t) 
   assert.equal(sinCorreo.cliente, "omitido");
   assert.equal(sendMailMock.mock.calls.length, 1);
   assert.equal(conFallo.cliente, "error");
+});
+
+test("correo de propuesta oficial muestra tecnicas y medidas sin costos internos", () => {
+  const mail = buildPropuestaCotizacionEnviadaTemplate({
+    cliente,
+    version: {
+      numeroVersion: 2,
+      precioFinal: 52000,
+      descuentoManual: 1000,
+      costosAdicionales: 3000,
+      ajusteManual: 5000,
+      motivoAjusteManual: "Margen y riesgo interno.",
+      validaHasta: new Date(Date.now() + 86400000),
+      desgloseVisible: {
+        items: [
+          {
+            nombre: "Camiseta",
+            cantidad: 2,
+            precioUnitario: 25000,
+            subtotal: 50000,
+            estampados: [
+              {
+                tecnica: { idTecnica: 1, nombre: "DTF" },
+                ubicacion: "FRENTE",
+                anchoCm: 10,
+                altoCm: 12,
+              },
+            ],
+          },
+        ],
+        disenos: [
+          { descripcion: "Creacion de diseno frontal", valor: 2000 },
+        ],
+        conceptosAdicionales: [
+          { concepto: "Transporte", valor: 1000 },
+        ],
+        descuentoManual: 1000,
+        ajusteComercial: 5000,
+      },
+    },
+  });
+
+  assert.match(mail.text!, /DTF \(FRENTE, 10 x 12 cm\)/);
+  assert.match(mail.html!, /<th>Servicios<\/th>/);
+  assert.match(mail.html!, /DTF/);
+  assert.match(mail.text!, /Creacion de diseno frontal/);
+  assert.match(mail.text!, /Transporte/);
+  assert.match(mail.text!, /Ajuste comercial: \$\s*5\.000/);
+  assert.doesNotMatch(mail.text!, /precio sugerido|tarifa aplicada|margen/i);
+  assert.doesNotMatch(mail.text!, /Margen y riesgo interno/);
+  assertContenidoLimpio(mail.text!);
 });

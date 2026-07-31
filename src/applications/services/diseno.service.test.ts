@@ -573,6 +573,11 @@ test("DisenoService cliente puede ver diseno recibido por WhatsApp si es de su p
       },
     ],
   );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidosParaRequerimientos",
+    async () => [pedidoBase],
+  );
 
   const disenos = await servicio().listarDisenosCliente({
     idUsuario: 77,
@@ -593,6 +598,11 @@ test("DisenoService modulo admin sigue listando disenos", async (t) => {
     DisenoRepository.prototype,
     "listarDisenos",
     async () => [disenoBase],
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidosParaRequerimientos",
+    async () => [pedidoBase],
   );
 
   const disenos = await servicio().listarDisenos({}, {
@@ -853,6 +863,471 @@ test("DisenoService no duplica diseno entregado por cliente ni diseno general", 
         { idUsuario: 99, rol: "Admin" },
       ),
     /ya tiene un diseno general/,
+  );
+  assert.equal(crear.mock.calls.length, 0);
+});
+
+test("DisenoService crea disenos distintos para estampados del mismo producto", async (t) => {
+  const pedido = {
+    ...pedidoBase,
+    detalles: [
+      {
+        idDetallePedido: 501,
+        requiereDiseno: true,
+        origenDiseno: "PIXEL",
+        estampados: [
+          {
+            idDetalleEstampadoPedido: 601,
+            origenDiseno: "PIXEL",
+            grupoDisenoCompartido: null,
+          },
+          {
+            idDetalleEstampadoPedido: 602,
+            origenDiseno: "PIXEL",
+            grupoDisenoCompartido: null,
+          },
+        ],
+      },
+    ],
+    disenos: [
+      {
+        idDiseno: 30,
+        idDetallePedido: 501,
+        idDetalleEstampadoPedido: 601,
+        esDisenoGeneral: false,
+        estado: "ENVIADO",
+      },
+    ],
+  };
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedido,
+  );
+  t.mock.method(
+    AbonoService.prototype,
+    "pedidoTienePagoInicialValido",
+    async () => true,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async (data: any) => ({ ...disenoBase, ...data }),
+  );
+
+  await servicio().crearDiseno(
+    {
+      idPedido: 100,
+      tipoObjetivo: "ESTAMPADO",
+      idEstampadoPedido: 602,
+      descripcion: "Diseno de manga",
+    },
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  const data = crear.mock.calls[0]?.arguments[0] as any;
+  assert.equal(data.idDetallePedido, 501);
+  assert.equal(data.idDetalleEstampadoPedido, 602);
+  assert.equal(data.esDisenoGeneral, false);
+  assert.equal(data.origenDiseno, "PIXEL");
+});
+
+test("DisenoService bloquea dos objetivos simultaneos", async () => {
+  await assert.rejects(
+    () =>
+      servicio().crearDiseno(
+        {
+          idPedido: 100,
+          tipoObjetivo: "ESTAMPADO",
+          idEstampadoPedido: 601,
+          grupoDisenoCompartido: "LOGO-1",
+        },
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /no puede usar otro objetivo simultaneamente/,
+  );
+});
+
+test("DisenoService permite cargar version corregida del mismo estampado", async (t) => {
+  const pedido = {
+    ...pedidoBase,
+    detalles: [
+      {
+        idDetallePedido: 501,
+        requiereDiseno: true,
+        origenDiseno: "PIXEL",
+        estampados: [
+          {
+            idDetalleEstampadoPedido: 601,
+            origenDiseno: "PIXEL",
+            grupoDisenoCompartido: null,
+          },
+        ],
+      },
+    ],
+    disenos: [
+      {
+        idDiseno: 30,
+        idDetallePedido: 501,
+        idDetalleEstampadoPedido: 601,
+        esDisenoGeneral: false,
+        estado: "RECHAZADO",
+      },
+    ],
+  };
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedido,
+  );
+  t.mock.method(
+    AbonoService.prototype,
+    "pedidoTienePagoInicialValido",
+    async () => true,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async (data: any) => ({ ...disenoBase, idDiseno: 31, ...data }),
+  );
+  t.mock.method(
+    NotificationService.prototype,
+    "disenoEnviadoParaRevision",
+    async () => ({
+      event: "DISENO_ENVIADO_PARA_REVISION",
+      cliente: "enviado",
+    }),
+  );
+
+  const corregido = await servicio().crearDiseno(
+    {
+      idPedido: 100,
+      tipoObjetivo: "ESTAMPADO",
+      idDetalleEstampadoPedido: 601,
+      archivoUrl: "https://pixel.test/correccion.png",
+    },
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.equal(crear.mock.calls.length, 1);
+  assert.equal(corregido.idDiseno, 31);
+  assert.equal(corregido.idDetalleEstampadoPedido, 601);
+});
+
+const pedidoConOrigenPendiente = () => ({
+  ...pedidoBase,
+  detalles: [
+    {
+      idDetallePedido: 501,
+      requiereDiseno: true,
+      origenDiseno: "PENDIENTE_DEFINIR",
+      esDisenoGeneral: false,
+      estampados: [
+        {
+          idDetalleEstampadoPedido: 601,
+          origenDiseno: "PENDIENTE_DEFINIR",
+          grupoDisenoCompartido: null,
+        },
+        {
+          idDetalleEstampadoPedido: 602,
+          origenDiseno: "PENDIENTE_DEFINIR",
+          grupoDisenoCompartido: "LOGO-1",
+        },
+      ],
+    },
+    {
+      idDetallePedido: 502,
+      requiereDiseno: true,
+      origenDiseno: "PENDIENTE_DEFINIR",
+      esDisenoGeneral: false,
+      estampados: [
+        {
+          idDetalleEstampadoPedido: 603,
+          origenDiseno: "PENDIENTE_DEFINIR",
+          grupoDisenoCompartido: "LOGO-1",
+        },
+      ],
+    },
+    {
+      idDetallePedido: 503,
+      requiereDiseno: true,
+      origenDiseno: "PENDIENTE_DEFINIR",
+      esDisenoGeneral: true,
+      estampados: [
+        {
+          idDetalleEstampadoPedido: 604,
+          origenDiseno: "PENDIENTE_DEFINIR",
+          grupoDisenoCompartido: null,
+        },
+      ],
+    },
+    {
+      idDetallePedido: 504,
+      requiereDiseno: true,
+      origenDiseno: "PENDIENTE_DEFINIR",
+      esDisenoGeneral: false,
+      estampados: [],
+    },
+  ],
+  disenos: [],
+});
+
+const actualizarOrigenFixture = (
+  pedido: ReturnType<typeof pedidoConOrigenPendiente>,
+  idRequerimiento: string,
+  origen: "CLIENTE" | "PIXEL",
+) => {
+  const copia = structuredClone(pedido);
+  if (idRequerimiento === "STAMP-601") {
+    copia.detalles[0]!.estampados[0]!.origenDiseno = origen;
+  } else if (idRequerimiento === "GROUP-LOGO-1") {
+    copia.detalles[0]!.estampados[1]!.origenDiseno = origen;
+    copia.detalles[1]!.estampados[0]!.origenDiseno = origen;
+  } else if (idRequerimiento === "PRODUCT-503") {
+    copia.detalles[2]!.origenDiseno = origen;
+    copia.detalles[2]!.estampados[0]!.origenDiseno = origen;
+  } else {
+    copia.detalles[3]!.origenDiseno = origen;
+  }
+  return copia;
+};
+
+for (const caso of [
+  { id: "STAMP-601", origen: "PIXEL" as const },
+  { id: "GROUP-LOGO-1", origen: "CLIENTE" as const },
+  { id: "PRODUCT-503", origen: "PIXEL" as const },
+  { id: "LEGACY-504", origen: "CLIENTE" as const },
+]) {
+  test(`DisenoService define origen para ${caso.id} sin crear diseno`, async (t) => {
+    const inicial = pedidoConOrigenPendiente();
+    const actualizado = actualizarOrigenFixture(
+      inicial,
+      caso.id,
+      caso.origen,
+    );
+    let lecturas = 0;
+    t.mock.method(
+      DisenoRepository.prototype,
+      "buscarPedidoPorId",
+      async () => (lecturas++ === 0 ? inicial : actualizado),
+    );
+    const actualizarDetalle = t.mock.method(
+      DisenoRepository.prototype,
+      "actualizarOrigenDetallePedido",
+      async (idDetallePedido: number) => ({ idDetallePedido }),
+    );
+    const actualizarEstampados = t.mock.method(
+      DisenoRepository.prototype,
+      "actualizarOrigenEstampadosPedido",
+      async (ids: number[]) => ({ count: ids.length }),
+    );
+    const crear = t.mock.method(
+      DisenoRepository.prototype,
+      "crearDiseno",
+      async () => disenoBase,
+    );
+
+    const resultado = await servicio().definirOrigenRequerimiento(
+      100,
+      caso.id,
+      { origenDiseno: caso.origen },
+      { idUsuario: 99, rol: "Admin" },
+    );
+
+    assert.equal(resultado.origenDiseno, caso.origen);
+    assert.equal(
+      resultado.estadoCoberturaDiseno,
+      caso.origen === "CLIENTE"
+        ? "PENDIENTE_RECEPCION_CLIENTE"
+        : "PENDIENTE_CREACION_PIXEL",
+    );
+    assert.equal(crear.mock.calls.length, 0);
+    assert.equal(
+      actualizarDetalle.mock.calls.length +
+        actualizarEstampados.mock.calls.length >
+        0,
+      true,
+    );
+  });
+}
+
+test("DisenoService no redefine un origen ya resuelto", async (t) => {
+  const pedido = pedidoConOrigenPendiente();
+  pedido.detalles[0]!.estampados[0]!.origenDiseno = "PIXEL";
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedido,
+  );
+  const actualizar = t.mock.method(
+    DisenoRepository.prototype,
+    "actualizarOrigenEstampadosPedido",
+    async () => ({ count: 1 }),
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().definirOrigenRequerimiento(
+        100,
+        "STAMP-601",
+        { origenDiseno: "CLIENTE" },
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /ya fue definido/,
+  );
+  assert.equal(actualizar.mock.calls.length, 0);
+});
+
+const agregarDisenoRecibidoFixture = (
+  pedido: ReturnType<typeof pedidoConOrigenPendiente>,
+  idRequerimiento: string,
+) => {
+  const copia = structuredClone(pedido);
+  const base = {
+    idDiseno: 90,
+    idPedido: 100,
+    idDetallePedido: null as number | null,
+    idDetalleEstampadoPedido: null as number | null,
+    grupoDisenoCompartido: null as string | null,
+    esDisenoGeneral: false,
+    estado: "ENVIADO",
+    origenDiseno: "CLIENTE",
+    archivoUrl: "https://pixel.test/cliente.png",
+  };
+  if (idRequerimiento === "STAMP-601") {
+    base.idDetallePedido = 501;
+    base.idDetalleEstampadoPedido = 601;
+  } else if (idRequerimiento === "GROUP-LOGO-1") {
+    base.grupoDisenoCompartido = "LOGO-1";
+  } else if (idRequerimiento === "PRODUCT-503") {
+    base.idDetallePedido = 503;
+    base.esDisenoGeneral = true;
+  } else {
+    base.idDetallePedido = 504;
+  }
+  (copia as any).disenos = [base];
+  return copia as any;
+};
+
+for (const idRequerimiento of [
+  "STAMP-601",
+  "GROUP-LOGO-1",
+  "PRODUCT-503",
+  "LEGACY-504",
+]) {
+  test(`DisenoService registra archivo CLIENTE para ${idRequerimiento}`, async (t) => {
+    const pendiente = actualizarOrigenFixture(
+      pedidoConOrigenPendiente(),
+      idRequerimiento,
+      "CLIENTE",
+    );
+    const actualizado = agregarDisenoRecibidoFixture(
+      pendiente,
+      idRequerimiento,
+    );
+    let lecturas = 0;
+    t.mock.method(
+      DisenoRepository.prototype,
+      "buscarPedidoPorId",
+      async () => (lecturas++ === 0 ? pendiente : actualizado),
+    );
+    const crear = t.mock.method(
+      DisenoRepository.prototype,
+      "crearDisenoOperacion",
+      async (data: any) => ({ idDiseno: 90, ...data }),
+    );
+
+    const resultado =
+      await servicio().registrarDisenoClientePorRequerimiento(
+        100,
+        idRequerimiento,
+        {
+          archivoDisenoInicialUrl:
+            "https://pixel.test/cliente.png",
+          medioRecepcion: "WHATSAPP",
+          observaciones: "Recibido por WhatsApp.",
+        },
+        { idUsuario: 99, rol: "Admin" },
+      );
+
+    const data = crear.mock.calls[0]?.arguments[0] as any;
+    assert.equal(data.estado, "ENVIADO");
+    assert.equal(data.origenDiseno, "CLIENTE");
+    assert.equal(data.idDisenador, null);
+    assert.equal(data.medioRecepcion, "WHATSAPP");
+    assert.equal(
+      resultado.estadoCoberturaDiseno,
+      "PENDIENTE_REVISION_CLIENTE",
+    );
+  });
+}
+
+test("DisenoService rechaza archivo si el requerimiento no es CLIENTE", async (t) => {
+  const pedido = actualizarOrigenFixture(
+    pedidoConOrigenPendiente(),
+    "STAMP-601",
+    "PIXEL",
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedido,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDisenoOperacion",
+    async () => ({ idDiseno: 90 }),
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().registrarDisenoClientePorRequerimiento(
+        100,
+        "STAMP-601",
+        {
+          archivoDisenoInicialUrl:
+            "https://pixel.test/cliente.png",
+        },
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /no esta configurado con diseno del cliente/,
+  );
+  assert.equal(crear.mock.calls.length, 0);
+});
+
+test("DisenoService no duplica archivo activo del mismo requerimiento", async (t) => {
+  const pendiente = actualizarOrigenFixture(
+    pedidoConOrigenPendiente(),
+    "STAMP-601",
+    "CLIENTE",
+  );
+  const pedido = agregarDisenoRecibidoFixture(
+    pendiente,
+    "STAMP-601",
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedido,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDisenoOperacion",
+    async () => ({ idDiseno: 91 }),
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().registrarDisenoClientePorRequerimiento(
+        100,
+        "STAMP-601",
+        {
+          archivoDisenoInicialUrl:
+            "https://pixel.test/duplicado.png",
+        },
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /ya tiene un diseno activo/,
   );
   assert.equal(crear.mock.calls.length, 0);
 });

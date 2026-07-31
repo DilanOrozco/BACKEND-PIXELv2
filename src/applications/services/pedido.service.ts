@@ -22,7 +22,7 @@ import {
 } from "../../utils/pagination.util";
 import {
   agregarCoberturaDisenoADetalles,
-  resumirCoberturaDisenos,
+  resolverRequerimientosDiseno,
 } from "../../utils/design-coverage.util";
 import {
   formatearFechaCalendario,
@@ -326,11 +326,16 @@ export class PedidoService {
           ),
         )
       : [];
+    const resolucionDisenos = resolverRequerimientosDiseno(
+      Number(pedido.idPedido),
+      detallesBase,
+      Array.isArray(pedido.disenos) ? pedido.disenos : [],
+    );
     const detalles = agregarCoberturaDisenoADetalles(
       detallesBase,
       Array.isArray(pedido.disenos) ? pedido.disenos : [],
     );
-    const resumenDisenos = resumirCoberturaDisenos(detalles);
+    const resumenDisenos = resolucionDisenos.resumen;
     const accionesPedido = obtenerAccionesFinancierasPedido(
       pedido,
       resumenDisenos.totalDisenosPendientes,
@@ -376,6 +381,7 @@ export class PedidoService {
     return {
       ...pedido,
       detalles,
+      requerimientosDiseno: resolucionDisenos.requerimientos,
       abonos,
       subtotalBruto,
       descuentoTotal,
@@ -547,10 +553,9 @@ export class PedidoService {
     const todosDisenosAprobados = (formateado.detalles ?? []).every(
       (detalle: any) => detalle.cubiertoPorDiseno,
     );
-    const requiereCreacionDisenoPixel = (formateado.detalles ?? []).some(
-      (detalle: any) =>
-        detalle.estadoCoberturaDiseno === "PENDIENTE_CREACION_PIXEL",
-    );
+    const requiereCreacionDisenoPixel = (
+      formateado.requerimientosDiseno ?? []
+    ).some((requerimiento: any) => requerimiento.puedeCrearDiseno);
     const comprobantesPendientes = (pedido.abonos ?? []).some(
       (abono: any) =>
         abono.estado === "PENDIENTE" &&
@@ -654,6 +659,8 @@ export class PedidoService {
       },
       cliente: pedido.cliente,
       detalles: formateado.detalles,
+      requerimientosDiseno: formateado.requerimientosDiseno ?? [],
+      estadoCoberturaDiseno: formateado.estadoCoberturaDiseno,
       resumenEconomico: {
         total: aNumero(pedido.total),
         totalConfirmado: aNumero(pedido.totalPagado),

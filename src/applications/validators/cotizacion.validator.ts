@@ -280,27 +280,46 @@ export const validarCrearCotizacionPresencial = (data: any) => {
       return "No se debe enviar idDetalleCotizacion al crear una cotizacion.";
     }
 
-    if (!esEnteroPositivo(detalle.idTecnica)) {
-      return "La tecnica es obligatoria en cada detalle.";
+    const tipoProducto = String(
+      detalle.tipoProducto ??
+        detalle.tipo ??
+        (detalle.idProducto ? "CATALOGO" : "OTRO"),
+    ).toUpperCase();
+    if (!["CATALOGO", "OTRO"].includes(tipoProducto)) {
+      return "El tipo de producto debe ser CATALOGO u OTRO.";
     }
-
+    if (tipoProducto === "CATALOGO" && !esEnteroPositivo(detalle.idProducto)) {
+      return "El producto de catalogo debe ser valido.";
+    }
     if (
-      detalle.idProducto !== undefined &&
-      !esEnteroPositivo(detalle.idProducto)
+      tipoProducto === "OTRO" &&
+      !esTextoNoVacio(
+        detalle.nombrePersonalizado ??
+          detalle.nombreProducto ??
+          detalle.nombre ??
+          detalle.descripcion,
+      )
     ) {
-      return "El producto debe ser valido.";
+      return "Un producto OTRO debe incluir un nombre personalizado.";
     }
-
-    if (!esTextoNoVacio(detalle.descripcion)) {
-      return "La descripcion del detalle no puede estar vacia.";
+    const estampados = Array.isArray(detalle.estampados)
+      ? detalle.estampados
+      : detalle.idTecnica
+        ? [detalle]
+        : [];
+    if (estampados.length === 0) {
+      return "Cada producto debe incluir al menos un servicio o estampado.";
+    }
+    if (
+      estampados.some(
+        (estampado: any) => !esEnteroPositivo(estampado.idTecnica),
+      )
+    ) {
+      return "La tecnica es obligatoria en cada detalle de estampado.";
     }
 
     if (!esEnteroPositivo(detalle.cantidad)) {
       return "La cantidad debe ser mayor a 0.";
-    }
-
-    if (detalle.idProducto !== undefined && !esEnteroPositivo(detalle.idProducto)) {
-      return "El producto debe ser valido.";
     }
 
     if (!esMontoValido(detalle.costoDiseno ?? 0)) {

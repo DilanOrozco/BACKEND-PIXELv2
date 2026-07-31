@@ -78,7 +78,7 @@ export class PublicController {
       );
 
       return res.status(201).json({
-        message: "Cotizacion creada correctamente.",
+        message: "Solicitud de cotizacion recibida correctamente.",
         data: cotizacion,
       });
     } catch (error: unknown) {

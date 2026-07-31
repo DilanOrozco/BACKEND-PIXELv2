@@ -7,7 +7,20 @@ const MEDIOS_RESPUESTA_CLIENTE = [
   "PRESENCIAL",
   "OTRO",
 ] as const;
-const ORIGENES_DISENO = ["DISENADOR", "CLIENTE", "ADMIN", "OTRO"] as const;
+const ORIGENES_DISENO = [
+  "DISENADOR",
+  "PIXEL",
+  "CLIENTE",
+  "ADMIN",
+  "OTRO",
+] as const;
+const TIPOS_OBJETIVO = [
+  "ESTAMPADO",
+  "PRODUCTO_GENERAL",
+  "PEDIDO_GENERAL",
+  "GRUPO_COMPARTIDO",
+  "LEGACY_PRODUCTO",
+] as const;
 const MEDIOS_RECEPCION = ["WHATSAPP", "CORREO", "PRESENCIAL", "OTRO"] as const;
 
 type DatosEntrada = Record<string, unknown> | undefined;
@@ -129,7 +142,11 @@ export const validarCrearDiseno = (
 ) => {
   const errorCampos = validarCamposPermitidos(data, [
     "idPedido",
+    "tipoObjetivo",
     "idDetallePedido",
+    "idEstampadoPedido",
+    "idDetalleEstampadoPedido",
+    "grupoDisenoCompartido",
     "esDisenoGeneral",
     "idDisenador",
     "archivoUrl",
@@ -158,17 +175,93 @@ export const validarCrearDiseno = (
   }
 
   if (
+    valor(data, "idEstampadoPedido") !== undefined &&
+    valor(data, "idEstampadoPedido") !== null &&
+    !esEnteroPositivo(valor(data, "idEstampadoPedido"))
+  ) {
+    return "El estampado del pedido debe ser valido.";
+  }
+
+  if (
+    valor(data, "idDetalleEstampadoPedido") !== undefined &&
+    valor(data, "idDetalleEstampadoPedido") !== null &&
+    !esEnteroPositivo(valor(data, "idDetalleEstampadoPedido"))
+  ) {
+    return "El detalle de estampado del pedido debe ser valido.";
+  }
+
+  if (
+    valor(data, "idEstampadoPedido") !== undefined &&
+    valor(data, "idDetalleEstampadoPedido") !== undefined &&
+    Number(valor(data, "idEstampadoPedido")) !==
+      Number(valor(data, "idDetalleEstampadoPedido"))
+  ) {
+    return "idEstampadoPedido e idDetalleEstampadoPedido deben identificar el mismo estampado.";
+  }
+
+  if (!esTextoOpcional(valor(data, "grupoDisenoCompartido"), 100)) {
+    return "El grupo de diseno compartido debe tener maximo 100 caracteres.";
+  }
+
+  if (
     valor(data, "esDisenoGeneral") !== undefined &&
     typeof valor(data, "esDisenoGeneral") !== "boolean"
   ) {
     return "esDisenoGeneral debe ser booleano.";
   }
 
+  const tipoObjetivo = normalizarMayuscula(valor(data, "tipoObjetivo"));
   if (
-    esEnteroPositivo(valor(data, "idDetallePedido")) &&
-    valor(data, "esDisenoGeneral") === true
+    valor(data, "tipoObjetivo") !== undefined &&
+    !TIPOS_OBJETIVO.includes(
+      tipoObjetivo as (typeof TIPOS_OBJETIVO)[number],
+    )
   ) {
-    return "No puedes asociar un diseno a un detalle y marcarlo como general al mismo tiempo.";
+    return "El tipo de objetivo del diseno no es valido.";
+  }
+
+  if (tipoObjetivo) {
+    const tieneDetalle = esEnteroPositivo(valor(data, "idDetallePedido"));
+    const tieneEstampado = esEnteroPositivo(
+      valor(data, "idDetalleEstampadoPedido") ??
+        valor(data, "idEstampadoPedido"),
+    );
+    const tieneGrupo = textoNoVacio(valor(data, "grupoDisenoCompartido"));
+    const esGeneral = valor(data, "esDisenoGeneral") === true;
+
+    if (tipoObjetivo === "ESTAMPADO" && !tieneEstampado) {
+      return "Para un diseno de estampado debes indicar idDetalleEstampadoPedido.";
+    }
+    if (
+      tipoObjetivo === "ESTAMPADO" &&
+      (tieneGrupo || esGeneral)
+    ) {
+      return "Un diseno de estampado no puede usar otro objetivo simultaneamente.";
+    }
+    if (
+      tipoObjetivo === "GRUPO_COMPARTIDO" &&
+      (!tieneGrupo || tieneDetalle || tieneEstampado || esGeneral)
+    ) {
+      return "Para un diseno compartido debes indicar solamente grupoDisenoCompartido.";
+    }
+    if (
+      tipoObjetivo === "PRODUCTO_GENERAL" &&
+      (!tieneDetalle || tieneEstampado || tieneGrupo || !esGeneral)
+    ) {
+      return "Para un diseno general de producto debes indicar idDetallePedido y esDisenoGeneral=true.";
+    }
+    if (
+      tipoObjetivo === "PEDIDO_GENERAL" &&
+      (tieneDetalle || tieneEstampado || tieneGrupo || !esGeneral)
+    ) {
+      return "Para un diseno general del pedido solo debes usar esDisenoGeneral=true.";
+    }
+    if (
+      tipoObjetivo === "LEGACY_PRODUCTO" &&
+      (!tieneDetalle || tieneEstampado || tieneGrupo || esGeneral)
+    ) {
+      return "Para un diseno legacy debes indicar solamente idDetallePedido.";
+    }
   }
 
   if (

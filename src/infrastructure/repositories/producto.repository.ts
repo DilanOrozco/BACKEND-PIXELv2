@@ -11,7 +11,8 @@ export interface ProductoData {
   nombre: string;
   idCategoriaProducto: number;
   descripcion?: string | null;
-  precioBase: Prisma.Decimal | number | string;
+  precioBase?: Prisma.Decimal | number | string | null;
+  requiereDiseno?: boolean;
   estado?: boolean;
 }
 

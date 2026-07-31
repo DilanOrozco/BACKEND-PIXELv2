@@ -131,6 +131,68 @@ export class DisenoController {
     }
   }
 
+  async obtenerRequerimientosPedido(req: AuthRequest, res: Response) {
+    try {
+      const resultado = await disenoService.obtenerRequerimientosPedido(
+        Number(req.params.idPedido),
+        req.user,
+      );
+
+      return res.status(200).json({
+        data: resultado,
+      });
+    } catch (error: unknown) {
+      return res.status(404).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
+  async definirOrigenRequerimiento(req: AuthRequest, res: Response) {
+    try {
+      const requerimiento =
+        await disenoService.definirOrigenRequerimiento(
+          Number(req.params.idPedido),
+          String(req.params.idRequerimientoDiseno),
+          req.body,
+          req.user,
+        );
+
+      return res.status(200).json({
+        message: "Origen del requerimiento actualizado correctamente.",
+        data: requerimiento,
+      });
+    } catch (error: unknown) {
+      return res.status(400).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
+  async registrarDisenoClientePorRequerimiento(
+    req: AuthRequest,
+    res: Response,
+  ) {
+    try {
+      const requerimiento =
+        await disenoService.registrarDisenoClientePorRequerimiento(
+          Number(req.params.idPedido),
+          String(req.params.idRequerimientoDiseno),
+          req.body,
+          req.user,
+        );
+
+      return res.status(200).json({
+        message: "Diseno recibido del cliente registrado correctamente.",
+        data: requerimiento,
+      });
+    } catch (error: unknown) {
+      return res.status(400).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
   async registrarUrlDisenoCliente(req: AuthRequest, res: Response) {
     try {
       const diseno = await disenoService.registrarUrlDisenoCliente(

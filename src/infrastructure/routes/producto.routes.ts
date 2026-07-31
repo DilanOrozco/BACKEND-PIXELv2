@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { ProductoController } from "../controllers/producto.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
-import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import {
+  autorizarAlgunPermiso,
+  autorizarPermiso,
+} from "../middlewares/permisos.middleware";
 
 const router = Router();
 const productoController = new ProductoController();
@@ -22,13 +25,19 @@ router.post(
 
 router.get(
   "/:id/rangos",
-  autorizarPermiso("productos.precios"),
+  autorizarAlgunPermiso(
+    "productos.descuentos.gestionar",
+    "productos.precios",
+  ),
   productoController.listarRangos,
 );
 
 router.patch(
   "/:id/rangos",
-  autorizarPermiso("productos.precios"),
+  autorizarAlgunPermiso(
+    "productos.descuentos.gestionar",
+    "productos.precios",
+  ),
   productoController.reemplazarRangos,
 );
 

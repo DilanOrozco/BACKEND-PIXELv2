@@ -38,6 +38,42 @@ export const autorizarPermiso = (codigoPermiso: CodigoPermiso) => {
   };
 };
 
+export const autorizarAlgunPermiso = (
+  ...codigosPermiso: CodigoPermiso[]
+) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          message: "Usuario no autenticado.",
+        });
+      }
+
+      if (req.user.rol === "Admin") {
+        return next();
+      }
+
+      for (const codigoPermiso of codigosPermiso) {
+        const tienePermiso = await permisoService.rolTienePermiso(
+          Number(req.user.idRol),
+          codigoPermiso,
+        );
+        if (tienePermiso) {
+          return next();
+        }
+      }
+
+      return res.status(403).json({
+        message: "No tienes permisos para realizar esta accion.",
+      });
+    } catch {
+      return res.status(403).json({
+        message: "No se pudo validar el permiso del usuario.",
+      });
+    }
+  };
+};
+
 export const autorizarActualizacionUsuario = () => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {

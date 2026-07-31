@@ -1,7 +1,10 @@
 import { prisma, runPrismaTransaction } from "../../config/prisma";
 import type { EstadoCotizacion } from "../../../generated/prisma/enums";
 import type { Prisma } from "../../../generated/prisma/client";
-import { cotizacionSelect } from "../../utils/selects/cotizacion.select";
+import {
+  cotizacionListadoSelect,
+  cotizacionSelect,
+} from "../../utils/selects/cotizacion.select";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
 import { looksNumeric, type ParsedPagination } from "../../utils/pagination.util";
 
@@ -9,6 +12,15 @@ const estadosCotizacion = [
   "PENDIENTE",
   "APROBADA",
   "ANULADA",
+  "BORRADOR",
+  "SOLICITUD_RECIBIDA",
+  "EN_REVISION",
+  "PENDIENTE_APROBACION_CLIENTE",
+  "AJUSTE_SOLICITADO",
+  "ACEPTADA",
+  "RECHAZADA_CLIENTE",
+  "VENCIDA",
+  "CONVERTIDA_EN_PEDIDO",
 ];
 
 const buildCotizacionWhere = (
@@ -64,6 +76,31 @@ const buildCotizacionOrderBy = (pagination: ParsedPagination) => ({
 });
 
 export class CotizacionRepository {
+  private async marcarPropuestasVencidas() {
+    const ahora = new Date();
+    await prisma.cotizacion.updateMany({
+      where: {
+        estado: "PENDIENTE_APROBACION_CLIENTE",
+        versiones: {
+          some: {
+            esVigente: true,
+            estado: "ENVIADA",
+            validaHasta: { lte: ahora },
+          },
+        },
+      },
+      data: { estado: "VENCIDA" },
+    });
+    await prisma.cotizacionVersion.updateMany({
+      where: {
+        esVigente: true,
+        estado: "ENVIADA",
+        validaHasta: { lte: ahora },
+      },
+      data: { estado: "VENCIDA", esVigente: false },
+    });
+  }
+
   // Crea la cotizacion y sus detalles en una sola transaccion para evitar
   // cabeceras sin detalle si algo falla a mitad del proceso.
   async crearCotizacionConDetalles(data: any) {
@@ -74,7 +111,15 @@ export class CotizacionRepository {
         data: {
           ...cotizacionData,
           detalles: {
-            create: detalles,
+            create: detalles.map((detalle: any) => {
+              const { estampados = [], ...detalleData } = detalle;
+              return {
+                ...detalleData,
+                ...(estampados.length > 0
+                  ? { estampados: { create: estampados } }
+                  : {}),
+              };
+            }),
           },
         },
         select: { idCotizacion: true },
@@ -91,6 +136,7 @@ export class CotizacionRepository {
   }
 
   async buscarPorId(idCotizacion: number) {
+    await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findUnique({
       where: { idCotizacion },
       select: cotizacionSelect,
@@ -98,8 +144,9 @@ export class CotizacionRepository {
   }
 
   async listarCotizaciones() {
+    await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findMany({
-      select: cotizacionSelect,
+      select: cotizacionListadoSelect,
       orderBy: {
         idCotizacion: "desc",
       },
@@ -107,25 +154,61 @@ export class CotizacionRepository {
   }
 
   async listarPorCliente(idCliente: number) {
+    await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findMany({
       where: { idCliente },
-      select: cotizacionSelect,
+      select: cotizacionListadoSelect,
       orderBy: {
         idCotizacion: "desc",
       },
     });
   }
 
+  async reemplazarSolicitud(
+    idCotizacion: number,
+    cotizacionData: any,
+    detalles: any[],
+  ) {
+    await runPrismaTransaction(async (tx) => {
+      await tx.detalleCotizacion.deleteMany({ where: { idCotizacion } });
+
+      for (const detalle of detalles) {
+        const { estampados = [], ...detalleData } = detalle;
+        await tx.detalleCotizacion.create({
+          data: {
+            ...detalleData,
+            idCotizacion,
+            ...(estampados.length > 0
+              ? { estampados: { create: estampados } }
+              : {}),
+          },
+        });
+      }
+
+      await tx.cotizacionVersion.updateMany({
+        where: { idCotizacion, esVigente: true },
+        data: { esVigente: false, estado: "INVALIDADA" },
+      });
+      await tx.cotizacion.update({
+        where: { idCotizacion },
+        data: cotizacionData,
+      });
+    });
+
+    return await this.buscarPorId(idCotizacion);
+  }
+
   async listarCotizacionesPaginado(
     filtros: { idCliente?: number },
     pagination: ParsedPagination,
   ) {
+    await this.marcarPropuestasVencidas();
     const where = buildCotizacionWhere(filtros, pagination.search);
     const [total, data] = await Promise.all([
       prisma.cotizacion.count({ where }),
       prisma.cotizacion.findMany({
         where,
-        select: cotizacionSelect,
+        select: cotizacionListadoSelect,
         orderBy: buildCotizacionOrderBy(pagination),
         skip: pagination.skip,
         take: pagination.limit,
@@ -167,7 +250,7 @@ export class CotizacionRepository {
           },
         ],
       } as any,
-      select: cotizacionSelect,
+      select: cotizacionListadoSelect,
       orderBy: {
         idCotizacion: "desc",
       },

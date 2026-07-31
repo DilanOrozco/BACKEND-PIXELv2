@@ -2,7 +2,10 @@ import { Router } from "express";
 import { CotizacionController } from "../controllers/cotizacion.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarRoles } from "../middlewares/roles.middleware";
-import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import {
+  autorizarAlgunPermiso,
+  autorizarPermiso,
+} from "../middlewares/permisos.middleware";
 
 const router = Router();
 const cotizacionController = new CotizacionController();
@@ -36,6 +39,13 @@ router.patch(
   cotizacionController.aprobarCotizacion,
 );
 
+router.post(
+  "/:id/responder",
+  autorizarRoles("Cliente"),
+  autorizarPermiso("cotizaciones.cliente.responder"),
+  cotizacionController.responderPropuestaCliente,
+);
+
 // Empleado: Admin y Secretaria gestionan cotizaciones presenciales y precios.
 router.post(
   "/",
@@ -47,6 +57,24 @@ router.patch(
   "/:id/cotizar",
   autorizarPermiso("cotizaciones.cotizar"),
   cotizacionController.cotizarCotizacion,
+);
+
+router.post(
+  "/:id/propuestas",
+  autorizarPermiso("cotizaciones.propuesta.enviar"),
+  cotizacionController.enviarPropuesta,
+);
+
+router.post(
+  "/:id/respuesta-cliente",
+  autorizarPermiso("cotizaciones.respuesta_cliente.registrar"),
+  cotizacionController.registrarRespuestaCliente,
+);
+
+router.get(
+  "/:id/versiones",
+  autorizarPermiso("cotizaciones.versiones.ver"),
+  cotizacionController.listarVersiones,
 );
 
 router.patch(
@@ -70,19 +98,19 @@ router.delete(
 // Consulta compartida: el service restringe al cliente a sus propios registros.
 router.get(
   "/",
-  autorizarPermiso("cotizaciones.ver"),
+  autorizarAlgunPermiso("cotizaciones.ver", "cotizaciones.cliente.ver"),
   cotizacionController.listarCotizaciones,
 );
 
 router.get(
   "/buscar",
-  autorizarPermiso("cotizaciones.ver"),
+  autorizarAlgunPermiso("cotizaciones.ver", "cotizaciones.cliente.ver"),
   cotizacionController.buscarParcial,
 );
 
 router.get(
   "/:id",
-  autorizarPermiso("cotizaciones.ver"),
+  autorizarAlgunPermiso("cotizaciones.ver", "cotizaciones.cliente.ver"),
   cotizacionController.buscarPorId,
 );
 

@@ -3,6 +3,13 @@ import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.rep
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { ProductoService } from "./producto.service";
 import { ClienteAccessService } from "./cliente-access.service";
+import { CotizacionCalculoInternoService } from "./cotizacion-calculo-interno.service";
+import { CotizacionWorkflowService } from "./cotizacion-workflow.service";
+import {
+  detallesPersistenciaSolicitud,
+} from "./public-cotizacion.service";
+import { serializarCotizacionCliente } from "../../utils/cotizacion-serializer.util";
+import { validarCalcularCotizacionPublica } from "../validators/public-cotizacion.validator";
 import { PedidoService } from "./pedido.service";
 import { NotificationService } from "./notification.service";
 import {
@@ -24,6 +31,8 @@ const pedidoService = new PedidoService();
 const notificationService = new NotificationService();
 const productoService = new ProductoService();
 const clienteAccessService = new ClienteAccessService();
+const calculoInternoService = new CotizacionCalculoInternoService();
+const workflowService = new CotizacionWorkflowService();
 
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
@@ -104,6 +113,26 @@ export class CotizacionService {
       descuentoTotal,
       subtotalConDescuento,
       subtotalFinal: subtotalConDescuento,
+      rangoDescuentoProducto: detalle.rangoDescuentoAplicado
+        ? {
+            idRango: detalle.rangoDescuentoAplicado.idRango,
+            cantidadMinima:
+              detalle.cantidadMinimaDescuentoSnapshot ??
+              detalle.rangoDescuentoAplicado.cantidadMin,
+            porcentaje: detalle.descuentoPorcentaje ?? 0,
+          }
+        : detalle.cantidadMinimaDescuentoSnapshot
+          ? {
+              idRango: detalle.idRangoDescuentoAplicado,
+              cantidadMinima: detalle.cantidadMinimaDescuentoSnapshot,
+              porcentaje: detalle.descuentoPorcentaje ?? 0,
+            }
+          : null,
+      porcentajeDescuentoProducto: detalle.descuentoPorcentaje ?? 0,
+      montoDescuentoProducto: descuentoTotal,
+      subtotalServiciosBruto: detalle.subtotalBruto ?? subtotal,
+      subtotalServiciosConDescuento: subtotalConDescuento,
+      calculoCompleto: !detalle.requiereRevisionPrecio,
     };
   }
 
@@ -123,6 +152,27 @@ export class CotizacionService {
           0,
         )
       : 0;
+    const subtotalServiciosBrutoSugerido = Array.isArray(detalles)
+      ? detalles.reduce(
+          (total: number, detalle: any) =>
+            total + aNumero(detalle.subtotalServiciosBruto),
+          0,
+        )
+      : 0;
+    const montoDescuentoProductoSugerido = Array.isArray(detalles)
+      ? detalles.reduce(
+          (total: number, detalle: any) =>
+            total + aNumero(detalle.montoDescuentoProducto),
+          0,
+        )
+      : 0;
+    const subtotalServiciosConDescuentoSugerido = Array.isArray(detalles)
+      ? detalles.reduce(
+          (total: number, detalle: any) =>
+            total + aNumero(detalle.subtotalServiciosConDescuento),
+          0,
+        )
+      : 0;
     const subtotalBruto = cotizacion.subtotal ?? 0;
     const descuentoTotal = cotizacion.descuentoTotal ?? 0;
     const subtotalConDescuento = Math.max(
@@ -135,6 +185,76 @@ export class CotizacionService {
             detalle.producto?.nombre ?? detalle.descripcion ?? "Producto",
         )
       : [];
+    const versionVigente = Array.isArray(cotizacion.versiones)
+      ? cotizacion.versiones.find((version: any) => version.esVigente)
+      : null;
+    const snapshotAdministrativo =
+      versionVigente?.snapshotCompleto?.administrativo ?? null;
+    const itemsOficiales = new Map<number, any>(
+      (snapshotAdministrativo?.items ?? []).map((item: any) => [
+        Number(item.idDetalleCotizacion),
+        item,
+      ]),
+    );
+    const mensajesRevision: Record<string, string> = {
+      PRODUCTO_ESPECIAL: "El producto especial requiere revision.",
+      SERVICIOS_PENDIENTES: "Debes definir los servicios del producto.",
+      COSTO_DISENO_PENDIENTE: "Define el costo oficial del diseno.",
+      MEDIDAS_PENDIENTES: "Debes completar las medidas del estampado.",
+      TECNICA_PENDIENTE: "Debes seleccionar una tecnica.",
+      TECNICA_INVALIDA: "La tecnica seleccionada no esta disponible.",
+      TARIFA_NO_CONFIGURADA: "No existe una tarifa para estas medidas.",
+      TARIFA_GENERAL_NO_CONFIGURADA:
+        "No existe una tarifa general para esta tecnica.",
+      RANGO_DESCUENTO_PRODUCTO_PENDIENTE:
+        "El descuento por cantidad requiere revision.",
+    };
+    const codigosRevision: Record<string, string> = {
+      COSTO_DISENO_PENDIENTE: "DESIGN_COST_REQUIRED",
+      MEDIDAS_PENDIENTES: "MEASUREMENTS_PENDING",
+      TECNICA_PENDIENTE: "TECHNIQUE_PENDING",
+      TECNICA_INVALIDA: "TECHNIQUE_PENDING",
+      TARIFA_NO_CONFIGURADA: "TARIFF_NOT_FOUND",
+      TARIFA_GENERAL_NO_CONFIGURADA: "TARIFF_NOT_FOUND",
+    };
+    const motivosRevision = Array.isArray(detalles)
+      ? detalles.flatMap((detalle: any) => {
+          const advertencias = (detalle.estampados ?? []).flatMap(
+            (estampado: any) =>
+              (Array.isArray(estampado.motivosRevision)
+                ? estampado.motivosRevision
+                : []
+              ).map((motivo: string) => ({
+                code: codigosRevision[motivo] ?? motivo,
+                idDetalleCotizacion: detalle.idDetalleCotizacion,
+                idDetalleEstampadoCotizacion:
+                  estampado.idDetalleEstampadoCotizacion,
+                grupoDisenoCompartido:
+                  estampado.grupoDisenoCompartido ?? null,
+                message:
+                  mensajesRevision[motivo] ??
+                  "Este dato requiere revision administrativa.",
+              })),
+          );
+          const costoProductoDefinido = itemsOficiales.get(
+            Number(detalle.idDetalleCotizacion),
+          )?.costoProducto;
+          if (
+            (detalle.suministradoPor ?? "PIXEL") === "PIXEL" &&
+            costoProductoDefinido === undefined
+          ) {
+            advertencias.push({
+              code: "PRODUCT_COST_UNDEFINED",
+              idDetalleCotizacion: detalle.idDetalleCotizacion,
+              idDetalleEstampadoCotizacion: null,
+              grupoDisenoCompartido: null,
+              message:
+                "El costo del producto fisico no ha sido definido; puede quedar incluido en el precio final manual.",
+            });
+          }
+          return advertencias;
+        })
+      : [];
 
     return {
       ...cotizacion,
@@ -143,17 +263,97 @@ export class CotizacionService {
       subtotalConDescuento,
       subtotalFinal: subtotalConDescuento,
       costoDiseno,
+      subtotalServiciosBrutoSugerido,
+      montoDescuentoProductoSugerido,
+      subtotalServiciosConDescuentoSugerido,
+      costoDisenoSugerido: costoDiseno,
+      calculoCompleto: !cotizacion.requiereRevisionPrecio,
       cantidadItems: Array.isArray(detalles) ? detalles.length : 0,
       productosResumen:
         nombresProductos.length <= 2
           ? nombresProductos.join(", ")
           : `${nombresProductos.slice(0, 2).join(", ")} y ${nombresProductos.length - 2} mas`,
       detalles,
+      propuestaAdministrativa: {
+        precioSugeridoSistema:
+          cotizacion.precioSugeridoInterno ?? 0,
+        calculoCompleto: !cotizacion.requiereRevisionPrecio,
+        requiereRevisionPrecio: Boolean(
+          cotizacion.requiereRevisionPrecio,
+        ),
+        motivosRevision,
+        items: Array.isArray(detalles)
+          ? detalles.map((detalle: any) => {
+              const oficial = itemsOficiales.get(
+                Number(detalle.idDetalleCotizacion),
+              );
+              return {
+                idDetalleCotizacion: detalle.idDetalleCotizacion,
+                nombre:
+                  detalle.producto?.nombre ??
+                  detalle.nombrePersonalizado ??
+                  detalle.descripcion,
+                cantidad: detalle.cantidad,
+                suministradoPor: detalle.suministradoPor ?? "PIXEL",
+                subtotalServiciosBruto:
+                  detalle.subtotalServiciosBruto ?? 0,
+                rangoDescuentoAplicado:
+                  detalle.rangoDescuentoProducto ?? null,
+                porcentajeDescuentoProducto:
+                  detalle.porcentajeDescuentoProducto ?? 0,
+                montoDescuentoProducto:
+                  detalle.montoDescuentoProducto ?? 0,
+                subtotalServiciosNeto:
+                  oficial?.subtotalServiciosNeto ??
+                  detalle.subtotalServiciosConDescuento ??
+                  0,
+                costoProducto: oficial?.costoProducto ?? null,
+                otrosCostosItem: oficial?.otrosCostosItem ?? 0,
+                subtotalOficial:
+                  oficial?.subtotalOficialItem ??
+                  detalle.subtotalServiciosConDescuento ??
+                  0,
+              };
+            })
+          : [],
+        disenos: snapshotAdministrativo?.disenos ?? [],
+        gruposDisenoCompartido: [
+          ...new Set(
+            (detalles ?? []).flatMap((detalle: any) =>
+              (detalle.estampados ?? [])
+                .map((estampado: any) =>
+                  limpiarTextoOpcional(
+                    estampado.grupoDisenoCompartido,
+                  ),
+                )
+                .filter(Boolean),
+            ),
+          ),
+        ],
+        conceptosAdicionales:
+          snapshotAdministrativo?.conceptosAdicionales ?? [],
+        subtotalDesglose:
+          snapshotAdministrativo?.subtotalDesglose ?? null,
+        ajusteManual: snapshotAdministrativo?.ajusteManual ?? null,
+      },
     };
   }
 
   private formatearCotizaciones(cotizaciones: any[]) {
     return cotizaciones.map((cotizacion) => this.formatearCotizacion(cotizacion));
+  }
+
+  private presentarCotizacion(cotizacion: any, usuarioAuth: any) {
+    const formateada = this.formatearCotizacion(cotizacion);
+    return esCliente(usuarioAuth)
+      ? serializarCotizacionCliente(formateada)
+      : formateada;
+  }
+
+  private presentarCotizaciones(cotizaciones: any[], usuarioAuth: any) {
+    return cotizaciones.map((cotizacion) =>
+      this.presentarCotizacion(cotizacion, usuarioAuth),
+    );
   }
 
   private async asegurarClienteExiste(idCliente: number) {
@@ -318,150 +518,94 @@ export class CotizacionService {
   // Cliente: crea una solicitud sin precios. El idCliente y creadoPorId salen
   // del token, por lo que el body no puede suplantar a otro cliente.
   async crearSolicitudCliente(data: any, usuarioAuth: any) {
-    const error = validarSolicitudCliente(data);
+    const items = data.items ?? data.detalles;
+    const error = validarCalcularCotizacionPublica({ items });
+    if (error) throw new Error(error);
 
-    if (error) {
-      throw new Error(error);
-    }
-
-    const idCliente = idClienteAutenticado(usuarioAuth);
-    await this.asegurarClienteExiste(idCliente);
-    await this.asegurarTecnicasExisten(data.detalles);
-
-    const detalles = this.prepararDetallesSolicitud(data.detalles);
+    const cliente = await clienteAccessService.obtenerClienteDeUsuario(
+      Number(usuarioAuth.idUsuario),
+    );
+    const calculo = await calculoInternoService.calcular(
+      { items },
+    );
+    const detalles = detallesPersistenciaSolicitud(calculo);
 
     const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente,
+      idCliente: cliente.idCliente,
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
-      estado: ESTADO_PENDIENTE,
+      estado: "EN_REVISION",
       subtotal: 0,
       descuentoTotal: 0,
       costosAdicionales: 0,
       total: 0,
+      precioSugeridoInterno: calculo.precioSugeridoInterno,
+      requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+      advertenciasInternas: calculo.advertencias,
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
 
-    return this.formatearCotizacion(cotizacion);
+    await notificationService.solicitudCotizacionRecibida({
+      ...serializarCotizacionCliente(cotizacion),
+      cliente,
+    });
+
+    return serializarCotizacionCliente(cotizacion);
   }
 
   // Empleado: crea una cotizacion presencial. Si todos los detalles incluyen
   // producto, se valoran con el catalogo; solicitudes antiguas sin producto
   // conservan el flujo pendiente de cotizar.
   async crearCotizacionNormal(data: any, usuarioAuth: any) {
-    const error = validarCrearCotizacionPresencial(data);
-
-    if (error) {
-      throw new Error(error);
-    }
-
+    const items = (data.items ?? data.detalles ?? []).map((item: any) =>
+      item.idProducto ||
+      item.nombrePersonalizado ||
+      item.nombreProducto ||
+      item.nombre
+        ? item
+        : {
+            ...item,
+            tipoProducto: "OTRO",
+            nombrePersonalizado: item.descripcion,
+          },
+    );
+    const error = validarCrearCotizacionPresencial({
+      ...data,
+      detalles: items,
+    });
+    if (error) throw new Error(error);
     this.validarDatosClientePresencial(data);
-
-    await this.asegurarTecnicasExisten(data.detalles);
     const cliente = await this.resolverClientePresencial(data);
     this.validarTelefonoClientePresencial(cliente);
-    const detallesConProducto = data.detalles.filter(
-      (detalle: any) => detalle.idProducto !== undefined,
+    const validacionItems = validarCalcularCotizacionPublica({ items });
+    if (validacionItems) throw new Error(validacionItems);
+    const calculo = await calculoInternoService.calcular(
+      { items },
     );
-
-    if (
-      detallesConProducto.length > 0 &&
-      detallesConProducto.length !== data.detalles.length
-    ) {
-      throw new Error(
-        "Todos los detalles deben incluir idProducto para calcular la cotizacion automaticamente.",
-      );
-    }
-
-    const tieneProductos = detallesConProducto.length === data.detalles.length;
-    const costosAdicionales = Math.round(aNumero(data.costosAdicionales));
-
-    const calculo = tieneProductos
-      ? await productoService.calcularItems(
-          data.detalles.map((detalle: any) => ({
-            idProducto: Number(detalle.idProducto),
-            idTecnica: Number(detalle.idTecnica),
-            cantidad: Number(detalle.cantidad),
-            observaciones: limpiarTextoOpcional(detalle.observaciones),
-          })),
-        )
-      : null;
-
-    const detalles = calculo
-      ? calculo.items.map((item: any, index: number) => {
-          const detalleEntrada = data.detalles[index];
-          const costoDiseno = Math.round(aNumero(detalleEntrada.costoDiseno));
-
-          return {
-          idProducto: item.snapshot.idProducto,
-          idTecnica: Number(detalleEntrada.idTecnica),
-          descripcion: detalleEntrada.descripcion.trim(),
-          cantidad: item.snapshot.cantidad,
-          precioBase: item.snapshot.precioBase,
-          descuentoPorcentaje: item.snapshot.descuentoPorcentaje,
-          descuentoValorUnitario: item.snapshot.descuentoValorUnitario,
-          precioUnitario: item.snapshot.precioUnitario,
-          costoDiseno,
-          subtotal: item.snapshot.subtotal,
-          subtotalBruto: item.snapshot.subtotalBruto,
-          descuentoTotal: item.snapshot.descuentoTotal,
-          subtotalConDescuento: item.snapshot.subtotalConDescuento,
-          imagenReferencia: limpiarTextoOpcional(detalleEntrada.imagenReferencia),
-          requiereDiseno: detalleEntrada.requiereDiseno !== false,
-          origenDiseno: String(
-            detalleEntrada.origenDiseno ?? "PIXEL",
-          ).toUpperCase(),
-          archivoDisenoInicialUrl: limpiarTextoOpcional(
-            detalleEntrada.archivoDisenoInicialUrl,
-          ),
-          esDisenoGeneral: detalleEntrada.esDisenoGeneral === true,
-          medioRecepcionDiseno: limpiarTextoOpcional(
-            detalleEntrada.medioRecepcionDiseno,
-          ),
-          observaciones: limpiarTextoOpcional(detalleEntrada.observaciones),
-          };
-        })
-      : this.prepararDetallesSolicitud(data.detalles);
-
-    const subtotal = calculo ? calculo.subtotal : 0;
-    const descuentoTotal = calculo ? calculo.descuentoTotal : 0;
-    const costoDisenoTotal = calculo
-      ? detalles.reduce(
-          (total: number, detalle: any) => total + aNumero(detalle.costoDiseno),
-          0,
-        )
-      : 0;
-    const total = calculo
-      ? Math.round(calculo.total + costoDisenoTotal + costosAdicionales)
-      : 0;
-    const accesoCliente = calculo
-      ? await clienteAccessService.asegurarAccesoCliente(cliente)
-      : null;
+    const detalles = detallesPersistenciaSolicitud(calculo);
 
     const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
       idCliente: cliente.idCliente,
       creadoPorId: Number(usuarioAuth.idUsuario),
       tipoCotizacion: TIPO_NORMAL,
-      estado: ESTADO_PENDIENTE,
-      subtotal,
-      descuentoTotal,
-      costosAdicionales: calculo ? costosAdicionales : 0,
-      total,
+      estado: "EN_REVISION",
+      subtotal: 0,
+      descuentoTotal: 0,
+      costosAdicionales: 0,
+      total: 0,
+      precioSugeridoInterno: calculo.precioSugeridoInterno,
+      requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+      advertenciasInternas: calculo.advertencias,
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
 
     const cotizacionFormateada = this.formatearCotizacion(cotizacion);
-
-    if (calculo) {
-      await notificationService.cotizacionPresencialCreada({
-        ...cotizacionFormateada,
-        cliente,
-        detalles: cotizacionFormateada.detalles ?? detalles,
-        accesoCliente,
-      });
-    }
+    await notificationService.solicitudCotizacionRecibida({
+      ...serializarCotizacionCliente(cotizacion),
+      cliente,
+    });
 
     return cotizacionFormateada;
   }
@@ -483,7 +627,7 @@ export class CotizacionService {
       );
 
       return paginatedResponse(
-        this.formatearCotizaciones(resultado.data),
+        this.presentarCotizaciones(resultado.data, usuarioAuth),
         pagination,
         resultado.total,
       );
@@ -497,7 +641,7 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return { data: this.formatearCotizaciones(cotizaciones) };
+    return { data: this.presentarCotizaciones(cotizaciones, usuarioAuth) };
   }
 
   async buscarPorId(idCotizacion: number, usuarioAuth: any) {
@@ -513,7 +657,7 @@ export class CotizacionService {
       throw new Error("No tienes permisos para ver esta cotizacion.");
     }
 
-    return this.formatearCotizacion(cotizacion);
+    return this.presentarCotizacion(cotizacion, usuarioAuth);
   }
 
   async buscarParcial(termino: string, usuarioAuth: any) {
@@ -533,7 +677,7 @@ export class CotizacionService {
       throw new Error("No se encontraron resultados.");
     }
 
-    return this.formatearCotizaciones(cotizaciones);
+    return this.presentarCotizaciones(cotizaciones, usuarioAuth);
   }
 
   // Cliente: puede editar los detalles existentes mientras la solicitud siga
@@ -545,73 +689,68 @@ export class CotizacionService {
   ) {
     validarId(idCotizacion);
 
-    const error = validarSolicitudCliente(data, {
-      requiereDetalleExistente: true,
-    });
-
-    if (error) {
-      throw new Error(error);
-    }
-
-    const cotizacion = await this.buscarPorId(idCotizacion, usuarioAuth);
-
-    if (cotizacion.estado !== ESTADO_PENDIENTE) {
-      throw new Error("Solo se pueden editar cotizaciones en estado PENDIENTE.");
-    }
-
-    if (cotizacionTienePrecios(cotizacion)) {
-      throw new Error(
-        "No se puede editar una cotizacion que ya tiene precios asignados.",
-      );
-    }
-
-    if (cotizacion.detalles.length === 0) {
-      throw new Error("La cotizacion no tiene detalle para actualizar.");
-    }
-
-    const idsActuales = new Set(
-      cotizacion.detalles.map((detalle: any) =>
-        Number(detalle.idDetalleCotizacion),
-      ),
+    const items = data.items ?? data.detalles;
+    const error = validarCalcularCotizacionPublica({ items });
+    if (error) throw new Error(error);
+    const cotizacion = await cotizacionRepository.buscarPorId(idCotizacion);
+    if (!cotizacion) throw new Error("No se encontraron resultados.");
+    const cliente = await clienteAccessService.obtenerClienteDeUsuario(
+      Number(usuarioAuth.idUsuario),
     );
-    const idsRecibidos = new Set(
-      data.detalles.map((detalle: any) =>
-        Number(detalle.idDetalleCotizacion),
-      ),
-    );
-
+    if (cotizacion.idCliente !== cliente.idCliente) {
+      throw new Error("No tienes permisos para editar esta cotizacion.");
+    }
     if (
-      idsActuales.size !== idsRecibidos.size ||
-      [...idsActuales].some((idDetalle) => !idsRecibidos.has(idDetalle))
+      !["PENDIENTE", "EN_REVISION", "AJUSTE_SOLICITADO", "VENCIDA"].includes(
+        cotizacion.estado,
+      )
     ) {
       throw new Error(
-        "Solo puedes modificar los detalles existentes de esta cotizacion.",
+        "La cotizacion no se puede editar en su estado actual.",
       );
     }
 
-    await this.asegurarTecnicasExisten(data.detalles);
-
-    const detalles = this.prepararDetallesSolicitud(data.detalles, true);
+    const calculo = await calculoInternoService.calcular(
+      { items },
+    );
+    const detalles = detallesPersistenciaSolicitud(calculo);
 
     const cotizacionActualizada =
-      await cotizacionRepository.actualizarSolicitudCliente(
+      await cotizacionRepository.reemplazarSolicitud(
       idCotizacion,
       {
+        estado: "EN_REVISION",
         observaciones: limpiarTextoOpcional(data.observaciones),
         subtotal: 0,
+        descuentoTotal: 0,
         costosAdicionales: 0,
         total: 0,
+        precioSugeridoInterno: calculo.precioSugeridoInterno,
+        requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+        advertenciasInternas: calculo.advertencias,
       },
       detalles,
     );
 
-    return this.formatearCotizacion(cotizacionActualizada);
+    return serializarCotizacionCliente(cotizacionActualizada);
   }
 
   // Empleado: asigna precios al detalle existente. La cotizacion permanece
   // PENDIENTE hasta que el cliente o la empresa la apruebe o la anule.
-  async cotizarCotizacion(idCotizacion: number, data: any) {
+  async cotizarCotizacion(
+    idCotizacion: number,
+    data: any,
+    usuarioAuth?: any,
+  ) {
     validarId(idCotizacion);
+
+    if (data?.precioFinal !== undefined) {
+      return await workflowService.enviarPropuesta(
+        idCotizacion,
+        data,
+        usuarioAuth,
+      );
+    }
 
     const error = validarCotizar(data);
 
@@ -836,16 +975,67 @@ export class CotizacionService {
   async actualizarCotizacion(idCotizacion: number, data: any) {
     validarId(idCotizacion);
 
-    const error = validarActualizarCotizacion(data);
-
-    if (error) {
-      throw new Error(error);
-    }
-
     const cotizacion = await cotizacionRepository.buscarPorId(idCotizacion);
 
     if (!cotizacion) {
       throw new Error("No se encontraron resultados.");
+    }
+
+    const items = data.items ?? data.detalles;
+    if (items !== undefined) {
+      if (
+        ![
+          "PENDIENTE",
+          "BORRADOR",
+          "SOLICITUD_RECIBIDA",
+          "EN_REVISION",
+          "AJUSTE_SOLICITADO",
+          "VENCIDA",
+        ].includes(cotizacion.estado)
+      ) {
+        throw new Error(
+          "La solicitud no se puede editar en su estado actual.",
+        );
+      }
+
+      const errorItems = validarCalcularCotizacionPublica({ items });
+      if (errorItems) {
+        throw new Error(errorItems);
+      }
+      if (
+        data.precioFinal !== undefined ||
+        data.descuentoManual !== undefined ||
+        data.costosAdicionales !== undefined
+      ) {
+        throw new Error(
+          "Los valores oficiales deben definirse al enviar una propuesta.",
+        );
+      }
+
+      const calculo = await calculoInternoService.calcular({ items });
+      const detalles = detallesPersistenciaSolicitud(calculo);
+
+      return await cotizacionRepository.reemplazarSolicitud(
+        idCotizacion,
+        {
+          estado: "EN_REVISION",
+          observaciones: limpiarTextoOpcional(data.observaciones),
+          subtotal: 0,
+          descuentoTotal: 0,
+          costosAdicionales: 0,
+          total: 0,
+          precioSugeridoInterno: calculo.precioSugeridoInterno,
+          requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+          advertenciasInternas: calculo.advertencias,
+        },
+        detalles,
+      );
+    }
+
+    const error = validarActualizarCotizacion(data);
+
+    if (error) {
+      throw new Error(error);
     }
 
     if (cotizacion.estado !== ESTADO_PENDIENTE) {
@@ -890,8 +1080,18 @@ export class CotizacionService {
   async anularCotizacion(idCotizacion: number, usuarioAuth: any) {
     const cotizacion = await this.buscarPorId(idCotizacion, usuarioAuth);
 
-    if (cotizacion.estado !== ESTADO_PENDIENTE) {
-      throw new Error("Solo se pueden anular cotizaciones en estado PENDIENTE.");
+    if (
+      ![
+        "PENDIENTE",
+        "BORRADOR",
+        "SOLICITUD_RECIBIDA",
+        "EN_REVISION",
+        "PENDIENTE_APROBACION_CLIENTE",
+        "AJUSTE_SOLICITADO",
+        "VENCIDA",
+      ].includes(cotizacion.estado)
+    ) {
+      throw new Error("La cotizacion no se puede anular en su estado actual.");
     }
 
     const cotizacionAnulada = await cotizacionRepository.cambiarEstado(
@@ -899,7 +1099,7 @@ export class CotizacionService {
       ESTADO_ANULADA,
     );
 
-    return this.formatearCotizacion(cotizacionAnulada);
+    return this.presentarCotizacion(cotizacionAnulada, usuarioAuth);
   }
 
   async aprobarCotizacion(idCotizacion: number, usuarioAuth: any) {

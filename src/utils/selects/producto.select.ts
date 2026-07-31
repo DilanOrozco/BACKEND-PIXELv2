@@ -14,6 +14,7 @@ export const productoSelect = {
   nombre: true,
   descripcion: true,
   precioBase: true,
+  requiereDiseno: true,
   estado: true,
   fechaCreacion: true,
   fechaActualizacion: true,
@@ -38,25 +39,13 @@ export const productoPublicSelect = {
   idCategoriaProducto: true,
   nombre: true,
   descripcion: true,
-  precioBase: true,
+  requiereDiseno: true,
+  estado: true,
   categoriaProducto: {
     select: {
       idCategoriaProducto: true,
       nombre: true,
       descripcion: true,
-    },
-  },
-  rangos: {
-    where: {
-      estado: true,
-    },
-    select: {
-      idRango: true,
-      cantidadMin: true,
-      descuentoPorcentaje: true,
-    },
-    orderBy: {
-      cantidadMin: "asc",
     },
   },
 } as const;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  autorizarAlgunPermiso,
   autorizarActualizacionUsuario,
   autorizarPermiso,
 } from "./permisos.middleware";
@@ -34,6 +35,22 @@ test("catalogo incluye permisos de categorias_producto", () => {
   assert.equal(PERMISOS_VALIDOS.has("disenos.cliente.rechazar"), true);
   assert.equal(PERMISOS_VALIDOS.has("disenos.aprobar_cliente"), true);
   assert.equal(PERMISOS_VALIDOS.has("disenos.rechazar_cliente"), true);
+});
+
+test("catalogo incluye permisos del nuevo flujo de cotizaciones y tarifas", () => {
+  for (const codigo of [
+    "cotizaciones.propuesta.enviar",
+    "cotizaciones.respuesta_cliente.registrar",
+    "cotizaciones.versiones.ver",
+    "cotizaciones.cliente.responder",
+    "tarifas.tecnicas.ver",
+    "tarifas.tecnicas.crear",
+    "tarifas.tecnicas.editar",
+    "tarifas.tecnicas.eliminar",
+    "productos.descuentos.gestionar",
+  ]) {
+    assert.equal(PERMISOS_VALIDOS.has(codigo), true);
+  }
 });
 
 test("autorizarPermiso permite Admin por bypass sin consultar permisos", async (t) => {
@@ -90,6 +107,28 @@ test("autorizarPermiso bloquea rol sin permiso", async (t) => {
   assert.deepEqual(res.payload, {
     message: "No tienes permisos para realizar esta accion.",
   });
+});
+
+test("autorizarAlgunPermiso permite al Cliente consultar con su permiso especifico", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async (_idRol: number, codigo: string) =>
+      codigo === "cotizaciones.cliente.ver",
+  );
+  const req: any = { user: { idRol: 5, rol: "Cliente" } };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarAlgunPermiso(
+    "cotizaciones.ver",
+    "cotizaciones.cliente.ver",
+  )(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.equal(rolTienePermisoMock.mock.calls.length, 2);
 });
 
 test("autorizarActualizacionUsuario permite Cliente editar su propio perfil con perfil.editar", async (t) => {

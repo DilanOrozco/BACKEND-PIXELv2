@@ -32,6 +32,7 @@ import publicRoutes from "../infrastructure/routes/public.routes";
 import categoriaProductoRoutes from "../infrastructure/routes/categoria-producto.routes";
 import clienteRoutes from "../infrastructure/routes/cliente.routes";
 import clienteDashboardRoutes from "../infrastructure/routes/cliente-dashboard.routes";
+import tarifaTecnicaRoutes from "../infrastructure/routes/tarifa-tecnica.routes";
 
 //endpoints
 app.use("/api/roles", rolRoutes);
@@ -52,5 +53,6 @@ app.use("/api/categorias-producto", categoriaProductoRoutes);
 app.use("/api/clientes", clienteRoutes);
 app.use("/api/cliente", clienteDashboardRoutes);
 app.use("/api/public", publicRoutes);
+app.use("/api/tarifas-tecnicas", tarifaTecnicaRoutes);
 
 export default app;

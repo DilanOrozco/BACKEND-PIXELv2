@@ -1,17 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Prisma } from "../../../generated/prisma/client";
 import { PublicCotizacionService } from "./public-cotizacion.service";
-import { ProductoService } from "./producto.service";
 import { EmailService } from "./email.service";
+import { ClienteAccessService } from "./cliente-access.service";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
-import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
-import { ClienteAccessService } from "./cliente-access.service";
+import { ProductoRepository } from "../../infrastructure/repositories/producto.repository";
+import { TarifaTecnicaRepository } from "../../infrastructure/repositories/tarifa-tecnica.repository";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
 
 const cliente = {
   idCliente: 10,
+  idUsuario: 77,
   nombre: "Ana Cliente",
   documento: null,
   correo: "ana@pixel.test",
@@ -20,432 +20,203 @@ const cliente = {
   estado: true,
 };
 
-const calculo = {
-  items: [
-    {
-      idProducto: 1,
-      producto: {
-        idProducto: 1,
-        nombre: "Camiseta",
-        descripcion: null,
-        categoriaProducto: { idCategoriaProducto: 1, nombre: "General" },
-      },
-      cantidad: 12,
-      precioBase: 28000,
-      descuentoPorcentaje: 7.14,
-      descuentoValorUnitario: 1999,
-      descuentoAplicado: 23990,
-      descuentoTotal: 23990,
-      precioUnitario: 26001,
-      subtotalBruto: 336000,
-      subtotal: 336000,
-      subtotalConDescuento: 312010,
-      subtotalFinal: 312010,
-      observaciones: "Talla M",
-      snapshot: {
-        idProducto: 1,
-        descripcion: "Camiseta",
-        cantidad: 12,
-        precioBase: new Prisma.Decimal(28000),
-        descuentoPorcentaje: new Prisma.Decimal(7.14),
-        descuentoValorUnitario: new Prisma.Decimal(1999),
-        precioUnitario: new Prisma.Decimal(26001),
-        subtotal: new Prisma.Decimal(336000),
-        subtotalBruto: new Prisma.Decimal(336000),
-        descuentoTotal: new Prisma.Decimal(23990),
-        subtotalConDescuento: new Prisma.Decimal(312010),
-        observaciones: "Talla M",
-      },
-    },
+const producto = {
+  idProducto: 1,
+  nombre: "Camiseta",
+  descripcion: "Camiseta de algodon",
+  precioBase: null,
+  requiereDiseno: true,
+  categoriaProducto: {
+    idCategoriaProducto: 1,
+    nombre: "Textiles",
+  },
+  rangos: [
+    { idRango: 1, cantidadMin: 1, descuentoPorcentaje: 0, estado: true },
+    { idRango: 2, cantidadMin: 12, descuentoPorcentaje: 10, estado: true },
   ],
-  subtotal: 336000,
-  subtotalBruto: 336000,
-  descuentoTotal: 23990,
-  costosAdicionales: 0,
-  total: 312010,
 };
 
-const calculoMultiple = {
-  ...calculo,
-  items: [
-    ...calculo.items,
-    {
-      idProducto: 2,
-      producto: {
-        idProducto: 2,
-        nombre: "Gorra",
-        descripcion: null,
-        categoriaProducto: { idCategoriaProducto: 1, nombre: "General" },
-      },
-      cantidad: 24,
-      precioBase: 13000,
-      descuentoPorcentaje: 17.86,
-      descuentoValorUnitario: 2322,
-      descuentoAplicado: 55723,
-      descuentoTotal: 55723,
-      precioUnitario: 10678,
-      subtotalBruto: 312000,
-      subtotal: 312000,
-      subtotalConDescuento: 256277,
-      subtotalFinal: 256277,
-      observaciones: null,
-      snapshot: {
-        idProducto: 2,
-        descripcion: "Gorra",
-        cantidad: 24,
-        precioBase: new Prisma.Decimal(13000),
-        descuentoPorcentaje: new Prisma.Decimal(17.86),
-        descuentoValorUnitario: new Prisma.Decimal(2322),
-        precioUnitario: new Prisma.Decimal(10678),
-        subtotal: new Prisma.Decimal(312000),
-        subtotalBruto: new Prisma.Decimal(312000),
-        descuentoTotal: new Prisma.Decimal(55723),
-        subtotalConDescuento: new Prisma.Decimal(256277),
-        observaciones: null,
-      },
-    },
-  ],
-  subtotal: 648000,
-  subtotalBruto: 648000,
-  descuentoTotal: 79713,
-  subtotalConDescuento: 568287,
-  costoDiseno: 0,
-  total: 568287,
-};
-
-const tecnica = {
-  idTecnica: 5,
-  nombre: "DTF",
-  descripcion: "Estampacion DTF",
-  estado: true,
-  fechaCreacion: new Date("2026-01-01"),
-  fechaActualizacion: new Date("2026-01-01"),
-};
-const tecnicaSublimacion = {
-  ...tecnica,
-  idTecnica: 6,
-  nombre: "Sublimacion",
-};
-
-const mockTecnicasActivas = (
-  t: any,
-  resolver: (idTecnica: number) => typeof tecnica | null = (idTecnica) =>
-    idTecnica === 6 ? tecnicaSublimacion : tecnica,
-) =>
+const configurarCalculo = (t: any) => {
   t.mock.method(
-    TecnicaRepository.prototype,
-    "buscarActivasPorIds",
-    async (idsTecnicas: number[]) =>
-      idsTecnicas
-        .map(resolver)
-        .filter((item): item is typeof tecnica => item !== null),
+    ProductoRepository.prototype,
+    "buscarActivosPorIds",
+    async () => [producto],
   );
-
-test("PublicCotizacionService lista solo tecnicas activas para landing", async (t) => {
-  const listarMock = t.mock.method(
-    TecnicaRepository.prototype,
-    "listarTecnicasActivas",
-    async () => [tecnica],
+  return t.mock.method(
+    TarifaTecnicaRepository.prototype,
+    "cargarConfiguracionActiva",
+    async () => [
+      {
+        idTecnica: 5,
+        nombre: "DTF",
+        tarifas: [
+          {
+            idTarifa: 1,
+            idTecnica: 5,
+            anchoHastaCm: 20,
+            altoHastaCm: 20,
+            precioUnitario: 10000,
+            estado: true,
+          },
+          {
+            idTarifa: 2,
+            idTecnica: 5,
+            anchoHastaCm: 30,
+            altoHastaCm: 30,
+            precioUnitario: 15000,
+            estado: true,
+          },
+        ],
+        descuentos: [
+          {
+            idDescuento: 1,
+            idTecnica: 5,
+            cantidadMinima: 1,
+            porcentaje: 0,
+            estado: true,
+          },
+          {
+            idDescuento: 2,
+            idTecnica: 5,
+            cantidadMinima: 12,
+            porcentaje: 10,
+            estado: true,
+          },
+        ],
+      },
+    ],
   );
+};
 
-  const tecnicas = await new PublicCotizacionService().listarTecnicas();
+const item = {
+  idProducto: 1,
+  cantidad: 12,
+  observaciones: "Talla M",
+  estampados: [
+    {
+      idTecnica: 5,
+      ubicacion: "FRENTE",
+      anchoCm: 11,
+      altoCm: 12,
+      origenDiseno: "PIXEL",
+    },
+  ],
+};
 
-  assert.deepEqual(tecnicas, [tecnica]);
-  assert.equal(listarMock.mock.calls.length, 1);
+test("calculo publico valida la solicitud pero no expone precios internos", async (t) => {
+  const configuracionMock = configurarCalculo(t);
+  const respuesta = await new PublicCotizacionService().calcular({
+    items: [item],
+  });
+
+  assert.equal(respuesta.estado, "EN_REVISION");
+  assert.equal(respuesta.estadoPrecio, "PENDIENTE_CONFIRMACION");
+  assert.equal(respuesta.items.length, 1);
+  assert.equal(respuesta.items[0].estampados[0].tecnica.nombre, "DTF");
+  assert.equal(respuesta.items[0].estampados[0].anchoCm, 11);
+  assert.equal("precioSugeridoInterno" in respuesta, false);
+  assert.equal("total" in respuesta, false);
+  assert.equal("precioUnitario" in respuesta.items[0].estampados[0], false);
+  assert.equal(configuracionMock.mock.calls.length, 1);
 });
 
-test("PublicCotizacionService no requiere login y crea cotizacion pendiente con Cliente externo", async (t) => {
-  const staffAnterior = process.env.STAFF_EMAIL;
-  process.env.STAFF_EMAIL = "staff@pixel.test";
-
+test("solicitud publica guarda sugerencia interna y devuelve una vista sin precios", async (t) => {
+  configurarCalculo(t);
+  t.mock.method(ClienteRepository.prototype, "buscarPorCorreo", async () => null);
+  t.mock.method(UsuarioRepository.prototype, "buscarPorCorreo", async () => null);
   t.mock.method(
     ClienteRepository.prototype,
     "buscarPorCorreoOTelefono",
     async () => null,
   );
-  t.mock.method(ClienteRepository.prototype, "buscarPorCorreo", async () => null);
-  t.mock.method(UsuarioRepository.prototype, "buscarPorCorreo", async () => null);
-  const crearClienteMock = t.mock.method(
+  t.mock.method(
     ClienteRepository.prototype,
     "crearCliente",
     async () => cliente,
   );
-  t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  mockTecnicasActivas(t);
   t.mock.method(
     ClienteAccessService.prototype,
     "asegurarAccesoCliente",
     async () => ({
       usuarioCreado: true,
       usuarioExistente: false,
-      linkCrearPassword: "https://pixel.test/crear-password-cliente/token",
       idUsuario: 77,
+      linkCrearPassword: "https://pixel.test/crear-password-cliente/token",
     }),
   );
-  const crearCotizacionMock = t.mock.method(
+  const crearMock = t.mock.method(
     CotizacionRepository.prototype,
     "crearCotizacionConDetalles",
-    async (data: any) => ({ idCotizacion: 99, ...data }),
+    async (data: any) => ({
+      idCotizacion: 99,
+      ...data,
+      cliente,
+      versiones: [],
+    }),
   );
-  const sendMailMock = t.mock.method(
+  const emailMock = t.mock.method(
     EmailService.prototype,
     "sendMail",
     async () => ({ sent: true, skipped: false }),
   );
 
-  const service = new PublicCotizacionService();
-  const respuesta = await service.crearCotizacion({
-    cliente: {
-      nombre: "Ana Cliente",
-      correo: "ana@pixel.test",
-      telefono: "3001234567",
-    },
-    items: [{ idProducto: 1, idTecnica: 5, cantidad: 12, observaciones: "Talla M", total: 1 }],
-    total: 1,
-    observaciones: "Publica",
-  });
-
-  const cotizacionData = crearCotizacionMock.mock.calls[0]?.arguments[0];
-  assert.equal(crearClienteMock.mock.calls.length, 1);
-  assert.equal(cotizacionData.idCliente, 10);
-  assert.equal(cotizacionData.creadoPorId, null);
-  assert.equal(cotizacionData.estado, "PENDIENTE");
-  assert.equal(cotizacionData.tipoCotizacion, "PUBLICA");
-  assert.equal(cotizacionData.subtotal, 336000);
-  assert.equal(cotizacionData.descuentoTotal, 23990);
-  assert.equal(cotizacionData.total, 312010);
-  assert.equal(cotizacionData.detalles[0].idTecnica, 5);
-  assert.equal(cotizacionData.detalles[0].precioUnitario.toNumber(), 26001);
-  assert.equal(cotizacionData.detalles[0].subtotal.toNumber(), 336000);
-  assert.equal(cotizacionData.detalles[0].descuentoTotal.toNumber(), 23990);
-  assert.equal(cotizacionData.detalles[0].subtotalConDescuento.toNumber(), 312010);
-  assert.equal(respuesta.calculo.items[0]?.snapshot, undefined);
-  assert.equal(sendMailMock.mock.calls.length, 2);
-  const correoCliente = sendMailMock.mock.calls[0]?.arguments[0];
-  const correoStaff = sendMailMock.mock.calls[1]?.arguments[0];
-  assert.ok(correoCliente);
-  assert.ok(correoStaff);
-  assert.match(correoCliente.subject, /Recibimos tu solicitud de cotizacion/);
-  assert.doesNotMatch(correoCliente.subject, /#99/);
-  assert.doesNotMatch(correoCliente.text, /cotizacion #99/i);
-  assert.match(correoCliente.text, /Creamos un acceso/);
-  assert.match(correoCliente.text, /crear-password-cliente\/token/);
-  assert.match(correoCliente.text, /Tecnica: DTF/);
-  assert.match(correoStaff.subject, /Nueva cotizacion publica #99/);
-  assert.deepEqual(respuesta.email, {
-    event: "COTIZACION_CREADA",
-    cliente: "enviado",
-    staff: "enviado",
-  });
-
-  if (staffAnterior === undefined) {
-    delete process.env.STAFF_EMAIL;
-  } else {
-    process.env.STAFF_EMAIL = staffAnterior;
-  }
-});
-
-test("PublicCotizacionService permite cotizar al Cliente autenticado sin confiar en el payload", async (t) => {
-  const staffAnterior = process.env.STAFF_EMAIL;
-  delete process.env.STAFF_EMAIL;
-  t.mock.method(console, "error", () => undefined);
-
-  const crearClienteMock = t.mock.method(
-    ClienteRepository.prototype,
-    "crearCliente",
-    async () => {
-      throw new Error("No debe crear otro Cliente.");
-    },
-  );
-  const actualizarClienteMock = t.mock.method(
-    ClienteRepository.prototype,
-    "actualizarCliente",
-    async () => {
-      throw new Error("No debe modificar el Cliente autenticado.");
-    },
-  );
-  t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  mockTecnicasActivas(t);
-  const asegurarAccesoMock = t.mock.method(
-    ClienteAccessService.prototype,
-    "asegurarAccesoCliente",
-    async () => {
-      throw new Error("No debe crear ni reutilizar otro Usuario.");
-    },
-  );
-  t.mock.method(
-    ClienteAccessService.prototype,
-    "obtenerClienteDeUsuario",
-    async () => cliente,
-  );
-  const crearCotizacionMock = t.mock.method(
-    CotizacionRepository.prototype,
-    "crearCotizacionConDetalles",
-    async (data: any) => ({ idCotizacion: 100, ...data }),
-  );
-  t.mock.method(
-    EmailService.prototype,
-    "sendMail",
-    async () => {
-      throw new Error("SMTP down");
-    },
-  );
-
-  const service = new PublicCotizacionService();
-  const respuesta = await service.crearCotizacion({
-    cliente: {
-      nombre: "Otro Cliente",
-      correo: "otro@pixel.test",
-      telefono: "3119999999",
-    },
-    items: [{ idProducto: 1, idTecnica: 5, cantidad: 12 }],
-  }, {
-    idUsuario: 77,
-    rol: "Cliente",
-  });
-
-  const datosCotizacion = crearCotizacionMock.mock.calls[0]?.arguments[0];
-  assert.equal(datosCotizacion.idCliente, cliente.idCliente);
-  assert.equal(crearClienteMock.mock.calls.length, 0);
-  assert.equal(actualizarClienteMock.mock.calls.length, 0);
-  assert.equal(asegurarAccesoMock.mock.calls.length, 0);
-  assert.equal(respuesta.cotizacion.idCotizacion, 100);
-  assert.deepEqual(respuesta.email, {
-    event: "COTIZACION_CREADA",
-    cliente: "error",
-    staff: "omitido",
-  });
-
-  if (staffAnterior !== undefined) {
-    process.env.STAFF_EMAIL = staffAnterior;
-  }
-});
-
-test("PublicCotizacionService calcula y crea una cotizacion con varios productos", async (t) => {
-  delete process.env.STAFF_EMAIL;
-  t.mock.method(
-    ClienteAccessService.prototype,
-    "obtenerClienteDeUsuario",
-    async () => cliente,
-  );
-  t.mock.method(ProductoService.prototype, "calcularItems", async () => calculoMultiple);
-  const tecnicasBatchMock = mockTecnicasActivas(t);
-  const crearCotizacionMock = t.mock.method(
-    CotizacionRepository.prototype,
-    "crearCotizacionConDetalles",
-    async (data: any) => ({ idCotizacion: 102, ...data }),
-  );
-  const sendMailMock = t.mock.method(
-    EmailService.prototype,
-    "sendMail",
-    async () => ({ sent: true, skipped: false }),
-  );
-  const items = [
-    {
-      idProducto: 1,
-      idTecnica: 5,
-      cantidad: 12,
-      requiereDiseno: false,
-      origenDiseno: "PIXEL",
-    },
-    {
-      idProducto: 2,
-      idTecnica: 6,
-      cantidad: 24,
-      requiereDiseno: true,
-      origenDiseno: "CLIENTE",
-      archivoDisenoInicialUrl: "https://pixel.test/disenos/gorra.png",
-      esDisenoGeneral: false,
-    },
-  ];
-  const service = new PublicCotizacionService();
-
-  const calculado = await service.calcular({ items });
-  const creado = await service.crearCotizacion({
+  const respuesta = await new PublicCotizacionService().crearCotizacion({
     cliente: {
       nombre: cliente.nombre,
       correo: cliente.correo,
       telefono: cliente.telefono,
     },
-    items,
-  }, {
-    idUsuario: 77,
-    rol: "Cliente",
+    items: [item],
+    observaciones: "Solicitud de prueba",
   });
-  const payload = crearCotizacionMock.mock.calls[0]?.arguments[0];
+  const persistido = crearMock.mock.calls[0]?.arguments[0];
 
-  assert.equal(calculado.items.length, 2);
-  assert.equal(calculado.items[0].tecnica.nombre, "DTF");
-  assert.equal(calculado.items[1].idTecnica, 6);
-  assert.equal(calculado.items[1].tecnica.nombre, "Sublimacion");
-  assert.equal(calculado.detalles.length, 2);
-  assert.equal(calculado.cantidadItems, 2);
-  assert.equal(calculado.productosResumen, "Camiseta, Gorra");
-  assert.equal(calculado.subtotalBruto, 648000);
-  assert.equal(calculado.descuentoTotal, 79713);
-  assert.equal(calculado.subtotalConDescuento, 568287);
-  assert.equal(calculado.subtotalFinal, 568287);
-  assert.equal(payload.detalles.length, 2);
-  assert.equal(payload.detalles[0].idTecnica, 5);
-  assert.equal(payload.detalles[1].idTecnica, 6);
-  assert.equal(payload.detalles[0].requiereDiseno, false);
-  assert.equal(payload.detalles[1].origenDiseno, "CLIENTE");
+  assert.equal(persistido.estado, "EN_REVISION");
+  assert.equal(persistido.subtotal, 0);
+  assert.equal(persistido.total, 0);
+  assert.equal(Number(persistido.precioSugeridoInterno), 108000);
+  assert.equal(persistido.detalles[0].precioBase, null);
+  assert.equal(persistido.detalles[0].idRangoDescuentoAplicado, 2);
+  assert.equal(persistido.detalles[0].cantidadMinimaDescuentoSnapshot, 12);
+  assert.equal(Number(persistido.detalles[0].descuentoPorcentaje), 10);
+  assert.equal(Number(persistido.detalles[0].subtotalBruto), 120000);
+  assert.equal(Number(persistido.detalles[0].descuentoTotal), 12000);
   assert.equal(
-    payload.detalles[1].archivoDisenoInicialUrl,
-    "https://pixel.test/disenos/gorra.png",
+    Number(persistido.detalles[0].subtotalConDescuento),
+    108000,
   );
-  assert.equal(payload.total, 568287);
-  assert.equal(creado.calculo.items.length, 2);
-  assert.equal(creado.cotizacion.cantidadItems, 2);
-  assert.equal(creado.cotizacion.productosResumen, "Camiseta, Gorra");
-  assert.equal(creado.cotizacion.subtotalFinal, 568287);
-  assert.equal(tecnicasBatchMock.mock.calls.length, 2);
-  assert.deepEqual(tecnicasBatchMock.mock.calls[0]?.arguments[0], [5, 6]);
-  assert.deepEqual(tecnicasBatchMock.mock.calls[1]?.arguments[0], [5, 6]);
-  const correo = sendMailMock.mock.calls[0]?.arguments[0];
+  assert.equal(Number(persistido.detalles[0].subtotalSugeridoInterno), 108000);
+  assert.equal(persistido.detalles[0].estampados[0].idTarifaAplicada, 1);
+  assert.equal(respuesta.cotizacion.estadoPrecio, "PENDIENTE_CONFIRMACION");
+  assert.equal("precioSugeridoInterno" in respuesta.cotizacion, false);
+  assert.equal("total" in respuesta.cotizacion, false);
+  assert.ok(emailMock.mock.calls.length >= 1);
+  const correo = emailMock.mock.calls
+    .map((call) => call.arguments[0])
+    .find((mensaje) => mensaje?.to === cliente.correo);
   assert.ok(correo);
-  assert.match(correo.text, /Tecnica: DTF/);
-  assert.match(correo.text, /Tecnica: Sublimacion/);
+  assert.match(correo!.text, /revisara la solicitud y confirmara el precio/i);
+  assert.match(correo!.text, /crear-password-cliente\/token/);
+  assert.doesNotMatch(correo!.text, /\$|108\.000|108000/);
 });
 
-test("PublicCotizacionService exige login si el correo ya existe y no crea duplicados", async (t) => {
-  t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  mockTecnicasActivas(t);
+test("correo existente sin sesion exige login y no crea duplicados", async (t) => {
+  configurarCalculo(t);
   t.mock.method(
     ClienteRepository.prototype,
     "buscarPorCorreo",
     async () => cliente,
   );
-  t.mock.method(UsuarioRepository.prototype, "buscarPorCorreo", async () => ({
-    idUsuario: 77,
-    correo: cliente.correo,
-  }));
-  const buscarIdentidadMock = t.mock.method(
-    ClienteRepository.prototype,
-    "buscarPorCorreoOTelefono",
-    async () => {
-      throw new Error("No debe continuar buscando o reutilizando clientes.");
-    },
+  t.mock.method(
+    UsuarioRepository.prototype,
+    "buscarPorCorreo",
+    async () => ({ idUsuario: 77 }),
   );
-  const crearClienteMock = t.mock.method(
-    ClienteRepository.prototype,
-    "crearCliente",
-    async () => {
-      throw new Error("No debe crear clientes duplicados.");
-    },
-  );
-  const crearCotizacionMock = t.mock.method(
+  const crearMock = t.mock.method(
     CotizacionRepository.prototype,
     "crearCotizacionConDetalles",
     async () => {
-      throw new Error("No debe crear la cotizacion sin login.");
-    },
-  );
-  const asegurarAccesoMock = t.mock.method(
-    ClienteAccessService.prototype,
-    "asegurarAccesoCliente",
-    async () => {
-      throw new Error("No debe crear usuarios duplicados.");
+      throw new Error("No debe crear la cotizacion.");
     },
   );
 
@@ -457,102 +228,302 @@ test("PublicCotizacionService exige login si el correo ya existe y no crea dupli
           correo: cliente.correo,
           telefono: cliente.telefono,
         },
-        items: [{ idProducto: 1, idTecnica: 5, cantidad: 12 }],
+        items: [item],
       }),
-    (error: any) => {
-      assert.equal(error.code, "EMAIL_REQUIRES_LOGIN");
-      assert.equal(
-        error.message,
-        "Este correo ya est\u00e1 registrado. Inicia sesi\u00f3n para realizar una cotizaci\u00f3n con esta cuenta.",
-      );
-      return true;
-    },
+    (error: any) => error.code === "EMAIL_REQUIRES_LOGIN",
   );
-
-  assert.equal(buscarIdentidadMock.mock.calls.length, 0);
-  assert.equal(crearClienteMock.mock.calls.length, 0);
-  assert.equal(crearCotizacionMock.mock.calls.length, 0);
-  assert.equal(asegurarAccesoMock.mock.calls.length, 0);
+  assert.equal(crearMock.mock.calls.length, 0);
 });
 
-test("PublicCotizacionService no usa un Admin autenticado como Cliente", async (t) => {
-  t.mock.method(ProductoService.prototype, "calcularItems", async () => calculo);
-  mockTecnicasActivas(t);
-  t.mock.method(ClienteRepository.prototype, "buscarPorCorreo", async () => null);
-  t.mock.method(UsuarioRepository.prototype, "buscarPorCorreo", async () => ({
-    idUsuario: 77,
-    correo: cliente.correo,
-  }));
-  const obtenerClienteMock = t.mock.method(
+test("cliente autenticado cotiza con su Cliente real", async (t) => {
+  configurarCalculo(t);
+  t.mock.method(
     ClienteAccessService.prototype,
     "obtenerClienteDeUsuario",
-    async () => {
-      throw new Error("No debe resolver al Admin como Cliente.");
-    },
+    async () => cliente,
   );
-  const crearCotizacionMock = t.mock.method(
+  const crearMock = t.mock.method(
     CotizacionRepository.prototype,
     "crearCotizacionConDetalles",
-    async () => {
-      throw new Error("No debe crear la cotizacion con la cuenta existente.");
-    },
+    async (data: any) => ({
+      idCotizacion: 100,
+      ...data,
+      cliente,
+      versiones: [],
+    }),
+  );
+  t.mock.method(
+    EmailService.prototype,
+    "sendMail",
+    async () => ({ sent: false, skipped: true }),
   );
 
-  await assert.rejects(
-    () =>
-      new PublicCotizacionService().crearCotizacion(
-        {
-          cliente: {
-            nombre: cliente.nombre,
-            correo: cliente.correo,
-            telefono: cliente.telefono,
+  await new PublicCotizacionService().crearCotizacion(
+    {
+      cliente: {
+        nombre: "Cliente suplantado",
+        correo: "otro@pixel.test",
+        telefono: "3110000000",
+      },
+      items: [item],
+    },
+    { idUsuario: 77, rol: "Cliente" },
+  );
+
+  assert.equal(crearMock.mock.calls[0]?.arguments[0].idCliente, 10);
+});
+
+test("producto OTRO y servicio sin tarifa quedan en revision sin ser rechazados", async (t) => {
+  t.mock.method(
+    ProductoRepository.prototype,
+    "buscarActivosPorIds",
+    async () => [],
+  );
+  t.mock.method(
+    TarifaTecnicaRepository.prototype,
+    "cargarConfiguracionActiva",
+    async () => [
+      {
+        idTecnica: 5,
+        nombre: "DTF",
+        tarifas: [],
+        descuentos: [],
+      },
+    ],
+  );
+
+  const respuesta = await new PublicCotizacionService().calcular({
+    items: [
+      {
+        tipoProducto: "OTRO",
+        nombrePersonalizado: "Bolso especial",
+        cantidad: 2,
+        estampados: [
+          {
+            idTecnica: 5,
+            ubicacion: "FRENTE",
+            anchoCm: 80,
+            altoCm: 80,
           },
-          items: [{ idProducto: 1, idTecnica: 5, cantidad: 12 }],
-        },
-        { idUsuario: 1, rol: "Admin" },
-      ),
-    (error: any) => {
-      assert.equal(error.code, "EMAIL_REQUIRES_LOGIN");
-      return true;
-    },
-  );
+        ],
+      },
+    ],
+  });
 
-  assert.equal(obtenerClienteMock.mock.calls.length, 0);
-  assert.equal(crearCotizacionMock.mock.calls.length, 0);
+  assert.equal(respuesta.estado, "EN_REVISION");
+  assert.equal(respuesta.items[0].tipoProducto, "OTRO");
+  assert.equal(respuesta.requiereRevisionManual, true);
+  assert.equal("total" in respuesta, false);
 });
 
-test("PublicCotizacionService falla con producto o cantidad invalida", async () => {
+test("producto OTRO sin tecnica todavia se recibe para revision manual", async (t) => {
+  t.mock.method(
+    ProductoRepository.prototype,
+    "buscarActivosPorIds",
+    async () => [],
+  );
+  t.mock.method(
+    TarifaTecnicaRepository.prototype,
+    "cargarConfiguracionActiva",
+    async () => [],
+  );
+
+  const respuesta = await new PublicCotizacionService().calcular({
+    items: [
+      {
+        tipoProducto: "OTRO",
+        nombrePersonalizado: "Producto artesanal especial",
+        descripcionPersonalizada: "Material por confirmar con el cliente",
+        cantidad: 3,
+      },
+    ],
+  });
+
+  assert.equal(respuesta.estado, "EN_REVISION");
+  assert.equal(respuesta.items[0].tipoProducto, "OTRO");
+  assert.equal(respuesta.items[0].estampados.length, 0);
+  assert.equal(respuesta.requiereRevisionManual, true);
+  assert.equal("precioSugeridoInterno" in respuesta, false);
+  assert.equal("total" in respuesta, false);
+});
+
+test("medidas null se aceptan para revision y una sola medida falla", async (t) => {
+  configurarCalculo(t);
   const service = new PublicCotizacionService();
+  const respuesta = await service.calcular({
+    items: [
+      {
+        idProducto: 1,
+        cantidad: 1,
+        estampados: [
+          {
+            idTecnica: 5,
+            ubicacion: "FRENTE",
+            anchoCm: null,
+            altoCm: null,
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(respuesta.requiereRevisionManual, true);
+  assert.equal(
+    respuesta.items[0].estampados[0].requiereRevisionManual,
+    true,
+  );
+  assert.equal("motivosRevision" in respuesta.items[0].estampados[0], false);
 
   await assert.rejects(
     () =>
-      service.crearCotizacion({
-        cliente: { nombre: "Ana", correo: "ana@pixel.test" },
-        items: [{ idProducto: 1, cantidad: 0 }],
+      service.calcular({
+        items: [
+          {
+            idProducto: 1,
+            cantidad: 1,
+            estampados: [
+              {
+                idTecnica: 5,
+                ubicacion: "FRENTE",
+                anchoCm: 10,
+              },
+            ],
+          },
+        ],
       }),
-    /cantidad debe ser mayor a 0/,
+    /ancho y alto juntos/i,
   );
 });
 
-test("PublicCotizacionService falla con tecnica inexistente o inactiva", async (t) => {
+test("tecnica pendiente no rechaza la solicitud ni expone el motivo interno", async (t) => {
   t.mock.method(
-    ClienteRepository.prototype,
-    "buscarPorCorreoOTelefono",
-    async () => cliente,
+    ProductoRepository.prototype,
+    "buscarActivosPorIds",
+    async () => [producto],
   );
   t.mock.method(
-    ClienteRepository.prototype,
-    "actualizarCliente",
-    async () => cliente,
+    TarifaTecnicaRepository.prototype,
+    "cargarConfiguracionActiva",
+    async () => [],
   );
-  mockTecnicasActivas(t, () => null);
 
-  await assert.rejects(
-    () =>
-      new PublicCotizacionService().crearCotizacion({
-        cliente: { nombre: "Ana", correo: "ana@pixel.test" },
-        items: [{ idProducto: 1, idTecnica: 5, cantidad: 1 }],
-      }),
-    /no existe o esta inactiva/,
+  const respuesta = await new PublicCotizacionService().calcular({
+    items: [
+      {
+        idProducto: 1,
+        cantidad: 2,
+        estampados: [
+          {
+            ubicacion: "FRENTE",
+            anchoCm: null,
+            altoCm: null,
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(respuesta.requiereRevisionManual, true);
+  assert.equal(respuesta.items[0].estampados[0].idTecnica, null);
+  assert.equal("motivosRevision" in respuesta.items[0].estampados[0], false);
+});
+
+test("calculo publico conserva tres productos y cinco estampados en su orden", async (t) => {
+  t.mock.method(
+    ProductoRepository.prototype,
+    "buscarActivosPorIds",
+    async (ids: number[]) =>
+      ids.map((idProducto) => ({
+        idProducto,
+        nombre: `Producto ${idProducto}`,
+        descripcion: null,
+        precioBase: null,
+        requiereDiseno: true,
+        categoriaProducto: null,
+        rangos: [
+          {
+            idRango: idProducto,
+            cantidadMin: 1,
+            descuentoPorcentaje: 0,
+            estado: true,
+          },
+        ],
+      })),
+  );
+  t.mock.method(
+    TarifaTecnicaRepository.prototype,
+    "cargarConfiguracionActiva",
+    async () => [5, 6].map((idTecnica) => ({
+      idTecnica,
+      nombre: idTecnica === 5 ? "DTF" : "Bordado",
+      requiereMedidas: true,
+      tarifas: [
+        {
+          idTarifa: idTecnica,
+          anchoHastaCm: 50,
+          altoHastaCm: 50,
+          precioUnitario: 10000,
+        },
+      ],
+      descuentos: [],
+    })),
+  );
+  const cincoEstampados = Array.from({ length: 5 }, (_, indice) => ({
+    idTecnica: indice % 2 === 0 ? 5 : 6,
+    ubicacion: `UBICACION-${indice + 1}`,
+    anchoCm: 10 + indice,
+    altoCm: 12 + indice,
+    origenDiseno: "CLIENTE",
+    grupoDisenoCompartido:
+      indice < 2 ? "GRUPO-COMPARTIDO" : undefined,
+  }));
+
+  const respuesta = await new PublicCotizacionService().calcular({
+    items: [
+      { idProducto: 1, cantidad: 2, estampados: cincoEstampados },
+      {
+        idProducto: 2,
+        cantidad: 3,
+        estampados: [
+          {
+            idTecnica: 5,
+            ubicacion: "FRENTE",
+            anchoCm: 10,
+            altoCm: 10,
+            origenDiseno: "CLIENTE",
+            grupoDisenoCompartido: "GRUPO-COMPARTIDO",
+          },
+        ],
+      },
+      {
+        idProducto: 3,
+        cantidad: 4,
+        estampados: [
+          {
+            idTecnica: 6,
+            ubicacion: "ESPALDA",
+            anchoCm: 20,
+            altoCm: 20,
+            origenDiseno: "NO_REQUIERE",
+          },
+        ],
+      },
+    ],
+  });
+  const serializada = JSON.stringify(respuesta);
+
+  assert.equal(respuesta.items.length, 3);
+  assert.equal(respuesta.items[0].estampados.length, 5);
+  assert.deepEqual(
+    respuesta.items[0].estampados.map((item: any) => item.ubicacion),
+    cincoEstampados.map((item) => item.ubicacion),
+  );
+  assert.equal(
+    respuesta.items[1].estampados[0].grupoDisenoCompartido,
+    "GRUPO-COMPARTIDO",
+  );
+  assert.doesNotMatch(
+    serializada,
+    /precioUnitario|precioSugerido|subtotal|descuento|tarifa/i,
   );
 });

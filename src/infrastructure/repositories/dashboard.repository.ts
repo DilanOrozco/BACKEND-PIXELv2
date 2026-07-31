@@ -33,6 +33,9 @@ const cotizacionPendienteAdminSelect = {
   idCotizacion: true,
   estado: true,
   total: true,
+  precioSugeridoInterno: true,
+  requiereRevisionPrecio: true,
+  advertenciasInternas: true,
   fechaCreacion: true,
   cliente: {
     select: clienteResumenSelect,
@@ -165,17 +168,18 @@ const detalleCotizacionClienteSelect = {
   idDetalleCotizacion: true,
   idTecnica: true,
   idProducto: true,
+  tipoProducto: true,
+  nombrePersonalizado: true,
+  descripcionPersonalizada: true,
+  materialReferencia: true,
+  suministradoPor: true,
   descripcion: true,
   cantidad: true,
-  precioBase: true,
-  descuentoPorcentaje: true,
-  descuentoValorUnitario: true,
-  precioUnitario: true,
-  subtotal: true,
-  subtotalBruto: true,
-  descuentoTotal: true,
-  subtotalConDescuento: true,
   imagenReferencia: true,
+  requiereDiseno: true,
+  origenDiseno: true,
+  archivoDisenoInicialUrl: true,
+  esDisenoGeneral: true,
   observaciones: true,
   tecnica: {
     select: {
@@ -189,17 +193,66 @@ const detalleCotizacionClienteSelect = {
       nombre: true,
     },
   },
+  estampados: {
+    select: {
+      idDetalleEstampadoCotizacion: true,
+      idTecnica: true,
+      ubicacion: true,
+      anchoCm: true,
+      altoCm: true,
+      descripcion: true,
+      observaciones: true,
+      origenDiseno: true,
+      grupoDisenoCompartido: true,
+      tecnica: {
+        select: {
+          idTecnica: true,
+          nombre: true,
+        },
+      },
+    },
+  },
 } as const;
 
 const cotizacionPendienteClienteSelect = {
   idCotizacion: true,
   estado: true,
-  total: true,
   fechaCreacion: true,
+  fechaActualizacion: true,
+  observaciones: true,
   detalles: {
     select: detalleCotizacionClienteSelect,
     orderBy: {
       idDetalleCotizacion: "asc",
+    },
+  },
+  versiones: {
+    where: {
+      esVigente: true,
+      estado: {
+        in: ["ENVIADA", "ACEPTADA", "AJUSTE_SOLICITADO"] as any,
+      },
+    },
+    select: {
+      idVersion: true,
+      numeroVersion: true,
+      precioFinal: true,
+      descuentoManual: true,
+      costosAdicionales: true,
+      desgloseVisible: true,
+      observacionesCliente: true,
+      mensajeCliente: true,
+      validaHasta: true,
+      enviadaAt: true,
+      estado: true,
+      respuesta: {
+        select: {
+          decision: true,
+          medio: true,
+          fechaRespuesta: true,
+          observaciones: true,
+        },
+      },
     },
   },
 } as const;
@@ -245,7 +298,15 @@ export class DashboardRepository {
   async contarCotizacionesPendientes() {
     return await prisma.cotizacion.count({
       where: {
-        estado: "PENDIENTE",
+        estado: {
+          in: [
+            "PENDIENTE",
+            "SOLICITUD_RECIBIDA",
+            "EN_REVISION",
+            "PENDIENTE_APROBACION_CLIENTE",
+            "AJUSTE_SOLICITADO",
+          ],
+        },
       },
     });
   }
@@ -298,7 +359,15 @@ export class DashboardRepository {
   async obtenerCotizacionesPendientes(limite: number) {
     return await prisma.cotizacion.findMany({
       where: {
-        estado: "PENDIENTE",
+        estado: {
+          in: [
+            "PENDIENTE",
+            "SOLICITUD_RECIBIDA",
+            "EN_REVISION",
+            "PENDIENTE_APROBACION_CLIENTE",
+            "AJUSTE_SOLICITADO",
+          ],
+        },
       },
       take: limite,
       select: cotizacionPendienteAdminSelect,
@@ -335,7 +404,16 @@ export class DashboardRepository {
     return await prisma.cotizacion.count({
       where: {
         idCliente,
-        estado: "PENDIENTE",
+        estado: {
+          in: [
+            "PENDIENTE",
+            "SOLICITUD_RECIBIDA",
+            "EN_REVISION",
+            "PENDIENTE_APROBACION_CLIENTE",
+            "AJUSTE_SOLICITADO",
+            "VENCIDA",
+          ],
+        },
       },
     });
   }
@@ -447,7 +525,16 @@ export class DashboardRepository {
     return await prisma.cotizacion.findMany({
       where: {
         idCliente,
-        estado: "PENDIENTE",
+        estado: {
+          in: [
+            "PENDIENTE",
+            "SOLICITUD_RECIBIDA",
+            "EN_REVISION",
+            "PENDIENTE_APROBACION_CLIENTE",
+            "AJUSTE_SOLICITADO",
+            "VENCIDA",
+          ],
+        },
       },
       take: limite,
       select: cotizacionPendienteClienteSelect,

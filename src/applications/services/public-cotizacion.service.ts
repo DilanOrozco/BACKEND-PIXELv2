@@ -11,6 +11,8 @@ import {
   validarCalcularCotizacionPublica,
   validarCrearCotizacionPublica,
 } from "../validators/public-cotizacion.validator";
+import { CotizacionCalculoInternoService } from "./cotizacion-calculo-interno.service";
+import { serializarCotizacionCliente } from "../../utils/cotizacion-serializer.util";
 
 const clienteRepository = new ClienteRepository();
 const cotizacionRepository = new CotizacionRepository();
@@ -20,6 +22,7 @@ const tecnicaRepository = new TecnicaRepository();
 const notificationService = new NotificationService();
 const clienteAccessService = new ClienteAccessService();
 const usuarioRepository = new UsuarioRepository();
+const calculoInternoService = new CotizacionCalculoInternoService();
 
 const EMAIL_REQUIRES_LOGIN_MESSAGE =
   "Este correo ya est\u00e1 registrado. Inicia sesi\u00f3n para realizar una cotizaci\u00f3n con esta cuenta.";
@@ -140,6 +143,120 @@ const formatearCotizacionPublica = (cotizacion: any) => {
   };
 };
 
+export const respuestaSolicitudPublica = (calculo: any) => ({
+  estado: "EN_REVISION",
+  estadoPrecio: "PENDIENTE_CONFIRMACION",
+  requiereRevisionManual: Boolean(calculo.requiereRevisionPrecio),
+  mensaje: "El equipo de PIXEL revisara la solicitud y confirmara el precio.",
+  items: calculo.items.map((item: any) => ({
+    tipoProducto: item.tipoProducto,
+    idProducto: item.idProducto,
+    nombre: item.nombre,
+    descripcion: item.descripcionPersonalizada,
+    materialReferencia: item.materialReferencia,
+    suministradoPor: item.suministradoPor,
+    cantidad: item.cantidad,
+    requiereRevisionManual: Boolean(item.requiereRevisionPrecio),
+    observaciones: item.observaciones,
+    estampados: item.estampados.map((estampado: any) => ({
+      idTecnica: estampado.idTecnica,
+      tecnica: estampado.tecnica,
+      ubicacion: estampado.ubicacion,
+      anchoCm: estampado.anchoCm,
+      altoCm: estampado.altoCm,
+      descripcion: estampado.descripcion,
+      observaciones: estampado.observaciones,
+      origenDiseno: estampado.origenDiseno,
+      grupoDisenoCompartido: estampado.grupoDisenoCompartido,
+      requiereRevisionManual: Boolean(
+        estampado.requiereRevisionPrecio,
+      ),
+    })),
+  })),
+});
+
+export const detallesPersistenciaSolicitud = (calculo: any) =>
+  calculo.items.map((item: any) => {
+    const primerEstampado = item.estampados[0] ?? null;
+    const requiereDiseno =
+      item.requiereDiseno ??
+      item.producto?.requiereDiseno ??
+      item.estampados.some(
+        (estampado: any) => estampado.origenDiseno !== "NO_REQUIERE",
+      );
+
+    return {
+      idProducto: item.idProducto,
+      idTecnica: primerEstampado?.idTecnica ?? null,
+      tipoProducto: item.tipoProducto,
+      nombrePersonalizado: item.nombrePersonalizado,
+      descripcionPersonalizada: item.descripcionPersonalizada,
+      materialReferencia: item.materialReferencia,
+      suministradoPor: item.suministradoPor,
+      descripcion: String(
+        item.descripcionPersonalizada ?? item.nombre,
+      ).slice(0, 255),
+      cantidad: item.cantidad,
+      precioBase: null,
+      idRangoDescuentoAplicado:
+        item.rangoDescuentoProducto?.idRango ?? null,
+      cantidadMinimaDescuentoSnapshot:
+        item.rangoDescuentoProducto?.cantidadMinima ?? null,
+      descuentoPorcentaje: item.porcentajeDescuentoProducto,
+      descuentoValorUnitario:
+        item.cantidad > 0
+          ? Math.round(item.montoDescuentoProducto / item.cantidad)
+          : 0,
+      precioUnitario:
+        item.cantidad > 0
+          ? Math.round(
+              item.subtotalServiciosConDescuento / item.cantidad,
+            )
+          : null,
+      costoDiseno: item.costoDisenoSugerido,
+      subtotal: item.subtotalServiciosBruto,
+      subtotalBruto: item.subtotalServiciosBruto,
+      descuentoTotal: item.montoDescuentoProducto,
+      subtotalConDescuento: item.subtotalServiciosConDescuento,
+      precioSugeridoInterno: item.subtotalSugeridoInterno,
+      subtotalSugeridoInterno: item.subtotalSugeridoInterno,
+      requiereRevisionPrecio: item.requiereRevisionPrecio,
+      imagenReferencia: item.imagenReferencia,
+      requiereDiseno,
+      origenDiseno: item.origenDiseno,
+      archivoDisenoInicialUrl: item.archivoDisenoInicialUrl,
+      esDisenoGeneral: item.esDisenoGeneral,
+      medioRecepcionDiseno:
+        item.origenDiseno === "CLIENTE" && item.archivoDisenoInicialUrl
+          ? "SISTEMA"
+          : null,
+      observaciones: item.observaciones,
+      estampados: item.estampados.map((estampado: any) => ({
+        idTecnica: estampado.idTecnica,
+        idTarifaAplicada: estampado.tarifa?.idTarifa ?? null,
+        ubicacion: estampado.ubicacion,
+        anchoCm: estampado.anchoCm,
+        altoCm: estampado.altoCm,
+        descripcion: estampado.descripcion,
+        observaciones: estampado.observaciones,
+        origenDiseno: estampado.origenDiseno,
+        grupoDisenoCompartido: estampado.grupoDisenoCompartido,
+        tarifaAnchoSnapshot: estampado.tarifa?.anchoHastaCm ?? null,
+        tarifaAltoSnapshot: estampado.tarifa?.altoHastaCm ?? null,
+        tarifaGeneralSnapshot: estampado.tarifa?.esGeneral ?? null,
+        precioUnitarioSugerido: estampado.precioUnitarioSugerido,
+        descuentoPorcentajeSnapshot: 0,
+        subtotalBrutoSugerido: estampado.subtotalBrutoSugerido,
+        descuentoTotalSugerido: 0,
+        subtotalSugerido: estampado.subtotalSugerido,
+        costoDisenoSugerido: estampado.costoDisenoSugerido,
+        requiereRevisionPrecio: estampado.requiereRevisionPrecio,
+        estadoMedidas: estampado.estadoMedidas,
+        motivosRevision: estampado.motivosRevision,
+      })),
+    };
+  });
+
 const enviarCorreosCotizacion = async (
   cliente: any,
   cotizacion: any,
@@ -214,10 +331,8 @@ export class PublicCotizacionService {
       throw new Error(error);
     }
 
-    const itemsEntrada = data.items as any[];
-    const tecnicasPorId = await this.asegurarTecnicasActivas(itemsEntrada);
-    const calculo = await productoService.calcularItems(itemsEntrada);
-    return respuestaCalculoPublica(calculo, itemsEntrada, tecnicasPorId);
+    const calculo = await calculoInternoService.calcular(data);
+    return respuestaSolicitudPublica(calculo);
   }
 
   async crearCotizacion(
@@ -240,10 +355,7 @@ export class PublicCotizacionService {
       throw new Error(error);
     }
 
-    const itemsEntrada = data.items as any[];
-    const tecnicasPorId = await this.asegurarTecnicasActivas(itemsEntrada);
-
-    const calculo = await productoService.calcularItems(itemsEntrada);
+    const calculo = await calculoInternoService.calcular(data);
     let cliente: any = clienteAutenticado;
     let accesoCliente: any = clienteAutenticado
       ? {
@@ -294,61 +406,33 @@ export class PublicCotizacionService {
       accesoCliente = await clienteAccessService.asegurarAccesoCliente(cliente);
     }
 
-    const detalles = calculo.items.map((item: any, index: number) => ({
-      idProducto: item.snapshot.idProducto,
-      idTecnica: Number(itemsEntrada[index]?.idTecnica),
-      descripcion: item.snapshot.descripcion,
-      cantidad: item.snapshot.cantidad,
-      precioBase: item.snapshot.precioBase,
-      descuentoPorcentaje: item.snapshot.descuentoPorcentaje,
-      descuentoValorUnitario: item.snapshot.descuentoValorUnitario,
-      precioUnitario: item.snapshot.precioUnitario,
-      costoDiseno: 0,
-      subtotal: item.snapshot.subtotal,
-      subtotalBruto: item.snapshot.subtotalBruto,
-      descuentoTotal: item.snapshot.descuentoTotal,
-      subtotalConDescuento: item.snapshot.subtotalConDescuento,
-      requiereDiseno: itemsEntrada[index]?.requiereDiseno !== false,
-      origenDiseno: String(
-        itemsEntrada[index]?.origenDiseno ?? "PIXEL",
-      ).toUpperCase(),
-      archivoDisenoInicialUrl: limpiarTextoOpcional(
-        itemsEntrada[index]?.archivoDisenoInicialUrl,
-      ),
-      esDisenoGeneral: itemsEntrada[index]?.esDisenoGeneral === true,
-      medioRecepcionDiseno:
-        String(itemsEntrada[index]?.origenDiseno ?? "PIXEL").toUpperCase() ===
-          "CLIENTE" && itemsEntrada[index]?.archivoDisenoInicialUrl
-          ? "SISTEMA"
-          : null,
-      observaciones: item.snapshot.observaciones,
-    }));
+    const detalles = detallesPersistenciaSolicitud(calculo);
 
     const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
       idCliente: cliente.idCliente,
       creadoPorId: null,
       tipoCotizacion: "PUBLICA",
-      estado: "PENDIENTE",
-      subtotal: calculo.subtotal,
-      descuentoTotal: calculo.descuentoTotal,
+      estado: "EN_REVISION",
+      subtotal: 0,
+      descuentoTotal: 0,
       costosAdicionales: 0,
-      total: calculo.total,
+      total: 0,
+      precioSugeridoInterno: calculo.precioSugeridoInterno,
+      requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+      advertenciasInternas: calculo.advertencias,
       observaciones: limpiarTextoOpcional(data.observaciones),
       detalles,
     });
     const observaciones = limpiarTextoOpcional(data.observaciones);
-    const email = await enviarCorreosCotizacion(
+    const email = await notificationService.solicitudCotizacionRecibida({
+      ...serializarCotizacionCliente(cotizacion),
       cliente,
-      cotizacion,
-      calculo,
       observaciones,
       accesoCliente,
-      tecnicasPorId,
-    );
+    });
 
     return {
-      cotizacion: formatearCotizacionPublica(cotizacion),
-      calculo: respuestaCalculoPublica(calculo, itemsEntrada, tecnicasPorId),
+      cotizacion: serializarCotizacionCliente(cotizacion),
       email,
     };
   }

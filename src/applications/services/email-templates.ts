@@ -1,6 +1,9 @@
 import { escapeHtml, type MailData } from "./email.service";
 
 export const EMAIL_EVENTS = {
+  SOLICITUD_COTIZACION_RECIBIDA: "SOLICITUD_COTIZACION_RECIBIDA",
+  PROPUESTA_COTIZACION_ENVIADA: "PROPUESTA_COTIZACION_ENVIADA",
+  RESPUESTA_COTIZACION_REGISTRADA: "RESPUESTA_COTIZACION_REGISTRADA",
   COTIZACION_CREADA: "COTIZACION_CREADA",
   COTIZACION_PRESENCIAL_CREADA: "COTIZACION_PRESENCIAL_CREADA",
   COTIZACION_MODIFICADA: "COTIZACION_MODIFICADA",
@@ -36,6 +39,260 @@ const textoSeguro = (valor: unknown, fallback = "No registrado") => {
 
   const texto = String(valor).trim();
   return texto === "" ? fallback : texto;
+};
+
+const normalizarSolicitudItems = (entidad: any) =>
+  (entidad?.detalles ?? entidad?.items ?? []).map((detalle: any) => ({
+    producto: textoSeguro(
+      detalle?.producto?.nombre ??
+        detalle?.nombrePersonalizado ??
+        detalle?.descripcionPersonalizada ??
+        detalle?.descripcion,
+      "Producto especial",
+    ),
+    cantidad: numeroSeguro(detalle?.cantidad),
+    observaciones: textoSeguro(detalle?.observaciones, "Sin observaciones"),
+    estampados: (detalle?.estampados ?? []).map((estampado: any) => ({
+      tecnica: textoSeguro(estampado?.tecnica?.nombre, "Por definir"),
+      ubicacion: textoSeguro(estampado?.ubicacion, "Por definir"),
+      medidas:
+        estampado?.anchoCm != null && estampado?.altoCm != null
+          ? `${textoSeguro(estampado.anchoCm)} x ${textoSeguro(estampado.altoCm)} cm`
+          : "Por definir",
+    })),
+  }));
+
+const solicitudItemsTexto = (items: any[]) =>
+  items
+    .map((item) => {
+      const servicios =
+        item.estampados.length > 0
+          ? item.estampados
+              .map(
+                (estampado: any) =>
+                  `  - ${estampado.tecnica}, ${estampado.ubicacion}, ${estampado.medidas}`,
+              )
+              .join("\n")
+          : "  - Servicios por definir";
+
+      return `- ${item.producto} | Cantidad: ${item.cantidad}\n${servicios}\n  Observaciones: ${item.observaciones}`;
+    })
+    .join("\n");
+
+const solicitudItemsHtml = (items: any[]) =>
+  items
+    .map((item) => {
+      const servicios =
+        item.estampados.length > 0
+          ? `<ul>${item.estampados
+              .map(
+                (estampado: any) =>
+                  `<li>${escapeHtml(estampado.tecnica)} - ${escapeHtml(estampado.ubicacion)} - ${escapeHtml(estampado.medidas)}</li>`,
+              )
+              .join("")}</ul>`
+          : "<span>Servicios por definir</span>";
+
+      return `<tr>
+        <td>${escapeHtml(item.producto)}</td>
+        <td>${escapeHtml(item.cantidad)}</td>
+        <td>${servicios}</td>
+        <td>${escapeHtml(item.observaciones)}</td>
+      </tr>`;
+    })
+    .join("");
+
+export const buildSolicitudCotizacionRecibidaTemplate = (
+  payload: any,
+): MailData => {
+  const items = normalizarSolicitudItems(payload);
+  const nombre = textoSeguro(payload?.cliente?.nombre, "cliente");
+  const linkAcceso = payload?.accesoCliente?.linkCrearPassword;
+  const accesoTexto = linkAcceso
+    ? `\nCrea tu contrasena para consultar el avance: ${linkAcceso}\n`
+    : "";
+  const accesoHtml = linkAcceso
+    ? `<p><a href="${escapeHtml(linkAcceso)}">Crear contrasena y consultar mi solicitud</a></p>`
+    : "";
+
+  return {
+    to: payload?.cliente?.correo,
+    subject: "Recibimos tu solicitud de cotizacion - PIXEL",
+    text: `Hola ${nombre},
+
+Recibimos tu solicitud:
+${solicitudItemsTexto(items)}
+
+El equipo de PIXEL revisara la solicitud y confirmara el precio. Por ahora no existe una propuesta oficial ni un valor para aceptar.
+${accesoTexto}
+
+PIXEL`,
+    html: `<p>Hola <strong>${escapeHtml(nombre)}</strong>,</p>
+      <p>Recibimos tu solicitud de cotizacion:</p>
+      <table border="1" cellpadding="6" cellspacing="0">
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>Servicios</th><th>Observaciones</th></tr></thead>
+        <tbody>${solicitudItemsHtml(items)}</tbody>
+      </table>
+      <p><strong>El equipo de PIXEL revisara la solicitud y confirmara el precio.</strong></p>
+      <p>Por ahora no existe una propuesta oficial ni un valor para aceptar.</p>
+      ${accesoHtml}
+      <p>PIXEL</p>`,
+  };
+};
+
+export const buildPropuestaCotizacionEnviadaTemplate = (
+  payload: any,
+): MailData => {
+  const version = payload?.version ?? {};
+  const desglose = version?.desgloseVisible ?? {};
+  const items = desglose.items ?? [];
+  const disenos = Array.isArray(desglose.disenos)
+    ? desglose.disenos
+    : [];
+  const conceptos = Array.isArray(desglose.conceptosAdicionales)
+    ? desglose.conceptosAdicionales
+    : [];
+  const itemsSolicitud = normalizarSolicitudItems({ items });
+  const cliente = textoSeguro(payload?.cliente?.nombre, "cliente");
+  const baseUrl = String(
+    process.env.FRONTEND_URL ?? "http://localhost:5173",
+  ).replace(/\/$/, "");
+  const url = `${baseUrl}/mis-cotizaciones`;
+  const filas = items
+    .map(
+      (item: any, indice: number) => {
+        const servicios = itemsSolicitud[indice]?.estampados ?? [];
+        const serviciosHtml =
+          servicios.length > 0
+            ? `<ul>${servicios
+                .map(
+                  (servicio: any) =>
+                    `<li>${escapeHtml(servicio.tecnica)} - ${escapeHtml(servicio.ubicacion)} - ${escapeHtml(servicio.medidas)}</li>`,
+                )
+                .join("")}</ul>`
+            : "Por definir";
+        return `<tr>
+        <td>${escapeHtml(textoSeguro(item.nombre, "Producto"))}</td>
+        <td>${escapeHtml(numeroSeguro(item.cantidad))}</td>
+        <td>${serviciosHtml}</td>
+        <td>${escapeHtml(moneda(item.precioUnitario))}</td>
+        <td>${escapeHtml(moneda(item.subtotal))}</td>
+      </tr>`;
+      },
+    )
+    .join("");
+  const textoItems = items
+    .map(
+      (item: any, indice: number) => {
+        const servicios = itemsSolicitud[indice]?.estampados ?? [];
+        const resumenServicios =
+          servicios.length > 0
+            ? servicios
+                .map(
+                  (servicio: any) =>
+                    `${servicio.tecnica} (${servicio.ubicacion}, ${servicio.medidas})`,
+                )
+                .join("; ")
+            : "Servicios por definir";
+        return `- ${textoSeguro(item.nombre, "Producto")} | ${numeroSeguro(item.cantidad)} unidad(es) | ${resumenServicios} | ${moneda(item.subtotal)}`;
+      },
+    )
+    .join("\n");
+  const filasAdicionales = [
+    ...disenos.map(
+      (diseno: any) =>
+        `<tr><td colspan="4">${escapeHtml(textoSeguro(diseno.descripcion, "Diseno"))}</td><td>${escapeHtml(moneda(diseno.valor))}</td></tr>`,
+    ),
+    ...conceptos.map(
+      (concepto: any) =>
+        `<tr><td colspan="4">${escapeHtml(textoSeguro(concepto.concepto, "Concepto adicional"))}</td><td>${escapeHtml(moneda(concepto.valor))}</td></tr>`,
+    ),
+  ].join("");
+  const textoAdicionales = [
+    ...disenos.map(
+      (diseno: any) =>
+        `${textoSeguro(diseno.descripcion, "Diseno")}: ${moneda(diseno.valor)}`,
+    ),
+    ...conceptos.map(
+      (concepto: any) =>
+        `${textoSeguro(concepto.concepto, "Concepto adicional")}: ${moneda(concepto.valor)}`,
+    ),
+  ].join("\n");
+  const ajusteComercial = Number(desglose.ajusteComercial ?? 0);
+  const lineaAjusteTexto =
+    ajusteComercial !== 0
+      ? `Ajuste comercial: ${moneda(ajusteComercial)}`
+      : "";
+  const lineaAjusteHtml =
+    ajusteComercial !== 0
+      ? `Ajuste comercial: ${escapeHtml(moneda(ajusteComercial))}<br>`
+      : "";
+
+  return {
+    to: payload?.cliente?.correo,
+    subject: `Tu propuesta de cotizacion v${numeroSeguro(version.numeroVersion)} esta lista - PIXEL`,
+    text: `Hola ${cliente},
+
+PIXEL preparo la propuesta oficial version ${numeroSeguro(version.numeroVersion)}.
+${textoItems}
+
+${textoAdicionales}
+Descuento comercial: -${moneda(desglose.descuentoManual ?? version.descuentoManual)}
+${lineaAjusteTexto}
+Total final: ${moneda(version.precioFinal)}
+Valida hasta: ${textoSeguro(version.validaHasta)}
+
+Puedes revisarla, aceptarla, rechazarla o solicitar un ajuste en ${url}.
+
+PIXEL`,
+    html: `<p>Hola <strong>${escapeHtml(cliente)}</strong>,</p>
+      <p>PIXEL preparo la propuesta oficial <strong>version ${escapeHtml(numeroSeguro(version.numeroVersion))}</strong>.</p>
+      <table border="1" cellpadding="6" cellspacing="0">
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>Servicios</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
+        <tbody>${filas}${filasAdicionales}</tbody>
+      </table>
+      <p>Descuento comercial: -${escapeHtml(moneda(desglose.descuentoManual ?? version.descuentoManual))}<br>
+      ${lineaAjusteHtml}
+      <strong>Total final: ${escapeHtml(moneda(version.precioFinal))}</strong><br>
+      Valida hasta: ${escapeHtml(textoSeguro(version.validaHasta))}</p>
+      <p><a href="${escapeHtml(url)}">Revisar propuesta</a></p>
+      <p>Desde tu cuenta puedes aceptarla, rechazarla o solicitar un ajuste.</p>
+      <p>PIXEL</p>`,
+  };
+};
+
+export const buildRespuestaCotizacionTemplate = (payload: any): MailData => {
+  const respuesta = payload?.respuesta ?? {};
+  const version = payload?.version ?? {};
+  const cliente = textoSeguro(payload?.cliente?.nombre, "cliente");
+  const decision = textoSeguro(respuesta.decision, "REGISTRADA");
+  const medio = textoSeguro(respuesta.medio, "SISTEMA");
+  const aceptada = decision === "ACEPTAR";
+  const asunto = aceptada
+    ? "Aceptamos tu respuesta y creamos tu pedido - PIXEL"
+    : decision === "SOLICITAR_AJUSTE"
+      ? "Recibimos tu solicitud de ajuste - PIXEL"
+      : "Registramos tu respuesta a la propuesta - PIXEL";
+
+  return {
+    to: payload?.cliente?.correo,
+    subject: asunto,
+    text: `Hola ${cliente},
+
+Registramos tu respuesta a la propuesta version ${numeroSeguro(version.numeroVersion)}.
+Decision: ${decision}
+Medio: ${medio}
+${aceptada ? `Valor aceptado: ${moneda(respuesta.precioAceptado)}\nPedido creado: #${textoSeguro(payload?.pedido?.idPedido)}` : "No se creo ningun pedido."}
+Observaciones: ${textoSeguro(respuesta.observaciones, "Sin observaciones")}
+
+PIXEL`,
+    html: `<p>Hola <strong>${escapeHtml(cliente)}</strong>,</p>
+      <p>Registramos tu respuesta a la propuesta version ${escapeHtml(numeroSeguro(version.numeroVersion))}.</p>
+      <p>Decision: <strong>${escapeHtml(decision)}</strong><br>
+      Medio: ${escapeHtml(medio)}<br>
+      ${aceptada ? `Valor aceptado: ${escapeHtml(moneda(respuesta.precioAceptado))}<br>Pedido creado: #${escapeHtml(textoSeguro(payload?.pedido?.idPedido))}` : "No se creo ningun pedido."}</p>
+      <p>Observaciones: ${escapeHtml(textoSeguro(respuesta.observaciones, "Sin observaciones"))}</p>
+      <p>PIXEL</p>`,
+  };
 };
 
 const porcentaje = (valor: unknown) => {
@@ -402,6 +659,17 @@ export const buildPedidoCreadoTemplate = (payload: any): MailData => {
   const pedido = payload.pedido;
   const items = normalizarItems(pedido);
   const resumen = calcularResumen(pedido, items);
+  const respuesta = pedido.respuestaCotizacion;
+  const trazabilidadTexto = respuesta
+    ? [
+        `Version aceptada: ${textoSeguro(pedido.cotizacionVersion?.numeroVersion, "Historica")}.`,
+        `Medio de aceptacion: ${textoSeguro(respuesta.medio, "SISTEMA")}.`,
+      ]
+    : [];
+  const trazabilidadHtml = respuesta
+    ? `<p><strong>Version aceptada:</strong> ${escapeHtml(textoSeguro(pedido.cotizacionVersion?.numeroVersion, "Historica"))}<br>
+       <strong>Medio de aceptacion:</strong> ${escapeHtml(textoSeguro(respuesta.medio, "SISTEMA"))}</p>`
+    : "";
 
   return {
     to: pedido.cliente.correo,
@@ -411,6 +679,7 @@ export const buildPedidoCreadoTemplate = (payload: any): MailData => {
       "",
       "Tu pedido fue creado correctamente.",
       `Numero de pedido: ${pedido.idPedido}.`,
+      ...trazabilidadTexto,
       resumenTexto(items),
       "",
       resumenFinalCotizacionTexto(resumen),
@@ -425,6 +694,7 @@ export const buildPedidoCreadoTemplate = (payload: any): MailData => {
       <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
       <p>Tu pedido fue creado correctamente.</p>
       <p><strong>Numero de pedido:</strong> ${escapeHtml(pedido.idPedido)}</p>
+      ${trazabilidadHtml}
       ${tablaItems(items)}
       ${resumenFinalCotizacionHtml(resumen)}
       <p><strong>Estado actual:</strong> PENDIENTE.</p>

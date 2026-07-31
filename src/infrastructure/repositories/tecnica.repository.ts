@@ -1,5 +1,8 @@
 import {prisma} from "../../config/prisma";
-import { tecnicaSelect } from "../../utils/selects/tecnica.select";
+import {
+  tecnicaPublicSelect,
+  tecnicaSelect,
+} from "../../utils/selects/tecnica.select";
 import type { ParsedPagination } from "../../utils/pagination.util";
 
 const buildTecnicaWhere = (search?: string | null) => {
@@ -41,7 +44,7 @@ export class TecnicaRepository {
       where: {
         estado: true,
       },
-      select: tecnicaSelect,
+      select: tecnicaPublicSelect,
       orderBy: {
         idTecnica: "asc",
       },

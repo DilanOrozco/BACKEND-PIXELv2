@@ -2,6 +2,8 @@ export const disenoSelect = {
   idDiseno: true,
   idPedido: true,
   idDetallePedido: true,
+  idDetalleEstampadoPedido: true,
+  grupoDisenoCompartido: true,
   esDisenoGeneral: true,
   idDisenador: true,
   archivoUrl: true,
@@ -50,6 +52,26 @@ export const disenoSelect = {
           },
         },
       },
+      tecnica: {
+        select: {
+          idTecnica: true,
+          nombre: true,
+        },
+      },
+    },
+  },
+  detalleEstampadoPedido: {
+    select: {
+      idDetalleEstampadoPedido: true,
+      idDetallePedido: true,
+      idTecnica: true,
+      ubicacion: true,
+      anchoCm: true,
+      altoCm: true,
+      descripcion: true,
+      observaciones: true,
+      origenDiseno: true,
+      grupoDisenoCompartido: true,
       tecnica: {
         select: {
           idTecnica: true,

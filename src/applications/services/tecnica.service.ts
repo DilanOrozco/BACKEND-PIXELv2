@@ -32,7 +32,15 @@ export class TecnicaService {
 
     return await tecnicaRepository.crearTecnica({
       nombre: nombreLimpio,
-      descripcion: data.descripcion?.trim(),
+      descripcion:
+        typeof data.descripcion === "string" &&
+        data.descripcion.trim() !== ""
+          ? data.descripcion.trim()
+          : null,
+      requiereMedidas:
+        data.requiereMedidas === undefined
+          ? true
+          : data.requiereMedidas,
       estado: true,
     });
   }
@@ -128,11 +136,19 @@ export class TecnicaService {
     }
 
     if (data.descripcion !== undefined) {
-      dataActualizar.descripcion = data.descripcion.trim();
+      dataActualizar.descripcion =
+        typeof data.descripcion === "string" &&
+        data.descripcion.trim() !== ""
+          ? data.descripcion.trim()
+          : null;
     }
 
     if (data.estado !== undefined) {
       dataActualizar.estado = data.estado;
+    }
+
+    if (data.requiereMedidas !== undefined) {
+      dataActualizar.requiereMedidas = data.requiereMedidas;
     }
 
     return await tecnicaRepository.actualizarTecnica(idTecnica, dataActualizar);

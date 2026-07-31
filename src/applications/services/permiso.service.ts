@@ -8,6 +8,9 @@ const rolRepository = new RolRepository();
 const PERMISOS_ROL_CLIENTE = [
   "dashboard.cliente",
   "cotizaciones.cliente.ver",
+  "cotizaciones.crear_cliente",
+  "cotizaciones.editar_cliente",
+  "cotizaciones.cliente.responder",
   "pedidos.cliente.ver",
   "abonos.cliente.ver",
   "abonos.cliente.crear",
