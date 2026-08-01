@@ -8,6 +8,7 @@ import { CotizacionRepository } from "../../infrastructure/repositories/cotizaci
 import { ProductoRepository } from "../../infrastructure/repositories/producto.repository";
 import { TarifaTecnicaRepository } from "../../infrastructure/repositories/tarifa-tecnica.repository";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
+import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 
 const cliente = {
   idCliente: 10,
@@ -102,6 +103,42 @@ const item = {
     },
   ],
 };
+
+test("lista solo el contrato publico seguro de tarifas activas", async (t) => {
+  t.mock.method(TecnicaRepository.prototype, "buscarPorId", async () => ({
+    idTecnica: 5,
+    nombre: "DTF",
+    estado: true,
+  }) as any);
+  t.mock.method(
+    TarifaTecnicaRepository.prototype,
+    "listarActivasPublicas",
+    async () => [
+      {
+        idTarifa: 1,
+        nombre: "Punto corazon",
+        anchoHastaCm: 10,
+        altoHastaCm: 10,
+        esGeneral: false,
+      },
+    ] as any,
+  );
+
+  const tarifas = await new PublicCotizacionService().listarTarifasTecnica(5);
+
+  assert.deepEqual(tarifas, [
+    {
+      idTarifaTecnica: 1,
+      nombre: "Punto corazon",
+      anchoHastaCm: 10,
+      altoHastaCm: 10,
+      esGeneral: false,
+    },
+  ]);
+  assert.equal("precioUnitario" in tarifas[0]!, false);
+  assert.equal("estado" in tarifas[0]!, false);
+  assert.equal("descuentos" in tarifas[0]!, false);
+});
 
 test("calculo publico valida la solicitud pero no expone precios internos", async (t) => {
   const configuracionMock = configurarCalculo(t);

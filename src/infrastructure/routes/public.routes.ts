@@ -8,6 +8,10 @@ const publicController = new PublicController();
 router.get("/productos", publicController.listarProductos);
 router.get("/categorias-producto", publicController.listarCategoriasProducto);
 router.get("/tecnicas", publicController.listarTecnicas);
+router.get(
+  "/tecnicas/:idTecnica/tarifas",
+  publicController.listarTarifasTecnica,
+);
 router.post("/cotizaciones/calcular", publicController.calcularCotizacion);
 router.post(
   "/cotizaciones",

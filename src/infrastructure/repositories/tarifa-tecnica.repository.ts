@@ -5,6 +5,7 @@ import {
   descuentoTecnicaSelect,
   tarifaTecnicaSelect,
 } from "../../utils/selects/tarifa-tecnica.select";
+import { tarifaTecnicaPublicSelect } from "../../utils/selects/tecnica.select";
 
 const construirWhere = (
   search?: string | null,
@@ -21,6 +22,23 @@ const construirWhere = (
 });
 
 export class TarifaTecnicaRepository {
+  async listarActivasPublicas(idTecnica: number) {
+    return await prisma.tarifaTecnica.findMany({
+      where: {
+        idTecnica,
+        estado: true,
+        tecnica: { estado: true },
+      },
+      select: tarifaTecnicaPublicSelect,
+      orderBy: [
+        { esGeneral: "desc" },
+        { anchoHastaCm: "asc" },
+        { altoHastaCm: "asc" },
+        { idTarifa: "asc" },
+      ],
+    });
+  }
+
   async listar(pagination: ParsedPagination, idTecnica?: number) {
     const where = construirWhere(pagination.search, idTecnica);
     const [total, data] = await Promise.all([

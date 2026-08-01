@@ -1,6 +1,7 @@
 export const tarifaTecnicaSelect = {
   idTarifa: true,
   idTecnica: true,
+  nombre: true,
   anchoHastaCm: true,
   altoHastaCm: true,
   esGeneral: true,

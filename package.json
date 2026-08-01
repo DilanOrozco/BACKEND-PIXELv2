@@ -9,6 +9,7 @@
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:watch": "tsx --test --watch \"src/**/*.test.ts\"",
     "sync:productos": "tsx scripts/sync-productos-cotizables.ts",
+    "backfill:tarifas-tecnicas": "tsx scripts/backfill-tarifa-tecnica-nombres.ts",
     "start": "tsx src/app.ts"
   },
   "keywords": [],

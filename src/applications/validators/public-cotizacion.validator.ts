@@ -119,6 +119,15 @@ const validarItems = (
       }
 
       if (
+        estampado?.idTarifaTecnica !== undefined &&
+        estampado?.idTarifaTecnica !== null &&
+        estampado?.idTarifaTecnica !== "" &&
+        !esEnteroPositivo(estampado.idTarifaTecnica)
+      ) {
+        return "La tarifa tecnica del estampado debe ser valida cuando se envia.";
+      }
+
+      if (
         estampado.anchoCm !== undefined &&
         estampado.anchoCm !== null &&
         (!Number.isFinite(Number(estampado.anchoCm)) ||
@@ -138,10 +147,9 @@ const validarItems = (
         return "El alto del estampado debe ser mayor a 0 y maximo 500 cm.";
       }
 
-      if (
-        (estampado.anchoCm === undefined) !==
-        (estampado.altoCm === undefined)
-      ) {
+      const tieneAncho = ![undefined, null, ""].includes(estampado.anchoCm);
+      const tieneAlto = ![undefined, null, ""].includes(estampado.altoCm);
+      if (tieneAncho !== tieneAlto) {
         return "Debe enviar ancho y alto juntos.";
       }
 

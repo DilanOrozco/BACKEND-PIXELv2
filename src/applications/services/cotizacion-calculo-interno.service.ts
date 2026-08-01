@@ -42,6 +42,7 @@ export const normalizarItemsSolicitudCotizacion = (data: any) => {
         ? [
             {
               idTecnica: item.idTecnica,
+              idTarifaTecnica: item.idTarifaTecnica,
               ubicacion: item.ubicacion ?? "NO_ESPECIFICADA",
               anchoCm: item.anchoCm,
               altoCm: item.altoCm,
@@ -87,6 +88,12 @@ export const normalizarItemsSolicitudCotizacion = (data: any) => {
           estampado.idTecnica === ""
             ? null
             : Number(estampado.idTecnica),
+        idTarifaTecnica:
+          estampado.idTarifaTecnica === undefined ||
+          estampado.idTarifaTecnica === null ||
+          estampado.idTarifaTecnica === ""
+            ? null
+            : Number(estampado.idTarifaTecnica),
         ubicacion:
           limpiarTextoOpcional(estampado.ubicacion) ?? "NO_ESPECIFICADA",
         anchoCm:
@@ -283,13 +290,45 @@ export class CotizacionCalculoInternoService {
 
           const medidasDefinidas =
             estampado.anchoCm !== null && estampado.altoCm !== null;
+          const tarifaElegida =
+            estampado.idTarifaTecnica === null
+              ? null
+              : tecnica.tarifas.find(
+                  (tarifa: any) =>
+                    tarifa.idTarifa === estampado.idTarifaTecnica,
+                ) ?? null;
+
+          if (estampado.idTarifaTecnica !== null && !tarifaElegida) {
+            throw new Error(
+              `La tarifa tecnica ${estampado.idTarifaTecnica} no pertenece a la tecnica seleccionada o esta inactiva.`,
+            );
+          }
+
+          if (
+            tarifaElegida &&
+            medidasDefinidas &&
+            tarifaElegida.esGeneral !== true &&
+            (Number(tarifaElegida.anchoHastaCm) < estampado.anchoCm ||
+              Number(tarifaElegida.altoHastaCm) < estampado.altoCm)
+          ) {
+            throw new Error(
+              `Las dimensiones del estampado exceden la tarifa tecnica ${estampado.idTarifaTecnica}.`,
+            );
+          }
+
           const estadoMedidas = medidasDefinidas
             ? "DEFINIDAS"
+            : tarifaElegida
+              ? "SEGUN_TARIFA"
             : tecnica.requiereMedidas === false
               ? "NO_APLICA"
               : "PENDIENTES";
 
-          if (!medidasDefinidas && tecnica.requiereMedidas !== false) {
+          if (
+            !medidasDefinidas &&
+            !tarifaElegida &&
+            tecnica.requiereMedidas !== false
+          ) {
             motivosRevision.push("MEDIDAS_PENDIENTES");
             motivosRevisionItem.push(...motivosRevision);
             advertencias.push(
@@ -315,13 +354,15 @@ export class CotizacionCalculoInternoService {
             };
           }
 
-          const tarifa = medidasDefinidas
-            ? seleccionarTarifa(
-                tecnica.tarifas,
-                estampado.anchoCm,
-                estampado.altoCm,
-              )
-            : seleccionarTarifaGeneral(tecnica.tarifas);
+          const tarifa =
+            tarifaElegida ??
+            (medidasDefinidas
+              ? seleccionarTarifa(
+                  tecnica.tarifas,
+                  estampado.anchoCm,
+                  estampado.altoCm,
+                )
+              : seleccionarTarifaGeneral(tecnica.tarifas));
 
           if (!tarifa) {
             const motivo =
@@ -373,6 +414,7 @@ export class CotizacionCalculoInternoService {
             },
             tarifa: {
               idTarifa: tarifa.idTarifa,
+              nombre: tarifa.nombre,
               anchoHastaCm:
                 tarifa.anchoHastaCm === null
                   ? null

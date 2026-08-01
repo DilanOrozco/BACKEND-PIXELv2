@@ -11,9 +11,17 @@ const enteroPositivo = (valor: unknown) => {
 const booleanoOpcional = (valor: unknown) =>
   valor === undefined || typeof valor === "boolean";
 
+const nombreValido = (valor: unknown) =>
+  typeof valor === "string" &&
+  valor.trim().length > 0 &&
+  valor.trim().length <= 100;
+
 export const validarCrearTarifaTecnica = (data: any) => {
   if (!enteroPositivo(data?.idTecnica)) {
     return "La tecnica es obligatoria y debe ser valida.";
+  }
+  if (!nombreValido(data?.nombre)) {
+    return "El nombre es obligatorio y debe tener maximo 100 caracteres.";
   }
   if (!booleanoOpcional(data?.esGeneral)) {
     return "esGeneral debe ser booleano.";
@@ -48,6 +56,7 @@ export const validarActualizarTarifaTecnica = (data: any) => {
   }
 
   const permitidos = [
+    "nombre",
     "anchoHastaCm",
     "altoHastaCm",
     "esGeneral",
@@ -60,6 +69,9 @@ export const validarActualizarTarifaTecnica = (data: any) => {
 
   if (noPermitido) {
     return `El campo ${noPermitido} no se puede modificar.`;
+  }
+  if (data.nombre !== undefined && !nombreValido(data.nombre)) {
+    return "El nombre debe ser texto no vacio de maximo 100 caracteres.";
   }
   if (!booleanoOpcional(data.esGeneral)) {
     return "esGeneral debe ser booleano.";

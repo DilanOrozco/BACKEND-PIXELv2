@@ -28,6 +28,7 @@ export class TarifaTecnicaService {
       defaultSortBy: "idTarifa",
       allowedSortBy: [
         "idTarifa",
+        "nombre",
         "anchoHastaCm",
         "altoHastaCm",
         "precioUnitario",
@@ -75,6 +76,7 @@ export class TarifaTecnicaService {
 
     return await repository.crear({
       idTecnica,
+      nombre: String(data.nombre).trim(),
       anchoHastaCm,
       altoHastaCm,
       esGeneral,
@@ -133,6 +135,9 @@ export class TarifaTecnicaService {
     }
 
     return await repository.actualizar(idTarifa, {
+      ...(data.nombre !== undefined
+        ? { nombre: String(data.nombre).trim() }
+        : {}),
       ...(data.esGeneral !== undefined || data.anchoHastaCm !== undefined
         ? { anchoHastaCm }
         : {}),

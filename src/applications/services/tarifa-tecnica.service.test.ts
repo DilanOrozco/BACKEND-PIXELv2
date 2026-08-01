@@ -30,12 +30,14 @@ test("TarifaTecnicaService crea tarifa general sin dimensiones artificiales", as
 
   const resultado = await new TarifaTecnicaService().crear({
     idTecnica: 3,
+    nombre: "Servicio fijo",
     esGeneral: true,
     precioUnitario: 7000,
   });
   const data = crear.mock.calls[0]!.arguments[0] as any;
 
   assert.equal(data.esGeneral, true);
+  assert.equal(data.nombre, "Servicio fijo");
   assert.equal(data.anchoHastaCm, null);
   assert.equal(data.altoHastaCm, null);
   assert.equal(Number(data.precioUnitario), 7000);
@@ -67,6 +69,7 @@ test("TarifaTecnicaService mantiene tarifas dimensionales y evita generales dupl
 
   const dimensional = await service.crear({
     idTecnica: 3,
+    nombre: "Manga",
     anchoHastaCm: 20,
     altoHastaCm: 30,
     precioUnitario: 12000,
@@ -80,6 +83,7 @@ test("TarifaTecnicaService mantiene tarifas dimensionales y evita generales dupl
     () =>
       service.crear({
         idTecnica: 3,
+        nombre: "General",
         esGeneral: true,
         precioUnitario: 7000,
       }),
@@ -95,6 +99,7 @@ test("TarifaTecnicaService rechaza dimensiones parciales y tarifa general con me
     () =>
       service.crear({
         idTecnica: 3,
+        nombre: "Incompleta",
         anchoHastaCm: 20,
         precioUnitario: 12000,
       }),
@@ -104,6 +109,7 @@ test("TarifaTecnicaService rechaza dimensiones parciales y tarifa general con me
     () =>
       service.crear({
         idTecnica: 3,
+        nombre: "General",
         esGeneral: true,
         anchoHastaCm: 1,
         altoHastaCm: 1,
@@ -111,4 +117,45 @@ test("TarifaTecnicaService rechaza dimensiones parciales y tarifa general con me
       }),
     /tarifa general no debe incluir ancho ni alto/i,
   );
+});
+
+test("TarifaTecnicaService exige y normaliza el nombre descriptivo", async (t) => {
+  const service = new TarifaTecnicaService();
+
+  await assert.rejects(
+    () =>
+      service.crear({
+        idTecnica: 3,
+        anchoHastaCm: 10,
+        altoHastaCm: 10,
+        precioUnitario: 10000,
+      }),
+    /nombre es obligatorio/i,
+  );
+
+  t.mock.method(
+    TecnicaRepository.prototype,
+    "buscarPorId",
+    async () => ({ ...tecnica, requiereMedidas: true }) as any,
+  );
+  t.mock.method(
+    TarifaTecnicaRepository.prototype,
+    "buscarDuplicada",
+    async () => null,
+  );
+  const crear = t.mock.method(
+    TarifaTecnicaRepository.prototype,
+    "crear",
+    async (data: any) => ({ idTarifa: 10, ...data }),
+  );
+
+  await service.crear({
+    idTecnica: 3,
+    nombre: "  Punto corazon  ",
+    anchoHastaCm: 10,
+    altoHastaCm: 10,
+    precioUnitario: 10000,
+  });
+
+  assert.equal(crear.mock.calls[0]!.arguments[0].nombre, "Punto corazon");
 });

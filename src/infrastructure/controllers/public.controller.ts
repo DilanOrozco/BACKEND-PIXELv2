@@ -56,6 +56,18 @@ export class PublicController {
     }
   }
 
+  async listarTarifasTecnica(req: Request, res: Response) {
+    try {
+      const tarifas = await publicCotizacionService.listarTarifasTecnica(
+        Number(req.params.idTecnica),
+      );
+
+      return res.status(200).json({ data: tarifas });
+    } catch (error: unknown) {
+      return res.status(400).json({ message: mensajeError(error) });
+    }
+  }
+
   async calcularCotizacion(req: Request, res: Response) {
     try {
       const calculo = await publicCotizacionService.calcular(req.body);

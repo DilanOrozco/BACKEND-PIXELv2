@@ -4,6 +4,7 @@ import { limpiarTextoOpcional } from "../../utils/text.util";
 import { ProductoService } from "./producto.service";
 import { CategoriaProductoService } from "./categoria-producto.service";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
+import { TarifaTecnicaRepository } from "../../infrastructure/repositories/tarifa-tecnica.repository";
 import { NotificationService } from "./notification.service";
 import { ClienteAccessService } from "./cliente-access.service";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
@@ -19,6 +20,7 @@ const cotizacionRepository = new CotizacionRepository();
 const productoService = new ProductoService();
 const categoriaProductoService = new CategoriaProductoService();
 const tecnicaRepository = new TecnicaRepository();
+const tarifaTecnicaRepository = new TarifaTecnicaRepository();
 const notificationService = new NotificationService();
 const clienteAccessService = new ClienteAccessService();
 const usuarioRepository = new UsuarioRepository();
@@ -299,6 +301,30 @@ export class PublicCotizacionService {
 
   async listarTecnicas() {
     return await tecnicaRepository.listarTecnicasActivas();
+  }
+
+  async listarTarifasTecnica(idTecnica: number) {
+    if (!Number.isInteger(idTecnica) || idTecnica <= 0) {
+      throw new Error("La tecnica debe ser valida.");
+    }
+
+    const tecnica = await tecnicaRepository.buscarPorId(idTecnica);
+    if (!tecnica || !tecnica.estado) {
+      throw new Error("La tecnica no existe o esta inactiva.");
+    }
+
+    const tarifas = await tarifaTecnicaRepository.listarActivasPublicas(
+      idTecnica,
+    );
+    return tarifas.map((tarifa) => ({
+      idTarifaTecnica: tarifa.idTarifa,
+      nombre: tarifa.nombre,
+      anchoHastaCm:
+        tarifa.anchoHastaCm === null ? null : Number(tarifa.anchoHastaCm),
+      altoHastaCm:
+        tarifa.altoHastaCm === null ? null : Number(tarifa.altoHastaCm),
+      esGeneral: tarifa.esGeneral,
+    }));
   }
 
   private async asegurarTecnicasActivas(items: any[]) {

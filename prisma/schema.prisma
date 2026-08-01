@@ -299,6 +299,7 @@ model PrecioProductoRango {
 model TarifaTecnica {
   idTarifa           Int      @id @default(autoincrement()) @map("id_tarifa")
   idTecnica          Int      @map("id_tecnica")
+  nombre             String   @default("Tarifa existente") @db.VarChar(100)
   anchoHastaCm       Decimal? @map("ancho_hasta_cm") @db.Decimal(8, 2)
   altoHastaCm        Decimal? @map("alto_hasta_cm") @db.Decimal(8, 2)
   esGeneral          Boolean  @default(false) @map("es_general")

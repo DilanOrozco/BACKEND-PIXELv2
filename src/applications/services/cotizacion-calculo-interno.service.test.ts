@@ -87,6 +87,46 @@ test("elige la tarifa activa mas pequena que cubre las dimensiones", async (t) =
   assert.equal(resultado.requiereRevisionPrecio, false);
 });
 
+test("usa la tarifa elegida por id aun cuando las dimensiones quedan pendientes", async (t) => {
+  configurar(t);
+  const resultado = await new CotizacionCalculoInternoService().calcular({
+    items: [
+      {
+        idProducto: 1,
+        cantidad: 1,
+        estampados: [
+          { idTecnica: 1, idTarifaTecnica: 2, ubicacion: "FRENTE" },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(resultado.items[0].estampados[0].tarifa.idTarifa, 2);
+  assert.equal(resultado.items[0].estampados[0].estadoMedidas, "SEGUN_TARIFA");
+  assert.equal(resultado.precioSugeridoInterno, 16000);
+  assert.equal(resultado.requiereRevisionPrecio, false);
+});
+
+test("rechaza una tarifa elegida que no pertenece a la tecnica", async (t) => {
+  configurar(t);
+
+  await assert.rejects(
+    () =>
+      new CotizacionCalculoInternoService().calcular({
+        items: [
+          {
+            idProducto: 1,
+            cantidad: 1,
+            estampados: [
+              { idTecnica: 1, idTarifaTecnica: 3, ubicacion: "FRENTE" },
+            ],
+          },
+        ],
+      }),
+    /no pertenece a la tecnica seleccionada o esta inactiva/i,
+  );
+});
+
 test("aplica el mayor descuento del producto e ignora DescuentoTecnica", async (t) => {
   configurar(t);
   const service = new CotizacionCalculoInternoService();

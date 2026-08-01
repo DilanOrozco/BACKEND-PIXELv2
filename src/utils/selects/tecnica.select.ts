@@ -15,3 +15,11 @@ export const tecnicaPublicSelect = {
   requiereMedidas: true,
   estado: true,
 };
+
+export const tarifaTecnicaPublicSelect = {
+  idTarifa: true,
+  nombre: true,
+  anchoHastaCm: true,
+  altoHastaCm: true,
+  esGeneral: true,
+} as const;
