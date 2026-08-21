@@ -11,6 +11,11 @@ router.use(verificarAuth);
 router.post("/", autorizarPermiso("roles.crear"), rolController.crearRol);
 router.get("/", autorizarPermiso("roles.ver"), rolController.listarRoles);
 router.get("/buscar", autorizarPermiso("roles.ver"), rolController.buscarPorNombre);
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("roles.ver"),
+  rolController.obtenerImpactoEliminacion,
+);
 router.patch("/:id", autorizarPermiso("roles.editar"), rolController.actualizarRol);
 router.delete("/:id/eliminar", autorizarPermiso("roles.eliminar"), rolController.eliminarRol);
 router.delete("/:id", autorizarPermiso("roles.desactivar"), rolController.desactivarRol);

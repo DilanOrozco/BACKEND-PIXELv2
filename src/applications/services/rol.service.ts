@@ -8,6 +8,7 @@ import {
   parsePaginationQuery,
   type PaginationQuery,
 } from "../../utils/pagination.util";
+import { buildDeletionImpact } from "../../utils/deletion-impact.util";
 
 const rolRepository = new RolRepository();
 
@@ -131,5 +132,100 @@ export class RolService {
     }
 
     return await rolRepository.eliminarRol(idRol);
+  }
+
+  async obtenerImpactoEliminacion(idRol: number) {
+    if (isNaN(idRol) || idRol <= 0) {
+      throw new Error("El ID del rol no es valido.");
+    }
+
+    const rol = await rolRepository.buscarPorId(idRol);
+
+    if (!rol) {
+      throw new Error("No se encontraron resultados.");
+    }
+
+    const impacto = await rolRepository.obtenerImpactoEliminacion(idRol);
+
+    return buildDeletionImpact([
+      {
+        tipo: "Usuarios",
+        accion: "ELIMINAR",
+        cantidad: impacto.usuariosCantidad,
+        registros: impacto.usuarios.map((usuario) => ({
+          id: usuario.idUsuario,
+          nombre: usuario.nombre,
+        })),
+      },
+      {
+        tipo: "Asignaciones de permisos",
+        accion: "ELIMINAR",
+        cantidad: impacto.permisosCantidad,
+        registros: impacto.permisos.map(({ permiso }) => ({
+          id: permiso.idPermiso,
+          nombre: permiso.descripcion || permiso.codigo,
+        })),
+      },
+      {
+        tipo: "Tokens de recuperacion de contrasena",
+        accion: "ELIMINAR",
+        cantidad: impacto.tokensCantidad,
+        registros: [],
+      },
+      {
+        tipo: "Clientes vinculados",
+        accion: "MODIFICAR",
+        cantidad: impacto.clientesCantidad,
+        registros: impacto.clientes.map((cliente) => ({
+          id: cliente.idCliente,
+          nombre: cliente.nombre,
+        })),
+      },
+      {
+        tipo: "Cotizaciones gestionadas",
+        accion: "MODIFICAR",
+        cantidad: impacto.cotizacionesCantidad,
+        registros: impacto.cotizaciones.map((cotizacion) => ({
+          id: cotizacion.idCotizacion,
+          nombre: `Cotizacion #${cotizacion.idCotizacion}`,
+        })),
+      },
+      {
+        tipo: "Abonos gestionados",
+        accion: "MODIFICAR",
+        cantidad: impacto.abonosCantidad,
+        registros: impacto.abonos.map((abono) => ({
+          id: abono.idAbono,
+          nombre: `Abono #${abono.idAbono}`,
+        })),
+      },
+      {
+        tipo: "Disenos gestionados",
+        accion: "MODIFICAR",
+        cantidad: impacto.disenosCantidad,
+        registros: impacto.disenos.map((diseno) => ({
+          id: diseno.idDiseno,
+          nombre: diseno.descripcion || `Diseno #${diseno.idDiseno}`,
+        })),
+      },
+      {
+        tipo: "Compras registradas",
+        accion: "MODIFICAR",
+        cantidad: impacto.comprasCantidad,
+        registros: impacto.compras.map((compra) => ({
+          id: compra.idCompra,
+          nombre: `Compra #${compra.idCompra}`,
+        })),
+      },
+      {
+        tipo: "Respuestas de cotizacion registradas",
+        accion: "MODIFICAR",
+        cantidad: impacto.respuestasCantidad,
+        registros: impacto.respuestas.map((respuesta) => ({
+          id: respuesta.idRespuesta,
+          nombre: `Respuesta #${respuesta.idRespuesta}`,
+        })),
+      },
+    ]);
   }
 }

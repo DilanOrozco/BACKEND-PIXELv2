@@ -1,4 +1,17 @@
 import { escapeHtml, type MailData } from "./email.service";
+import {
+  formatCurrencyCOP,
+  formatEmailDate,
+  formatEmailDateTime,
+  humanizeOrderStatus,
+} from "./email-formatters";
+import {
+  buildEmailLayout,
+  emailButton,
+  emailCallout,
+  emailInfoRows,
+  emailProductCard,
+} from "./email-layout";
 
 export const EMAIL_EVENTS = {
   SOLICITUD_COTIZACION_RECIBIDA: "SOLICITUD_COTIZACION_RECIBIDA",
@@ -19,18 +32,21 @@ export const EMAIL_EVENTS = {
 
 export type EmailEvent = (typeof EMAIL_EVENTS)[keyof typeof EMAIL_EVENTS];
 
-const formatoMoneda = new Intl.NumberFormat("es-CO", {
-  style: "currency",
-  currency: "COP",
-  maximumFractionDigits: 0,
-});
-
 const numeroSeguro = (valor: unknown) => {
   const numero = Number(valor ?? 0);
   return Number.isFinite(numero) ? numero : 0;
 };
 
-const moneda = (valor: unknown) => formatoMoneda.format(numeroSeguro(valor));
+const moneda = formatCurrencyCOP;
+
+const frontendUrl = (ruta: string) =>
+  `${String(process.env.FRONTEND_URL ?? "http://localhost:5173").replace(/\/$/, "")}${ruta}`;
+
+const saludoHtml = (nombre: unknown) =>
+  `<p style="margin:0 0 14px;font-size:16px;line-height:24px;">Hola, <strong>${escapeHtml(textoSeguro(nombre, "cliente"))}</strong>.</p>`;
+
+const parrafo = (contenido: string) =>
+  `<p style="margin:0 0 14px;font-size:15px;line-height:24px;color:#3f384b;">${contenido}</p>`;
 
 const textoSeguro = (valor: unknown, fallback = "No registrado") => {
   if (valor === null || valor === undefined) {
@@ -84,20 +100,22 @@ const solicitudItemsHtml = (items: any[]) =>
     .map((item) => {
       const servicios =
         item.estampados.length > 0
-          ? `<ul>${item.estampados
+          ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eeeaf5;"><strong style="font-size:13px;color:#4c1d95;">Servicios y estampados</strong>${item.estampados
               .map(
                 (estampado: any) =>
-                  `<li>${escapeHtml(estampado.tecnica)} - ${escapeHtml(estampado.ubicacion)} - ${escapeHtml(estampado.medidas)}</li>`,
+                  `<p style="margin:7px 0 0;font-size:13px;line-height:20px;color:#4b4457;">${escapeHtml(estampado.tecnica)} · ${escapeHtml(estampado.ubicacion)} · ${escapeHtml(estampado.medidas)}</p>`,
               )
-              .join("")}</ul>`
-          : "<span>Servicios por definir</span>";
+              .join("")}</div>`
+          : emailCallout("Servicios y medidas por definir.", "warning");
 
-      return `<tr>
-        <td>${escapeHtml(item.producto)}</td>
-        <td>${escapeHtml(item.cantidad)}</td>
-        <td>${servicios}</td>
-        <td>${escapeHtml(item.observaciones)}</td>
-      </tr>`;
+      return emailProductCard({
+        title: item.producto,
+        rows: [
+          { label: "Cantidad", value: item.cantidad },
+          { label: "Observaciones", value: item.observaciones },
+        ],
+        servicesHtml: servicios,
+      });
     })
     .join("");
 
@@ -107,16 +125,17 @@ export const buildSolicitudCotizacionRecibidaTemplate = (
   const items = normalizarSolicitudItems(payload);
   const nombre = textoSeguro(payload?.cliente?.nombre, "cliente");
   const linkAcceso = payload?.accesoCliente?.linkCrearPassword;
+  const expiracionAcceso = payload?.accesoCliente?.fechaExpiracion;
   const accesoTexto = linkAcceso
-    ? `\nCrea tu contrasena para consultar el avance: ${linkAcceso}\n`
+    ? `\nCrea tu contrasena para consultar tus cotizaciones y pedidos: ${linkAcceso}${expiracionAcceso ? `\nEste enlace estara disponible hasta ${formatEmailDateTime(expiracionAcceso)}.` : ""}\n`
     : "";
   const accesoHtml = linkAcceso
-    ? `<p><a href="${escapeHtml(linkAcceso)}">Crear contrasena y consultar mi solicitud</a></p>`
+    ? `${parrafo("Creamos un acceso para que puedas consultar tus cotizaciones y pedidos.")}${expiracionAcceso ? parrafo(`Este enlace estará disponible hasta el ${escapeHtml(formatEmailDateTime(expiracionAcceso))}.`) : ""}${emailButton("Crear mi contraseña", linkAcceso)}`
     : "";
 
   return {
     to: payload?.cliente?.correo,
-    subject: "Recibimos tu solicitud de cotizacion - PIXEL",
+    subject: "Recibimos tu solicitud de cotización - PIXEL",
     text: `Hola ${nombre},
 
 Recibimos tu solicitud:
@@ -126,16 +145,17 @@ El equipo de PIXEL revisara la solicitud y confirmara el precio. Por ahora no ex
 ${accesoTexto}
 
 PIXEL`,
-    html: `<p>Hola <strong>${escapeHtml(nombre)}</strong>,</p>
-      <p>Recibimos tu solicitud de cotizacion:</p>
-      <table border="1" cellpadding="6" cellspacing="0">
-        <thead><tr><th>Producto</th><th>Cantidad</th><th>Servicios</th><th>Observaciones</th></tr></thead>
-        <tbody>${solicitudItemsHtml(items)}</tbody>
-      </table>
-      <p><strong>El equipo de PIXEL revisara la solicitud y confirmara el precio.</strong></p>
-      <p>Por ahora no existe una propuesta oficial ni un valor para aceptar.</p>
-      ${accesoHtml}
-      <p>PIXEL</p>`,
+    html: buildEmailLayout({
+      title: "Tu solicitud fue recibida correctamente",
+      preheader: "Nuestro equipo revisará los detalles para preparar tu propuesta.",
+      tone: "warning",
+      body: `${saludoHtml(nombre)}
+        ${parrafo("Gracias por contarnos qué necesitas. Ahora nuestro equipo revisará los productos, estampados, medidas y diseños para preparar el precio final.")}
+        ${emailInfoRows([{ label: "Solicitud", value: payload?.idCotizacion ? `#${payload.idCotizacion}` : "Recibida" }])}
+        ${solicitudItemsHtml(items)}
+        ${emailCallout("Aún no existe un precio oficial. Te avisaremos por este mismo correo cuando tu propuesta esté lista.", "warning")}
+        ${accesoHtml}`,
+    }),
   };
 };
 
@@ -153,10 +173,7 @@ export const buildPropuestaCotizacionEnviadaTemplate = (
     : [];
   const itemsSolicitud = normalizarSolicitudItems({ items });
   const cliente = textoSeguro(payload?.cliente?.nombre, "cliente");
-  const baseUrl = String(
-    process.env.FRONTEND_URL ?? "http://localhost:5173",
-  ).replace(/\/$/, "");
-  const url = `${baseUrl}/mis-cotizaciones`;
+  const url = frontendUrl("/mis-cotizaciones");
   const filas = items
     .map(
       (item: any, indice: number) => {
@@ -170,13 +187,17 @@ export const buildPropuestaCotizacionEnviadaTemplate = (
                 )
                 .join("")}</ul>`
             : "Por definir";
-        return `<tr>
-        <td>${escapeHtml(textoSeguro(item.nombre, "Producto"))}</td>
-        <td>${escapeHtml(numeroSeguro(item.cantidad))}</td>
-        <td>${serviciosHtml}</td>
-        <td>${escapeHtml(moneda(item.precioUnitario))}</td>
-        <td>${escapeHtml(moneda(item.subtotal))}</td>
-      </tr>`;
+        return emailProductCard({
+          title: textoSeguro(item.nombre, "Producto"),
+          rows: [
+            { label: "Cantidad", value: numeroSeguro(item.cantidad) },
+            ...(item.precioUnitario !== undefined
+              ? [{ label: "Precio unitario", value: moneda(item.precioUnitario) }]
+              : []),
+            { label: "Subtotal", value: moneda(item.subtotal) },
+          ],
+          servicesHtml: `<div style="margin-top:12px;padding-top:12px;border-top:1px solid #eeeaf5;"><strong style="font-size:13px;color:#4c1d95;">Estampados y servicios</strong>${serviciosHtml}</div>`,
+        });
       },
     )
     .join("");
@@ -200,13 +221,13 @@ export const buildPropuestaCotizacionEnviadaTemplate = (
   const filasAdicionales = [
     ...disenos.map(
       (diseno: any) =>
-        `<tr><td colspan="4">${escapeHtml(textoSeguro(diseno.descripcion, "Diseno"))}</td><td>${escapeHtml(moneda(diseno.valor))}</td></tr>`,
+        ({ label: textoSeguro(diseno.descripcion, "Diseño"), value: moneda(diseno.valor) }),
     ),
     ...conceptos.map(
       (concepto: any) =>
-        `<tr><td colspan="4">${escapeHtml(textoSeguro(concepto.concepto, "Concepto adicional"))}</td><td>${escapeHtml(moneda(concepto.valor))}</td></tr>`,
+        ({ label: textoSeguro(concepto.concepto, "Concepto adicional"), value: moneda(concepto.valor) }),
     ),
-  ].join("");
+  ];
   const textoAdicionales = [
     ...disenos.map(
       (diseno: any) =>
@@ -222,41 +243,45 @@ export const buildPropuestaCotizacionEnviadaTemplate = (
     ajusteComercial !== 0
       ? `Ajuste comercial: ${moneda(ajusteComercial)}`
       : "";
-  const lineaAjusteHtml =
-    ajusteComercial !== 0
-      ? `Ajuste comercial: ${escapeHtml(moneda(ajusteComercial))}<br>`
-      : "";
-
   return {
     to: payload?.cliente?.correo,
-    subject: `Tu propuesta de cotizacion v${numeroSeguro(version.numeroVersion)} esta lista - PIXEL`,
+    subject: "Tu propuesta de cotización está lista - PIXEL",
     text: `Hola ${cliente},
 
-PIXEL preparo la propuesta oficial version ${numeroSeguro(version.numeroVersion)}.
+Tu propuesta de cotización está lista.
+Propuesta #${numeroSeguro(version.numeroVersion)}
 ${textoItems}
 
 ${textoAdicionales}
 Descuento comercial: -${moneda(desglose.descuentoManual ?? version.descuentoManual)}
 ${lineaAjusteTexto}
 Total final: ${moneda(version.precioFinal)}
-Valida hasta: ${textoSeguro(version.validaHasta)}
+Válida hasta: ${formatEmailDateTime(version.validaHasta)}
 
 Puedes revisarla, aceptarla, rechazarla o solicitar un ajuste en ${url}.
 
 PIXEL`,
-    html: `<p>Hola <strong>${escapeHtml(cliente)}</strong>,</p>
-      <p>PIXEL preparo la propuesta oficial <strong>version ${escapeHtml(numeroSeguro(version.numeroVersion))}</strong>.</p>
-      <table border="1" cellpadding="6" cellspacing="0">
-        <thead><tr><th>Producto</th><th>Cantidad</th><th>Servicios</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
-        <tbody>${filas}${filasAdicionales}</tbody>
-      </table>
-      <p>Descuento comercial: -${escapeHtml(moneda(desglose.descuentoManual ?? version.descuentoManual))}<br>
-      ${lineaAjusteHtml}
-      <strong>Total final: ${escapeHtml(moneda(version.precioFinal))}</strong><br>
-      Valida hasta: ${escapeHtml(textoSeguro(version.validaHasta))}</p>
-      <p><a href="${escapeHtml(url)}">Revisar propuesta</a></p>
-      <p>Desde tu cuenta puedes aceptarla, rechazarla o solicitar un ajuste.</p>
-      <p>PIXEL</p>`,
+    html: buildEmailLayout({
+      title: "Tu propuesta está lista",
+      preheader: `Valor final: ${moneda(version.precioFinal)}`,
+      body: `${saludoHtml(cliente)}
+        ${parrafo("Hemos revisado tu solicitud y preparamos una propuesta con los detalles y el valor final.")}
+        ${emailInfoRows([
+          { label: "Cotización", value: payload?.cotizacion?.idCotizacion ? `#${payload.cotizacion.idCotizacion}` : "PIXEL" },
+          { label: "Propuesta", value: `#${numeroSeguro(version.numeroVersion)}` },
+          { label: "Fecha", value: formatEmailDate(version.enviadaAt ?? new Date()) },
+          { label: "Vigencia", value: `Hasta el ${formatEmailDateTime(version.validaHasta)}` },
+        ])}
+        ${filas}
+        ${filasAdicionales.length > 0 ? emailInfoRows(filasAdicionales) : ""}
+        ${emailInfoRows([
+          { label: "Descuento comercial", value: `-${moneda(desglose.descuentoManual ?? version.descuentoManual)}` },
+          ...(ajusteComercial !== 0 ? [{ label: "Ajuste comercial", value: moneda(ajusteComercial) }] : []),
+        ])}
+        ${emailCallout(`<div style="font-size:13px;color:#5b5368;">Total final</div><div style="margin-top:4px;font-size:28px;font-weight:bold;color:#4c1d95;">${escapeHtml(moneda(version.precioFinal))}</div>`)}
+        ${emailButton("Revisar propuesta", url)}
+        ${parrafo("Desde tu cuenta puedes aceptarla, rechazarla o solicitar un ajuste. Si prefieres hacerlo por otro medio, comunícate con nuestro equipo.")}`,
+    }),
   };
 };
 
@@ -267,31 +292,59 @@ export const buildRespuestaCotizacionTemplate = (payload: any): MailData => {
   const decision = textoSeguro(respuesta.decision, "REGISTRADA");
   const medio = textoSeguro(respuesta.medio, "SISTEMA");
   const aceptada = decision === "ACEPTAR";
+  const decisionHumana =
+    decision === "ACEPTAR"
+      ? "Propuesta aceptada"
+      : decision === "SOLICITAR_AJUSTE"
+        ? "Ajuste solicitado"
+        : decision === "RECHAZAR"
+          ? "Propuesta no aceptada"
+          : "Respuesta recibida";
+  const medioHumano =
+    medio === "SISTEMA"
+      ? "Portal PIXEL"
+      : medio.charAt(0) + medio.slice(1).toLowerCase();
   const asunto = aceptada
-    ? "Aceptamos tu respuesta y creamos tu pedido - PIXEL"
+    ? "Tu pedido ya está en marcha - PIXEL"
     : decision === "SOLICITAR_AJUSTE"
       ? "Recibimos tu solicitud de ajuste - PIXEL"
-      : "Registramos tu respuesta a la propuesta - PIXEL";
+      : "Actualización sobre tu propuesta - PIXEL";
 
   return {
     to: payload?.cliente?.correo,
     subject: asunto,
     text: `Hola ${cliente},
 
-Registramos tu respuesta a la propuesta version ${numeroSeguro(version.numeroVersion)}.
-Decision: ${decision}
-Medio: ${medio}
+Registramos tu respuesta a la propuesta #${numeroSeguro(version.numeroVersion)}.
+Respuesta: ${decisionHumana}
+Medio: ${medioHumano}
 ${aceptada ? `Valor aceptado: ${moneda(respuesta.precioAceptado)}\nPedido creado: #${textoSeguro(payload?.pedido?.idPedido)}` : "No se creo ningun pedido."}
 Observaciones: ${textoSeguro(respuesta.observaciones, "Sin observaciones")}
 
 PIXEL`,
-    html: `<p>Hola <strong>${escapeHtml(cliente)}</strong>,</p>
-      <p>Registramos tu respuesta a la propuesta version ${escapeHtml(numeroSeguro(version.numeroVersion))}.</p>
-      <p>Decision: <strong>${escapeHtml(decision)}</strong><br>
-      Medio: ${escapeHtml(medio)}<br>
-      ${aceptada ? `Valor aceptado: ${escapeHtml(moneda(respuesta.precioAceptado))}<br>Pedido creado: #${escapeHtml(textoSeguro(payload?.pedido?.idPedido))}` : "No se creo ningun pedido."}</p>
-      <p>Observaciones: ${escapeHtml(textoSeguro(respuesta.observaciones, "Sin observaciones"))}</p>
-      <p>PIXEL</p>`,
+    html: buildEmailLayout({
+      title: aceptada
+        ? "Tu pedido ya está en marcha"
+        : decision === "SOLICITAR_AJUSTE"
+          ? "Recibimos tu solicitud de ajuste"
+          : "Actualización sobre tu propuesta",
+      tone: aceptada ? "success" : decision === "SOLICITAR_AJUSTE" ? "warning" : "danger",
+      body: `${saludoHtml(cliente)}
+        ${parrafo(aceptada ? "Recibimos tu aceptación y creamos tu pedido para continuar con el proceso." : "Registramos tu respuesta. Nuestro equipo la tendrá en cuenta para continuar contigo.")}
+        ${emailInfoRows([
+          { label: "Propuesta", value: `#${numeroSeguro(version.numeroVersion)}` },
+          { label: "Respuesta", value: decisionHumana, strong: true },
+          { label: "Medio", value: medioHumano },
+          ...(aceptada
+            ? [
+                { label: "Valor aceptado", value: moneda(respuesta.precioAceptado) },
+                { label: "Pedido", value: `PX-${textoSeguro(payload?.pedido?.idPedido)}`, strong: true },
+              ]
+            : []),
+        ])}
+        ${respuesta.observaciones ? emailCallout(`<strong>Tu mensaje:</strong><br>${escapeHtml(respuesta.observaciones)}`, "primary") : ""}
+        ${aceptada ? emailButton("Ver mi pedido", frontendUrl("/dashboard")) : ""}`,
+    }),
   };
 };
 
@@ -413,42 +466,25 @@ const resumenTexto = (items: any[]) =>
 const resumenHtml = (items: any[]) =>
   items
     .map(
-      (item) => `
-        <tr>
-          <td>${escapeHtml(item.producto)}</td>
-          <td>${escapeHtml(item.categoria || "No especificada")}</td>
-          <td>${escapeHtml(item.tecnica)}</td>
-          <td>${escapeHtml(item.cantidad)}</td>
-          <td>${escapeHtml(moneda(item.precioBase))}</td>
-          <td>${escapeHtml(porcentaje(item.descuentoPorcentaje))}</td>
-          <td>${escapeHtml(moneda(item.precioUnitario))}</td>
-          <td>${escapeHtml(moneda(item.subtotalBruto))}</td>
-          <td>-${escapeHtml(moneda(item.descuentoTotal))}</td>
-          <td>${escapeHtml(moneda(item.subtotalConDescuento))}</td>
-        </tr>
-      `,
+      (item) =>
+        emailProductCard({
+          title: item.producto,
+          subtitle: item.categoria || "Categoría no especificada",
+          rows: [
+            { label: "Técnica", value: item.tecnica },
+            { label: "Cantidad", value: item.cantidad },
+            { label: "Precio base unitario", value: moneda(item.precioBase) },
+            { label: "Descuento aplicado", value: porcentaje(item.descuentoPorcentaje) },
+            { label: "Precio unitario con descuento", value: moneda(item.precioUnitario) },
+            { label: "Subtotal bruto", value: moneda(item.subtotalBruto) },
+            { label: "Valor descontado", value: `-${moneda(item.descuentoTotal)}` },
+            { label: "Subtotal con descuento", value: moneda(item.subtotalConDescuento) },
+          ],
+        }),
     )
     .join("");
 
-const tablaItems = (items: any[]) => `
-  <table border="1" cellpadding="6" cellspacing="0">
-    <thead>
-      <tr>
-        <th>Producto</th>
-        <th>Categoria</th>
-        <th>Tecnica</th>
-        <th>Cantidad</th>
-        <th>Precio base unitario</th>
-        <th>Descuento</th>
-        <th>Precio unitario con descuento</th>
-        <th>Subtotal bruto</th>
-        <th>Valor descontado</th>
-        <th>Subtotal con descuento</th>
-      </tr>
-    </thead>
-    <tbody>${resumenHtml(items)}</tbody>
-  </table>
-`;
+const tablaItems = (items: any[]) => `<div style="margin:20px 0;">${resumenHtml(items)}</div>`;
 
 const resumenFinalCotizacionTexto = (resumen: any) =>
   [
@@ -460,23 +496,25 @@ const resumenFinalCotizacionTexto = (resumen: any) =>
   ].join("\n");
 
 const resumenFinalCotizacionHtml = (resumen: any) => `
-  ${
-    resumen.costoDiseno > 0
-      ? `<p><strong>Costo de diseno:</strong> ${escapeHtml(moneda(resumen.costoDiseno))}</p>`
-      : ""
-  }
-  <p><strong>Costos adicionales:</strong> ${escapeHtml(moneda(resumen.costosAdicionales))}</p>
-  <p><strong>Total final:</strong> ${escapeHtml(moneda(resumen.total))}</p>
+  ${emailInfoRows([
+    ...(resumen.costoDiseno > 0
+      ? [{ label: "Costo de diseño", value: moneda(resumen.costoDiseno) }]
+      : []),
+    { label: "Costos adicionales", value: moneda(resumen.costosAdicionales) },
+  ])}
+  ${emailCallout(`<div style="font-size:13px;color:#5b5368;">Total final</div><div style="margin-top:4px;font-size:25px;font-weight:bold;color:#4c1d95;">${escapeHtml(moneda(resumen.total))}</div>`)}
 `;
 
 export const buildCotizacionCreadaClienteTemplate = (payload: any): MailData => {
-  const items = normalizarItems(payload);
-  const resumen = calcularResumen(payload, items);
+  const items = normalizarSolicitudItems(payload);
   const acceso = payload.accesoCliente;
   const mensajeAccesoTexto = acceso?.linkCrearPassword
     ? [
         "Creamos un acceso para que puedas consultar el estado de tu pedido.",
         `Crea tu contrasena aqui: ${acceso.linkCrearPassword}`,
+        ...(acceso.fechaExpiracion
+          ? [`Este enlace estara disponible hasta ${formatEmailDateTime(acceso.fechaExpiracion)}.`]
+          : []),
       ]
     : acceso?.usuarioExistente
       ? [
@@ -486,8 +524,9 @@ export const buildCotizacionCreadaClienteTemplate = (payload: any): MailData => 
       : [];
   const mensajeAccesoHtml = acceso?.linkCrearPassword
     ? `
-      <p>Creamos un acceso para que puedas consultar el estado de tu pedido.</p>
-      <p><a href="${escapeHtml(acceso.linkCrearPassword)}">Crear contrasena de acceso</a></p>
+      ${parrafo("Creamos un acceso para que puedas consultar tus cotizaciones y pedidos.")}
+      ${acceso.fechaExpiracion ? parrafo(`Este enlace estará disponible hasta el ${escapeHtml(formatEmailDateTime(acceso.fechaExpiracion))}.`) : ""}
+      ${emailButton("Crear mi contraseña", acceso.linkCrearPassword)}
     `
     : acceso?.usuarioExistente
       ? `
@@ -498,48 +537,46 @@ export const buildCotizacionCreadaClienteTemplate = (payload: any): MailData => 
 
   return {
     to: payload.cliente.correo,
-    subject: "Recibimos tu solicitud de cotizacion - PIXEL",
+    subject: "Recibimos tu solicitud de cotización - PIXEL",
     text: [
       `Hola ${payload.cliente.nombre}.`,
       "",
       "Recibimos tu solicitud de cotizacion.",
-      resumenTexto(items),
-      "",
-      resumenFinalCotizacionTexto(resumen),
+      solicitudItemsTexto(items),
       `Observaciones: ${textoSeguro(payload.observaciones, "Sin observaciones")}`,
       "",
-      "Un asesor de PIXEL se comunicara contigo por telefono o correo para confirmar detalles como diseno, referencias, abonos, tiempos de entrega y cualquier ajuste necesario.",
-      "El valor final sera confirmado por nuestro equipo.",
-      "Por este mismo correo te notificaremos si la solicitud avanza a pedido.",
+      "Ahora nuestro equipo revisara los productos, estampados, medidas y disenos para preparar el precio final.",
+      "Te notificaremos por este mismo correo cuando la propuesta este lista.",
       ...mensajeAccesoTexto,
       "",
       "PIXEL",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(payload.cliente.nombre)}.</p>
-      <p>Recibimos tu solicitud de cotizacion.</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p><strong>Observaciones:</strong> ${escapeHtml(textoSeguro(payload.observaciones, "Sin observaciones"))}</p>
-      <p>Un asesor de PIXEL se comunicara contigo por telefono o correo para confirmar detalles como diseno, referencias, abonos, tiempos de entrega y cualquier ajuste necesario.</p>
-      <p>El valor final sera confirmado por nuestro equipo.</p>
-      <p>Por este mismo correo te notificaremos si la solicitud avanza a pedido.</p>
-      ${mensajeAccesoHtml}
-      <p>PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Tu solicitud fue recibida correctamente",
+      tone: "warning",
+      body: `${saludoHtml(payload.cliente.nombre)}
+        ${parrafo("Ahora nuestro equipo revisará los productos, estampados, medidas y diseños para preparar el precio final.")}
+        ${emailInfoRows([{ label: "Solicitud", value: payload.idCotizacion ? `#${payload.idCotizacion}` : "Recibida" }])}
+        ${solicitudItemsHtml(items)}
+        ${payload.observaciones ? emailCallout(`<strong>Observaciones:</strong><br>${escapeHtml(payload.observaciones)}`) : ""}
+        ${emailCallout("Te notificaremos por este mismo correo cuando tu propuesta esté lista. Por ahora no existe un valor oficial para aceptar.", "warning")}
+        ${mensajeAccesoHtml}`,
+    }),
   };
 };
 
 export const buildCotizacionPresencialCreadaClienteTemplate = (
   payload: any,
 ): MailData => {
-  const items = normalizarItems(payload);
-  const resumen = calcularResumen(payload, items);
+  const items = normalizarSolicitudItems(payload);
   const acceso = payload.accesoCliente;
   const mensajeAccesoTexto = acceso?.linkCrearPassword
     ? [
         "Creamos un acceso para que puedas consultar el seguimiento si tu pedido avanza.",
         `Crea tu contrasena aqui: ${acceso.linkCrearPassword}`,
+        ...(acceso.fechaExpiracion
+          ? [`Este enlace estara disponible hasta ${formatEmailDateTime(acceso.fechaExpiracion)}.`]
+          : []),
       ]
     : acceso?.usuarioExistente
       ? [
@@ -547,39 +584,38 @@ export const buildCotizacionPresencialCreadaClienteTemplate = (
         ]
       : [];
   const mensajeAccesoHtml = acceso?.linkCrearPassword
-    ? `<p>Creamos un acceso para que puedas consultar el seguimiento si tu pedido avanza.</p>
-       <p><a href="${escapeHtml(acceso.linkCrearPassword)}">Crear contrasena de acceso</a></p>`
+    ? `${parrafo("Creamos un acceso para que puedas consultar tus cotizaciones y pedidos.")}
+       ${acceso.fechaExpiracion ? parrafo(`Este enlace estará disponible hasta el ${escapeHtml(formatEmailDateTime(acceso.fechaExpiracion))}.`) : ""}
+       ${emailButton("Crear mi contraseña", acceso.linkCrearPassword)}`
     : acceso?.usuarioExistente
       ? "<p>Puedes iniciar sesion con tu correo para consultar el seguimiento si tu pedido avanza.</p>"
       : "";
 
   return {
     to: payload.cliente.correo,
-    subject: "Registramos tu cotizacion presencial - PIXEL",
+    subject: "Recibimos tu solicitud de cotización – PIXEL",
     text: [
       `Hola ${payload.cliente.nombre}.`,
       "",
       "Registramos tu cotizacion presencial.",
-      resumenTexto(items),
-      "",
-      resumenFinalCotizacionTexto(resumen),
+      solicitudItemsTexto(items),
       `Observaciones: ${textoSeguro(payload.observaciones, "Sin observaciones")}`,
       "",
-      "Un asesor de PIXEL se comunicara contigo para confirmar detalles, abonos y tiempos de entrega.",
+      "Nuestro equipo revisara los detalles y te compartira una propuesta final.",
       ...mensajeAccesoTexto,
       "",
       "PIXEL",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(payload.cliente.nombre)}.</p>
-      <p>Registramos tu cotizacion presencial.</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p><strong>Observaciones:</strong> ${escapeHtml(textoSeguro(payload.observaciones, "Sin observaciones"))}</p>
-      <p>Un asesor de PIXEL se comunicara contigo para confirmar detalles, abonos y tiempos de entrega.</p>
-      ${mensajeAccesoHtml}
-      <p>PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Tu solicitud fue registrada",
+      tone: "warning",
+      body: `${saludoHtml(payload.cliente.nombre)}
+        ${parrafo("Registramos la información que compartiste con nuestro equipo. Ahora revisaremos los detalles para preparar tu propuesta final.")}
+        ${solicitudItemsHtml(items)}
+        ${payload.observaciones ? emailCallout(`<strong>Observaciones:</strong><br>${escapeHtml(payload.observaciones)}`) : ""}
+        ${emailCallout("Te avisaremos cuando el valor final esté listo.", "warning")}
+        ${mensajeAccesoHtml}`,
+    }),
   };
 };
 
@@ -594,7 +630,7 @@ export const buildCotizacionModificadaTemplate = (payload: any): MailData => {
 
   return {
     to: cotizacion.cliente.correo,
-    subject: "Tu cotizacion fue modificada - PIXEL",
+    subject: "Actualizamos tu cotización - PIXEL",
     text: [
       `Hola ${cotizacion.cliente.nombre}.`,
       "",
@@ -616,22 +652,18 @@ export const buildCotizacionModificadaTemplate = (payload: any): MailData => {
     ]
       .filter((linea) => linea !== "")
       .join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(cotizacion.cliente.nombre)}.</p>
-      <p>Tu cotizacion fue modificada.</p>
-      <p><strong>Motivo del cambio:</strong> ${escapeHtml(motivo)}</p>
-      ${
-        payload.totalAnterior !== undefined
-          ? `<p><strong>Total anterior:</strong> ${escapeHtml(moneda(payload.totalAnterior))}</p>`
-          : ""
-      }
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p><strong>Observaciones:</strong> ${escapeHtml(textoSeguro(cotizacion.observaciones, "Sin observaciones"))}</p>
-      <p>Un asesor de PIXEL se comunicara contigo para confirmar detalles del diseno, forma de pago, abonos y tiempos de entrega.</p>
-      <p>El valor final sera confirmado por nuestro equipo.</p>
-      <p>PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Actualizamos tu cotización",
+      tone: "primary",
+      body: `${saludoHtml(cotizacion.cliente.nombre)}
+        ${parrafo("Realizamos un ajuste en tu cotización para que refleje mejor lo que necesitas.")}
+        ${emailCallout(`<strong>Motivo del cambio:</strong><br>${escapeHtml(motivo)}`)}
+        ${payload.totalAnterior !== undefined ? emailInfoRows([{ label: "Total anterior", value: moneda(payload.totalAnterior) }]) : ""}
+        ${tablaItems(items)}
+        ${resumenFinalCotizacionHtml(resumen)}
+        ${cotizacion.observaciones ? emailCallout(`<strong>Observaciones:</strong><br>${escapeHtml(cotizacion.observaciones)}`) : ""}
+        ${parrafo("Si tienes alguna pregunta sobre este ajuste, responde a este correo y con gusto te ayudaremos.")}`,
+    }),
   };
 };
 
@@ -641,7 +673,7 @@ export const buildCotizacionCreadaStaffTemplate = (to: string, payload: any): Ma
 
   return {
     to,
-    subject: `Nueva cotizacion publica #${payload.idCotizacion}`,
+    subject: `Nueva solicitud de cotización #${payload.idCotizacion}`,
     text: [
       `Cliente: ${payload.cliente.nombre}`,
       `Correo: ${payload.cliente.correo ?? "No registrado"}`,
@@ -652,6 +684,19 @@ export const buildCotizacionCreadaStaffTemplate = (to: string, payload: any): Ma
       resumenFinalCotizacionTexto(resumen),
       `Observaciones: ${textoSeguro(payload.observaciones, "Sin observaciones")}`,
     ].join("\n"),
+    html: buildEmailLayout({
+      title: "Nueva solicitud de cotización",
+      preheader: `Solicitud #${payload.idCotizacion}`,
+      body: `${emailInfoRows([
+        { label: "Solicitud", value: `#${payload.idCotizacion}` },
+        { label: "Cliente", value: payload.cliente.nombre },
+        { label: "Correo", value: payload.cliente.correo ?? "No registrado" },
+        { label: "Teléfono", value: payload.cliente.telefono ?? "No registrado" },
+      ])}
+      ${tablaItems(items)}
+      ${resumenFinalCotizacionHtml(resumen)}
+      ${payload.observaciones ? emailCallout(`<strong>Observaciones:</strong><br>${escapeHtml(payload.observaciones)}`) : ""}`,
+    }),
   };
 };
 
@@ -659,21 +704,10 @@ export const buildPedidoCreadoTemplate = (payload: any): MailData => {
   const pedido = payload.pedido;
   const items = normalizarItems(pedido);
   const resumen = calcularResumen(pedido, items);
-  const respuesta = pedido.respuestaCotizacion;
-  const trazabilidadTexto = respuesta
-    ? [
-        `Version aceptada: ${textoSeguro(pedido.cotizacionVersion?.numeroVersion, "Historica")}.`,
-        `Medio de aceptacion: ${textoSeguro(respuesta.medio, "SISTEMA")}.`,
-      ]
-    : [];
-  const trazabilidadHtml = respuesta
-    ? `<p><strong>Version aceptada:</strong> ${escapeHtml(textoSeguro(pedido.cotizacionVersion?.numeroVersion, "Historica"))}<br>
-       <strong>Medio de aceptacion:</strong> ${escapeHtml(textoSeguro(respuesta.medio, "SISTEMA"))}</p>`
-    : "";
-
+  const trazabilidadTexto: string[] = [];
   return {
     to: pedido.cliente.correo,
-    subject: "Tu cotizacion fue aprobada y se creo tu pedido - PIXEL",
+    subject: "Tu pedido ya está en marcha - PIXEL",
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
@@ -683,26 +717,28 @@ export const buildPedidoCreadoTemplate = (payload: any): MailData => {
       resumenTexto(items),
       "",
       resumenFinalCotizacionTexto(resumen),
-      "Estado actual: PENDIENTE.",
+      "Estado actual: pendiente de iniciar.",
       "Siguiente paso: realizar el primer abono.",
-      "Para iniciar el proceso, debes realizar el primer abono. Nuestro equipo te indicara los pasos por telefono o correo.",
+      "Para continuar necesitamos registrar el primer abono. Nuestro equipo te indicara los pasos por telefono o correo.",
       "Un asesor de PIXEL se comunicara contigo para confirmar detalles del diseno, forma de pago, abonos y tiempos de entrega.",
       "",
       "Gracias por confiar en PIXEL.",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Tu pedido fue creado correctamente.</p>
-      <p><strong>Numero de pedido:</strong> ${escapeHtml(pedido.idPedido)}</p>
-      ${trazabilidadHtml}
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p><strong>Estado actual:</strong> PENDIENTE.</p>
-      <p><strong>Siguiente paso:</strong> realizar el primer abono.</p>
-      <p>Para iniciar el proceso, debes realizar el primer abono. Nuestro equipo te indicara los pasos por telefono o correo.</p>
-      <p>Un asesor de PIXEL se comunicara contigo para confirmar detalles del diseno, forma de pago, abonos y tiempos de entrega.</p>
-      <p>Gracias por confiar en PIXEL.</p>
-    `,
+    html: buildEmailLayout({
+      title: "Tu pedido ya está en marcha",
+      tone: "success",
+      body: `${saludoHtml(pedido.cliente.nombre)}
+        ${parrafo(`Tu cotización fue aceptada y ahora es el pedido <strong>PX-${escapeHtml(pedido.idPedido)}</strong>.`)}
+        ${emailInfoRows([
+          { label: "Pedido", value: `PX-${pedido.idPedido}`, strong: true },
+          { label: "Total", value: moneda(resumen.total), strong: true },
+          { label: "Estado", value: humanizeOrderStatus(pedido.estadoPedido ?? "PENDIENTE") },
+        ])}
+        ${tablaItems(items)}
+        ${emailCallout("Para continuar necesitamos registrar el primer abono. El proceso comenzará cuando nuestro equipo confirme el pago.", "warning")}
+        ${emailButton("Ver mi pedido", frontendUrl("/dashboard"))}
+        ${parrafo("Nuestro equipo te acompañará con los detalles de diseño, pago y tiempos de entrega.")}`,
+    }),
   };
 };
 
@@ -713,31 +749,43 @@ export const buildPrimerAbonoConfirmadoTemplate = (payload: any): MailData => {
 
   return {
     to: pedido.cliente.correo,
-    subject: "Abono confirmado, iniciamos tu pedido - PIXEL",
+    subject: "Recibimos y confirmamos tu pago - PIXEL",
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
       `Confirmamos el primer abono del pedido #${pedido.idPedido}.`,
       `Monto confirmado: ${moneda(payload.abono?.monto)}`,
+      `Fecha: ${formatEmailDateTime(payload.abono?.fechaConfirmacion ?? payload.abono?.fechaCreacion ?? new Date())}`,
+      `Total pagado: ${moneda(pedido.totalPagado ?? payload.abono?.monto)}`,
       `Saldo pendiente: ${moneda(pedido.saldoPendiente)}`,
       resumenTexto(items),
       resumenFinalCotizacionTexto(resumen),
-      "Estado actual: EN PROCESO o pendiente de etapa interna segun el flujo actual.",
-      "Siguiente paso: inicia la etapa de diseno/produccion. Si aplica, envianos detalles, disenos o referencias pendientes.",
+      numeroSeguro(pedido.saldoPendiente) <= 0
+        ? "Tu pedido esta completamente pagado."
+        : `Aun queda un saldo pendiente de ${moneda(pedido.saldoPendiente)}.`,
+      "Siguiente paso: continuaremos con el diseno o la produccion segun corresponda. Si aplica, envianos detalles, disenos o referencias pendientes.",
       "",
       "Seguimos atentos a tu pedido. PIXEL",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Confirmamos el primer abono del pedido #${escapeHtml(pedido.idPedido)}.</p>
-      <p><strong>Monto confirmado:</strong> ${escapeHtml(moneda(payload.abono?.monto))}</p>
-      <p><strong>Saldo pendiente:</strong> ${escapeHtml(moneda(pedido.saldoPendiente))}</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p><strong>Estado actual:</strong> EN PROCESO o pendiente de etapa interna segun el flujo actual.</p>
-      <p><strong>Siguiente paso:</strong> inicia la etapa de diseno/produccion. Si aplica, envianos detalles, disenos o referencias pendientes.</p>
-      <p>Seguimos atentos a tu pedido. PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Recibimos y confirmamos tu pago",
+      tone: "success",
+      body: `${saludoHtml(pedido.cliente.nombre)}
+        ${parrafo("Tu abono fue confirmado correctamente. Ya podemos continuar con las siguientes etapas de tu pedido.")}
+        ${emailInfoRows([
+          { label: "Pedido", value: `PX-${pedido.idPedido}` },
+          { label: "Monto confirmado", value: moneda(payload.abono?.monto), strong: true },
+          { label: "Fecha", value: formatEmailDateTime(payload.abono?.fechaConfirmacion ?? payload.abono?.fechaCreacion ?? new Date()) },
+          { label: "Total pagado", value: moneda(pedido.totalPagado ?? payload.abono?.monto) },
+          { label: "Saldo restante", value: moneda(pedido.saldoPendiente), strong: true },
+        ])}
+        ${numeroSeguro(pedido.saldoPendiente) <= 0
+          ? emailCallout("Tu pedido está completamente pagado.", "success")
+          : emailCallout(`Aún queda un saldo pendiente de <strong>${escapeHtml(moneda(pedido.saldoPendiente))}</strong>.`, "warning")}
+        ${tablaItems(items)}
+        ${emailButton("Ver mi pedido", frontendUrl("/dashboard"))}
+        ${parrafo("Si todavía faltan diseños o referencias, puedes compartirlos con nuestro equipo para continuar.")}`,
+    }),
   };
 };
 
@@ -751,7 +799,7 @@ export const buildPedidoFinalizadoTemplate = (payload: any): MailData => {
 
   return {
     to: pedido.cliente.correo,
-    subject: "Tu pedido esta listo para reclamar - PIXEL",
+    subject: "¡Tu pedido está listo! - PIXEL",
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
@@ -759,20 +807,24 @@ export const buildPedidoFinalizadoTemplate = (payload: any): MailData => {
       resumenTexto(items),
       "",
       resumenFinalCotizacionTexto(resumen),
-      "Estado actual: FINALIZADO.",
       `Siguiente paso: ${entrega}`,
       "",
       "Gracias por elegir PIXEL.",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Tu pedido #${escapeHtml(pedido.idPedido)} fue finalizado y esta listo para reclamar/recoger.</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p><strong>Estado actual:</strong> FINALIZADO.</p>
-      <p><strong>Siguiente paso:</strong> ${escapeHtml(entrega)}</p>
-      <p>Gracias por elegir PIXEL.</p>
-    `,
+    html: buildEmailLayout({
+      title: "¡Tu pedido está listo!",
+      tone: "success",
+      body: `${saludoHtml(pedido.cliente.nombre)}
+        ${parrafo("Terminamos la producción de tu pedido y ya podemos coordinar la entrega o recogida.")}
+        ${emailInfoRows([
+          { label: "Pedido", value: `PX-${pedido.idPedido}` },
+          { label: "Fecha", value: formatEmailDate(pedido.fechaFinalizado ?? new Date()) },
+          { label: "Total", value: moneda(resumen.total) },
+        ])}
+        ${tablaItems(items)}
+        ${emailCallout(`<strong>Siguiente paso</strong><br>${escapeHtml(entrega)}`, "success")}
+        ${emailButton("Ver mi pedido", frontendUrl("/dashboard"))}`,
+    }),
   };
 };
 
@@ -783,7 +835,7 @@ export const buildPedidoEnProduccionTemplate = (payload: any): MailData => {
 
   return {
     to: pedido.cliente.correo,
-    subject: "Tu diseno fue aprobado y tu pedido entro en produccion - PIXEL",
+    subject: "Tu diseño fue aprobado y tu pedido entró en producción - PIXEL",
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
@@ -797,16 +849,19 @@ export const buildPedidoEnProduccionTemplate = (payload: any): MailData => {
       "",
       "PIXEL",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Tu diseno fue aprobado y tu pedido ya entro en produccion.</p>
-      <p><strong>Numero de pedido:</strong> ${escapeHtml(pedido.idPedido)}</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p>Cuando la produccion termine, te notificaremos el saldo final o segundo abono si aplica.</p>
-      <p>Un asesor de PIXEL se comunicara contigo si necesitamos confirmar algun detalle adicional.</p>
-      <p>PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Tu pedido entró en producción",
+      tone: "success",
+      body: `${saludoHtml(pedido.cliente.nombre)}
+        ${parrafo("Los diseños requeridos ya fueron aprobados y comenzamos la producción de tu pedido.")}
+        ${emailInfoRows([
+          { label: "Pedido", value: `PX-${pedido.idPedido}` },
+          ...(pedido.fechaEntregaEstimada ? [{ label: "Entrega estimada", value: formatEmailDate(pedido.fechaEntregaEstimada) }] : []),
+        ])}
+        ${tablaItems(items)}
+        ${emailCallout("Cuando la producción termine, te notificaremos el saldo final si corresponde.", "primary")}
+        ${parrafo("Un asesor de PIXEL se comunicará contigo si necesitamos confirmar algún detalle adicional.")}`,
+    }),
   };
 };
 
@@ -818,7 +873,7 @@ export const buildDisenoEnviadoParaRevisionTemplate = (payload: any): MailData =
 
   return {
     to: cliente.correo,
-    subject: "Tu diseno esta listo para revision - PIXEL",
+    subject: "Tu diseño está listo para revisión - PIXEL",
     text: [
       `Hola ${cliente.nombre}.`,
       "",
@@ -829,14 +884,18 @@ export const buildDisenoEnviadoParaRevisionTemplate = (payload: any): MailData =
       "",
       "PIXEL",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(cliente.nombre)}.</p>
-      <p>El diseno de tu pedido #${escapeHtml(pedido.idPedido)} esta listo para revision.</p>
-      <p><strong>Diseno:</strong> ${escapeHtml(descripcion)}</p>
-      <p>Puedes revisarlo desde tu panel de cliente, si ya tienes acceso, y aprobarlo o solicitar ajustes.</p>
-      <p>Si recibes el diseno por otro medio, tambien puedes responder a nuestro equipo.</p>
-      <p>PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Tu diseño está listo para revisión",
+      tone: "primary",
+      body: `${saludoHtml(cliente.nombre)}
+        ${parrafo("Preparamos el diseño de tu pedido. Revísalo con calma y cuéntanos si está listo para continuar o si necesitas algún ajuste.")}
+        ${emailInfoRows([
+          { label: "Pedido", value: `PX-${pedido.idPedido}` },
+          { label: "Diseño", value: descripcion },
+        ])}
+        ${emailButton("Revisar diseño", frontendUrl("/dashboard/cliente/disenos"))}
+        ${parrafo("Si recibiste el diseño por WhatsApp, correo u otro medio, también puedes responder directamente a nuestro equipo.")}`,
+    }),
   };
 };
 
@@ -848,7 +907,7 @@ export const buildPedidoAnuladoTemplate = (payload: any): MailData => {
 
   return {
     to: pedido.cliente.correo,
-    subject: "Actualizacion de tu pedido anulado - PIXEL",
+    subject: "Actualización sobre tu pedido - PIXEL",
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
@@ -860,15 +919,15 @@ export const buildPedidoAnuladoTemplate = (payload: any): MailData => {
       "",
       "PIXEL",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Tu pedido #${escapeHtml(pedido.idPedido)} fue anulado.</p>
-      <p><strong>Motivo:</strong> ${escapeHtml(motivo)}</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p>Nuestro equipo puede orientarte si necesitas informacion adicional.</p>
-      <p>PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Actualización sobre tu pedido",
+      tone: "danger",
+      body: `${saludoHtml(pedido.cliente.nombre)}
+        ${parrafo(`El pedido <strong>PX-${escapeHtml(pedido.idPedido)}</strong> fue cancelado.`)}
+        ${emailCallout(`<strong>Motivo</strong><br>${escapeHtml(motivo)}`, "danger")}
+        ${tablaItems(items)}
+        ${parrafo("Si necesitas más información o deseas revisar otras opciones, responde a este correo y te ayudaremos.")}`,
+    }),
   };
 };
 
@@ -879,7 +938,7 @@ export const buildPedidoEntregadoTemplate = (payload: any): MailData => {
 
   return {
     to: pedido.cliente.correo,
-    subject: "Tu pedido fue entregado - PIXEL",
+    subject: "Pedido entregado - PIXEL",
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
@@ -891,15 +950,19 @@ export const buildPedidoEntregadoTemplate = (payload: any): MailData => {
       "",
       "PIXEL",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Confirmamos que tu pedido #${escapeHtml(pedido.idPedido)} fue entregado o reclamado.</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p>Gracias por confiar en PIXEL.</p>
-      <p>Puedes contactarnos si necesitas soporte o quieres realizar un nuevo pedido.</p>
-      <p>PIXEL</p>
-    `,
+    html: buildEmailLayout({
+      title: "Pedido entregado",
+      tone: "success",
+      body: `${saludoHtml(pedido.cliente.nombre)}
+        ${parrafo(`Confirmamos la entrega del pedido <strong>PX-${escapeHtml(pedido.idPedido)}</strong>.`)}
+        ${emailInfoRows([
+          { label: "Pedido", value: `PX-${pedido.idPedido}` },
+          { label: "Fecha de entrega", value: formatEmailDate(pedido.fechaEntregado ?? new Date()) },
+        ])}
+        ${tablaItems(items)}
+        ${emailCallout("Gracias por confiar en PIXEL. Esperamos que el resultado haya quedado justo como lo imaginabas.", "success")}
+        ${parrafo("Puedes contactarnos si necesitas soporte o quieres comenzar un nuevo pedido.")}`,
+    }),
   };
 };
 
@@ -913,7 +976,7 @@ export const buildPedidoPendienteSaldoFinalTemplate = (payload: any): MailData =
 
   return {
     to: pedido.cliente.correo,
-    subject: "Tu pedido termino produccion y falta el saldo final - PIXEL",
+    subject: "Tu pedido está por terminar - PIXEL",
     text: [
       `Hola ${pedido.cliente.nombre}.`,
       "",
@@ -926,15 +989,20 @@ export const buildPedidoPendienteSaldoFinalTemplate = (payload: any): MailData =
       "",
       "Gracias por confiar en PIXEL.",
     ].join("\n"),
-    html: `
-      <p>Hola ${escapeHtml(pedido.cliente.nombre)}.</p>
-      <p>Tu pedido #${escapeHtml(pedido.idPedido)} ya termino produccion.</p>
-      ${tablaItems(items)}
-      ${resumenFinalCotizacionHtml(resumen)}
-      <p><strong>Saldo pendiente:</strong> ${escapeHtml(moneda(saldoPendiente))}</p>
-      <p>Para poder reclamar o recibir tu pedido, primero debemos confirmar el pago del saldo final.</p>
-      <p>Un asesor de PIXEL se comunicara contigo para coordinar el pago y la entrega.</p>
-      <p>Gracias por confiar en PIXEL.</p>
-    `,
+    html: buildEmailLayout({
+      title: "Tu pedido está por terminar",
+      tone: "warning",
+      body: `${saludoHtml(pedido.cliente.nombre)}
+        ${parrafo("Ya estamos finalizando tu pedido. Para coordinar la entrega queda pendiente el saldo final.")}
+        ${emailInfoRows([
+          { label: "Pedido", value: `PX-${pedido.idPedido}` },
+          { label: "Total", value: moneda(pedido.total ?? resumen.total) },
+          { label: "Pagado", value: moneda(pedido.totalPagado) },
+          { label: "Saldo pendiente", value: moneda(saldoPendiente), strong: true },
+        ])}
+        ${tablaItems(items)}
+        ${emailCallout("Nuestro equipo debe confirmar el pago del saldo antes de coordinar la entrega.", "warning")}
+        ${emailButton("Ver mi pedido", frontendUrl("/dashboard"))}`,
+    }),
   };
 };

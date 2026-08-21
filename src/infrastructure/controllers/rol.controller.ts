@@ -103,4 +103,17 @@ export class RolController {
       });
     }
   }
+
+  async obtenerImpactoEliminacion(req: Request, res: Response) {
+    try {
+      const idRol = Number(req.params.id);
+      const impacto = await rolService.obtenerImpactoEliminacion(idRol);
+
+      return res.status(200).json({ data: impacto });
+    } catch (error: any) {
+      return res.status(404).json({
+        message: error.message,
+      });
+    }
+  }
 }

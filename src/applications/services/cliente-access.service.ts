@@ -22,6 +22,7 @@ export type ClienteAccessResult = {
   usuarioCreado: boolean;
   usuarioExistente: boolean;
   linkCrearPassword?: string;
+  fechaExpiracion?: Date;
   idUsuario?: number;
 };
 
@@ -104,6 +105,7 @@ export class ClienteAccessService {
       usuarioCreado: true,
       usuarioExistente: false,
       linkCrearPassword: buildCrearPasswordClienteUrl(token),
+      fechaExpiracion,
       idUsuario: usuario.idUsuario,
     };
   }

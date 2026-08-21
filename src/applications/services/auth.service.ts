@@ -167,6 +167,7 @@ export class AuthService {
         usuario.correo,
         usuario.nombre,
         buildResetUrl(token),
+        fechaExpiracion,
       );
     } catch (errorEnvio) {
       console.error("Error enviando correo de recuperacion:", errorEnvio);

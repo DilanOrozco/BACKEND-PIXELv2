@@ -79,18 +79,11 @@ test("NotificationService email de cotizacion publica muestra desglose con descu
   });
   assert.ok(correoCliente);
   assert.ok(correoStaff);
-  assert.match(correoCliente.text, /Precio base unitario:.*30\.000/);
-  assert.match(correoCliente.text, /Descuento aplicado: 15%/);
-  assert.match(correoCliente.text, /Precio unitario con descuento:.*25\.500/);
-  assert.match(correoCliente.text, /Subtotal bruto:.*60\.000\.000/);
-  assert.match(correoCliente.text, /Tecnica: Sublimacion/);
-  assert.match(correoCliente.text, /Valor descontado:.*9\.000\.000/);
-  assert.match(correoCliente.text, /Subtotal con descuento:.*51\.000\.000/);
-  assert.match(correoCliente.text, /Total final:.*51\.000\.000/);
-  assert.equal(contar(correoCliente.text, /Subtotal bruto:/g), 1);
-  assert.equal(contar(correoCliente.text, /Valor descontado:/g), 1);
-  assert.equal(contar(correoCliente.text, /Subtotal con descuento:/g), 1);
-  assert.match(correoStaff.subject, /Nueva cotizacion publica/i);
+  assert.match(correoCliente.text, /Camiseta/);
+  assert.match(correoCliente.text, /Cantidad: 2000/);
+  assert.match(correoCliente.text, /equipo revisara/i);
+  assert.doesNotMatch(correoCliente.text, /Precio base|Subtotal|Total final|51\.000\.000/);
+  assert.match(correoStaff.subject, /Nueva solicitud de cotización/i);
   assert.match(correoStaff.text, /Valor descontado:.*9\.000\.000/);
   assertContenidoLimpio(correoCliente.text);
   assertContenidoLimpio(correoCliente.html ?? "");
@@ -142,11 +135,8 @@ test("NotificationService muestra todos los productos de una cotizacion multiple
 
   assert.ok(mail);
   assert.match(mail.text, /Camiseta/);
-  assert.match(mail.text, /Tecnica: DTF/);
   assert.match(mail.text, /Gorra/);
-  assert.match(mail.text, /Tecnica: Sublimacion/);
-  assert.match(mail.text, /Total final:.*51\.026\.000/);
-  assert.equal(contar(mail.text, /Subtotal bruto:/g), 2);
+  assert.doesNotMatch(mail.text, /Total final|51\.026\.000/);
   assertContenidoLimpio(mail.text);
   assertContenidoLimpio(mail.html ?? "");
 });
@@ -189,10 +179,8 @@ test("NotificationService email de cotizacion publica sin descuento muestra tota
   const correoCliente = sendMailMock.mock.calls[0]?.arguments[0];
 
   assert.ok(correoCliente);
-  assert.match(correoCliente.text, /Subtotal bruto:.*60\.000\.000/);
-  assert.match(correoCliente.text, /Descuento aplicado: Sin descuento \/ 0%/);
-  assert.match(correoCliente.text, /Total final:.*60\.000\.000/);
-  assert.equal(contar(correoCliente.text, /Subtotal bruto:/g), 1);
+  assert.match(correoCliente.text, /Camiseta/);
+  assert.doesNotMatch(correoCliente.text, /Subtotal|Descuento aplicado|60\.000\.000/);
   assertContenidoLimpio(correoCliente.text);
 
   if (staffAnterior !== undefined) {
@@ -227,10 +215,8 @@ test("NotificationService envia cotizacion presencial valorizada con acceso segu
     assert.fail("Debe enviar el correo de cotizacion presencial.");
   }
 
-  assert.match(correoCliente.subject, /cotizacion presencial/i);
-  assert.match(correoCliente.text, /Subtotal bruto:.*60\.000\.000/);
-  assert.match(correoCliente.text, /Valor descontado:.*9\.000\.000/);
-  assert.match(correoCliente.text, /Total final:.*51\.000\.000/);
+  assert.match(correoCliente.subject, /solicitud de cotización/i);
+  assert.doesNotMatch(correoCliente.text, /Subtotal bruto|Valor descontado|Total final/);
   assert.match(correoCliente.text, /Crea tu contrasena aqui:/i);
   assert.doesNotMatch(correoCliente.text, /contrasena temporal|password temporal/i);
   assertContenidoLimpio(correoCliente.text);
@@ -252,7 +238,7 @@ test("NotificationService envia evento PEDIDO_CREADO_DESDE_COTIZACION", async (t
     cliente: "enviado",
   });
   assert.equal(mail.to, "ana@pixel.test");
-  assert.match(mail.subject, /cotizacion fue aprobada/i);
+  assert.match(mail.subject, /pedido ya está en marcha/i);
   assert.match(mail.text, /Numero de pedido: 20/i);
   assert.match(mail.text, /Tecnica: Sublimacion/);
   assert.doesNotMatch(mail.text, /cotizacion #/i);
@@ -286,7 +272,7 @@ test("NotificationService envia evento COTIZACION_MODIFICADA con motivo", async 
     event: "COTIZACION_MODIFICADA",
     cliente: "enviado",
   });
-  assert.match(mail.subject, /modificada/i);
+  assert.match(mail.subject, /actualizamos tu cotización/i);
   assert.match(mail.text, /Tu cotizacion fue modificada/);
   assert.match(mail.text, /Motivo del cambio: Se agrego costo de diseno/);
   assert.match(mail.text, /Total anterior:.*50\.000\.000/);
@@ -421,7 +407,7 @@ test("NotificationService envia evento PRIMER_ABONO_CONFIRMADO", async (t) => {
   assert.ok(mail);
   assert.equal(resultado.event, "PRIMER_ABONO_CONFIRMADO");
   assert.equal(resultado.cliente, "enviado");
-  assert.match(mail.subject, /Abono confirmado/);
+  assert.match(mail.subject, /confirmamos tu pago/);
   assert.match(mail.text, /pedido #20/i);
   assert.match(mail.text, /Tecnica: Sublimacion/);
   assert.match(mail.text, /Total final:.*51\.000\.000/);
@@ -497,7 +483,7 @@ test("NotificationService envia evento PEDIDO_FINALIZADO", async (t) => {
   assert.ok(mail);
   assert.equal(resultado.event, "PEDIDO_FINALIZADO");
   assert.equal(resultado.cliente, "enviado");
-  assert.match(mail.subject, /listo para reclamar/);
+  assert.match(mail.subject, /pedido está listo/);
   assert.match(mail.text, /Subtotal bruto:.*60\.000\.000/);
   assert.match(mail.text, /Total final:.*51\.000\.000/);
   assertContenidoLimpio(mail.text);
@@ -525,9 +511,9 @@ test("NotificationService envia eventos de produccion y entrega", async (t) => {
   assert.equal(entregado.event, "PEDIDO_ENTREGADO");
   assert.ok(correoProduccion);
   assert.ok(correoEntrega);
-  assert.match(correoProduccion.subject, /diseno fue aprobado.*produccion/i);
+  assert.match(correoProduccion.subject, /diseño fue aprobado.*producción/i);
   assert.match(correoProduccion.text, /Numero de pedido: 20/);
-  assert.match(correoEntrega.subject, /pedido fue entregado/i);
+  assert.match(correoEntrega.subject, /pedido entregado/i);
   assertContenidoLimpio(correoProduccion.text);
   assertContenidoLimpio(correoEntrega.text);
 });
@@ -558,9 +544,9 @@ test("NotificationService envia evento de diseno enviado para revision y pedido 
 
   assert.equal(revision.event, "DISENO_ENVIADO_PARA_REVISION");
   assert.equal(anulacion.event, "PEDIDO_ANULADO");
-  assert.match(correoRevision.subject, /diseno esta listo para revision/i);
+  assert.match(correoRevision.subject, /diseño está listo para revisión/i);
   assert.match(correoRevision.text, /pedido #20/i);
-  assert.match(correoAnulacion.subject, /pedido anulado/i);
+  assert.match(correoAnulacion.subject, /actualización sobre tu pedido/i);
   assert.match(correoAnulacion.text, /cliente solicito cancelar/i);
   assertContenidoLimpio(correoRevision.text);
   assertContenidoLimpio(correoAnulacion.text);
@@ -584,7 +570,7 @@ test("NotificationService envia evento PEDIDO_PENDIENTE_SALDO_FINAL", async (t) 
   assert.ok(mail);
   assert.equal(resultado.event, "PEDIDO_PENDIENTE_SALDO_FINAL");
   assert.equal(resultado.cliente, "enviado");
-  assert.match(mail.subject, /termino produccion/i);
+  assert.match(mail.subject, /pedido está por terminar/i);
   assert.match(mail.text, /Saldo pendiente:.*26\.000\.000/);
   assert.doesNotMatch(mail.text, /listo para reclamar/i);
   assertContenidoLimpio(mail.text);
@@ -685,7 +671,7 @@ test("correo de propuesta oficial muestra tecnicas y medidas sin costos internos
   });
 
   assert.match(mail.text!, /DTF \(FRENTE, 10 x 12 cm\)/);
-  assert.match(mail.html!, /<th>Servicios<\/th>/);
+  assert.match(mail.html!, /Estampados y servicios/);
   assert.match(mail.html!, /DTF/);
   assert.match(mail.text!, /Creacion de diseno frontal/);
   assert.match(mail.text!, /Transporte/);

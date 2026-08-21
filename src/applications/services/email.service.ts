@@ -1,4 +1,9 @@
 import nodemailer from "nodemailer";
+import { formatEmailDateTime } from "./email-formatters";
+import { buildEmailLayout, emailButton, emailCallout } from "./email-layout";
+import { escapeHtml } from "./email-html.util";
+
+export { escapeHtml } from "./email-html.util";
 
 export type MailData = {
   to: string;
@@ -14,14 +19,6 @@ const getFrom = () =>
 
 const hasSmtpConfig = () =>
   Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
-
-export const escapeHtml = (value: unknown) =>
-  String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 
 export class EmailService {
   async sendMail(data: MailData) {
@@ -51,23 +48,35 @@ export class EmailService {
     return { sent: true, skipped: false };
   }
 
-  async sendPasswordReset(to: string, nombre: string, resetUrl: string) {
-    const subject = "Recuperacion de contrasena - PIXEL";
+  async sendPasswordReset(
+    to: string,
+    nombre: string,
+    resetUrl: string,
+    fechaExpiracion?: Date,
+  ) {
+    const subject = "Restablece tu contraseña - PIXEL";
     const text = [
       `Hola ${nombre}.`,
       "",
       "Recibimos una solicitud para recuperar tu contrasena.",
-      `Usa este enlace para crear una nueva contrasena: ${resetUrl}`,
+      `Cambia tu contrasena aqui: ${resetUrl}`,
+      ...(fechaExpiracion
+        ? [`Este enlace estara disponible hasta ${formatEmailDateTime(fechaExpiracion)}.`]
+        : []),
       "",
       "Si no solicitaste este cambio, puedes ignorar este correo.",
     ].join("\n");
 
-    const html = `
-      <p>Hola ${escapeHtml(nombre)}.</p>
-      <p>Recibimos una solicitud para recuperar tu contrasena.</p>
-      <p><a href="${escapeHtml(resetUrl)}">Crear nueva contrasena</a></p>
-      <p>Si no solicitaste este cambio, puedes ignorar este correo.</p>
-    `;
+    const html = buildEmailLayout({
+      title: "Restablece tu contraseña",
+      preheader: "Usa el enlace seguro para elegir una nueva contraseña.",
+      tone: "primary",
+      body: `<p style="margin:0 0 14px;font-size:16px;line-height:24px;">Hola, <strong>${escapeHtml(nombre)}</strong>.</p>
+        <p style="margin:0 0 14px;font-size:15px;line-height:24px;color:#3f384b;">Recibimos una solicitud para cambiar la contraseña de tu cuenta PIXEL.</p>
+        ${fechaExpiracion ? emailCallout(`Este enlace estará disponible hasta el <strong>${escapeHtml(formatEmailDateTime(fechaExpiracion))}</strong>.`, "warning") : ""}
+        ${emailButton("Cambiar contraseña", resetUrl)}
+        ${emailCallout("Si no solicitaste este cambio, puedes ignorar este correo. Tu contraseña actual seguirá funcionando.", "primary")}`,
+    });
 
     return await this.sendMail({ to, subject, text, html });
   }
