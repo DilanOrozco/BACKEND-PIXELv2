@@ -174,7 +174,7 @@ export class RolService {
       },
       {
         tipo: "Clientes vinculados",
-        accion: "MODIFICAR",
+        accion: "DESVINCULAR",
         cantidad: impacto.clientesCantidad,
         registros: impacto.clientes.map((cliente) => ({
           id: cliente.idCliente,
@@ -183,7 +183,7 @@ export class RolService {
       },
       {
         tipo: "Cotizaciones gestionadas",
-        accion: "MODIFICAR",
+        accion: "DESVINCULAR",
         cantidad: impacto.cotizacionesCantidad,
         registros: impacto.cotizaciones.map((cotizacion) => ({
           id: cotizacion.idCotizacion,
@@ -192,7 +192,7 @@ export class RolService {
       },
       {
         tipo: "Abonos gestionados",
-        accion: "MODIFICAR",
+        accion: "DESVINCULAR",
         cantidad: impacto.abonosCantidad,
         registros: impacto.abonos.map((abono) => ({
           id: abono.idAbono,
@@ -201,7 +201,7 @@ export class RolService {
       },
       {
         tipo: "Disenos gestionados",
-        accion: "MODIFICAR",
+        accion: "DESVINCULAR",
         cantidad: impacto.disenosCantidad,
         registros: impacto.disenos.map((diseno) => ({
           id: diseno.idDiseno,
@@ -210,7 +210,7 @@ export class RolService {
       },
       {
         tipo: "Compras registradas",
-        accion: "MODIFICAR",
+        accion: "DESVINCULAR",
         cantidad: impacto.comprasCantidad,
         registros: impacto.compras.map((compra) => ({
           id: compra.idCompra,
@@ -219,7 +219,7 @@ export class RolService {
       },
       {
         tipo: "Respuestas de cotizacion registradas",
-        accion: "MODIFICAR",
+        accion: "DESVINCULAR",
         cantidad: impacto.respuestasCantidad,
         registros: impacto.respuestas.map((respuesta) => ({
           id: respuesta.idRespuesta,

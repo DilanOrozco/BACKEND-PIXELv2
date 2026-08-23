@@ -2,6 +2,7 @@ import { Router } from "express";
 import { CategoriaProductoController } from "../controllers/categoria-producto.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const categoriaProductoController = new CategoriaProductoController();
@@ -18,6 +19,12 @@ router.post(
   "/",
   autorizarPermiso("categorias_producto.crear"),
   categoriaProductoController.crearCategoria,
+);
+
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("categorias_producto.ver"),
+  crearControladorImpactoEliminacion("categoriaProducto"),
 );
 
 router.get(

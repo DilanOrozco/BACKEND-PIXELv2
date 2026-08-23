@@ -6,6 +6,7 @@ import {
   autorizarAlgunPermiso,
   autorizarPermiso,
 } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const cotizacionController = new CotizacionController();
@@ -75,6 +76,12 @@ router.get(
   "/:id/versiones",
   autorizarPermiso("cotizaciones.versiones.ver"),
   cotizacionController.listarVersiones,
+);
+
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("cotizaciones.ver"),
+  crearControladorImpactoEliminacion("cotizacion"),
 );
 
 router.patch(

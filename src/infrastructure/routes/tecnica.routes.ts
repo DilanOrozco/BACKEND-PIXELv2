@@ -2,6 +2,7 @@ import { Router } from "express";
 import { TecnicaController } from "../controllers/tecnica.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const tecnicaController = new TecnicaController();
@@ -24,6 +25,12 @@ router.get(
   "/buscar",
   autorizarPermiso("tecnicas.ver"),
   tecnicaController.buscarParcial,
+);
+
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("tecnicas.ver"),
+  crearControladorImpactoEliminacion("tecnica"),
 );
 
 router.get(

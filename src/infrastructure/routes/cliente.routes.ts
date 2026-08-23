@@ -2,6 +2,7 @@ import { Router } from "express";
 import { ClienteController } from "../controllers/cliente.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const clienteController = new ClienteController();
@@ -18,6 +19,12 @@ router.get(
   "/:id/pedidos",
   autorizarPermiso("pedidos.ver"),
   clienteController.listarPedidos,
+);
+
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("clientes.ver"),
+  crearControladorImpactoEliminacion("cliente"),
 );
 
 router.get(

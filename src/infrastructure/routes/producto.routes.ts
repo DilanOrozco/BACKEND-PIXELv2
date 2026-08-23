@@ -5,6 +5,7 @@ import {
   autorizarAlgunPermiso,
   autorizarPermiso,
 } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const productoController = new ProductoController();
@@ -39,6 +40,12 @@ router.patch(
     "productos.precios",
   ),
   productoController.reemplazarRangos,
+);
+
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("productos.ver"),
+  crearControladorImpactoEliminacion("producto"),
 );
 
 router.get(

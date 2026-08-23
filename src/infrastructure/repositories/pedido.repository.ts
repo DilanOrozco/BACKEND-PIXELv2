@@ -1,5 +1,6 @@
 import { prisma, runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
+import type { EstadoPedido } from "../../../generated/prisma/enums";
 import { pedidoSelect } from "../../utils/selects/pedido.select";
 import { looksNumeric, type ParsedPagination } from "../../utils/pagination.util";
 
@@ -10,7 +11,13 @@ const estadosPedido = [
   "FINALIZADO",
   "ENTREGADO",
   "ANULADO",
-];
+] as const;
+
+export type PedidoListadoFiltros = {
+  idCliente?: number;
+  estadoPedido?: EstadoPedido;
+  excluirEntregados?: boolean;
+};
 type PrismaExecutor = Prisma.TransactionClient | typeof prisma;
 
 const db = (tx?: Prisma.TransactionClient): PrismaExecutor => tx ?? prisma;
@@ -21,13 +28,19 @@ const pedidoOperacionSelect = {
 } as const;
 
 const buildPedidoWhere = (
-  filtros: { idCliente?: number } = {},
+  filtros: PedidoListadoFiltros = {},
   search?: string | null,
 ): Prisma.PedidoWhereInput => {
   const where: Prisma.PedidoWhereInput = {};
 
   if (filtros.idCliente) {
     where.idCliente = filtros.idCliente;
+  }
+
+  if (filtros.estadoPedido) {
+    where.estadoPedido = filtros.estadoPedido;
+  } else if (filtros.excluirEntregados) {
+    where.estadoPedido = { not: "ENTREGADO" };
   }
 
   if (!search) {
@@ -260,8 +273,9 @@ export class PedidoRepository {
     return pedido;
   }
 
-  async listarPedidos() {
+  async listarPedidos(filtros: PedidoListadoFiltros = {}) {
     return await prisma.pedido.findMany({
+      where: buildPedidoWhere(filtros),
       select: pedidoSelect,
       orderBy: {
         idPedido: "desc",
@@ -280,7 +294,7 @@ export class PedidoRepository {
   }
 
   async listarPedidosPaginado(
-    filtros: { idCliente?: number },
+    filtros: PedidoListadoFiltros,
     pagination: ParsedPagination,
   ) {
     const where = buildPedidoWhere(filtros, pagination.search);

@@ -1,4 +1,4 @@
-export type DeletionImpactAction = "ELIMINAR" | "MODIFICAR";
+export type DeletionImpactAction = "ELIMINAR" | "DESVINCULAR" | "ACTUALIZAR";
 
 export type DeletionImpactRecord = {
   id: number;
@@ -19,12 +19,19 @@ export type DeletionImpact = {
   totalAfectados: number;
   limiteRegistrosPorTipo: number;
   afectados: DeletionImpactGroup[];
+  motivoBloqueo?: string;
+};
+
+export type DeletionImpactOptions = {
+  puedeEliminar?: boolean;
+  motivoBloqueo?: string;
 };
 
 export const DELETION_IMPACT_RECORD_LIMIT = 10;
 
 export const buildDeletionImpact = (
   groups: Omit<DeletionImpactGroup, "registrosOmitidos">[],
+  options: DeletionImpactOptions | undefined = {},
 ): DeletionImpact => {
   const afectados = groups
     .filter((group) => group.cantidad > 0)
@@ -38,10 +45,13 @@ export const buildDeletionImpact = (
   );
 
   return {
-    puedeEliminar: true,
+    puedeEliminar: options?.puedeEliminar ?? true,
     requiereConfirmacionReforzada: totalAfectados > 0,
     totalAfectados,
     limiteRegistrosPorTipo: DELETION_IMPACT_RECORD_LIMIT,
     afectados,
+    ...(options?.motivoBloqueo
+      ? { motivoBloqueo: options.motivoBloqueo }
+      : {}),
   };
 };

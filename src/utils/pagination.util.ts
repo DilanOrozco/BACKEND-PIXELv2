@@ -6,6 +6,8 @@ export interface PaginationQuery {
   order?: unknown;
   termino?: unknown;
   idCategoriaProducto?: unknown;
+  estado?: unknown;
+  estadoPedido?: unknown;
 }
 
 export interface PaginationOptions {

@@ -5,6 +5,7 @@ import {
   autorizarActualizacionUsuario,
   autorizarPermiso,
 } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const usuarioController = new UsuarioController();
@@ -14,6 +15,11 @@ router.use(verificarAuth);
 router.post("/", autorizarPermiso("usuarios.crear"), usuarioController.crearUsuario);
 router.get("/", autorizarPermiso("usuarios.ver"), usuarioController.listarUsuarios);
 router.get("/buscar", autorizarPermiso("usuarios.ver"), usuarioController.buscarUsuarios);
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("usuarios.ver"),
+  crearControladorImpactoEliminacion("usuario"),
+);
 router.get("/:id", autorizarPermiso("usuarios.ver"), usuarioController.buscarUsuarioPorId);
 router.patch("/:id", autorizarActualizacionUsuario(), usuarioController.actualizarUsuario);
 router.delete("/:id/eliminar", autorizarPermiso("usuarios.eliminar"), usuarioController.eliminarUsuario);

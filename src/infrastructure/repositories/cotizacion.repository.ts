@@ -21,16 +21,28 @@ const estadosCotizacion = [
   "RECHAZADA_CLIENTE",
   "VENCIDA",
   "CONVERTIDA_EN_PEDIDO",
-];
+] as const;
+
+export type CotizacionListadoFiltros = {
+  idCliente?: number;
+  estado?: EstadoCotizacion;
+  excluirConvertidas?: boolean;
+};
 
 const buildCotizacionWhere = (
-  filtros: { idCliente?: number } = {},
+  filtros: CotizacionListadoFiltros = {},
   search?: string | null,
 ): Prisma.CotizacionWhereInput => {
   const where: Prisma.CotizacionWhereInput = {};
 
   if (filtros.idCliente) {
     where.idCliente = filtros.idCliente;
+  }
+
+  if (filtros.estado) {
+    where.estado = filtros.estado;
+  } else if (filtros.excluirConvertidas) {
+    where.estado = { not: "CONVERTIDA_EN_PEDIDO" };
   }
 
   if (!search) {
@@ -143,9 +155,10 @@ export class CotizacionRepository {
     });
   }
 
-  async listarCotizaciones() {
+  async listarCotizaciones(filtros: CotizacionListadoFiltros = {}) {
     await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findMany({
+      where: buildCotizacionWhere(filtros),
       select: cotizacionListadoSelect,
       orderBy: {
         idCotizacion: "desc",
@@ -199,7 +212,7 @@ export class CotizacionRepository {
   }
 
   async listarCotizacionesPaginado(
-    filtros: { idCliente?: number },
+    filtros: CotizacionListadoFiltros,
     pagination: ParsedPagination,
   ) {
     await this.marcarPropuestasVencidas();

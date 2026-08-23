@@ -92,6 +92,7 @@ export const serializarCotizacionCliente = (cotizacion: any) => {
     requiereRevisionPrecio: _requiereRevisionPrecio,
     advertenciasInternas: _advertenciasInternas,
     propuestaAdministrativa: _propuestaAdministrativa,
+    propuestaActual: _propuestaActual,
     observacionesInternas: _observacionesInternas,
     creadoPor: _creadoPor,
     versiones: _versiones,

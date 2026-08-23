@@ -2,6 +2,7 @@ import { Router } from "express";
 import { ProveedorController } from "../controllers/proveedor.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const proveedorController = new ProveedorController();
@@ -24,6 +25,12 @@ router.get(
   "/buscar",
   autorizarPermiso("proveedores.ver"),
   proveedorController.buscarParcial,
+);
+
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("proveedores.ver"),
+  crearControladorImpactoEliminacion("proveedor"),
 );
 
 router.get(

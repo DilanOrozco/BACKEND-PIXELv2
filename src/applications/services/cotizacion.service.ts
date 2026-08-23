@@ -1,4 +1,8 @@
-import { CotizacionRepository } from "../../infrastructure/repositories/cotizacion.repository";
+import {
+  CotizacionRepository,
+  type CotizacionListadoFiltros,
+} from "../../infrastructure/repositories/cotizacion.repository";
+import type { EstadoCotizacion } from "../../../generated/prisma/enums";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
 import { ClienteRepository } from "../../infrastructure/repositories/cliente.repository";
 import { ProductoService } from "./producto.service";
@@ -38,6 +42,21 @@ const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
 const ESTADO_ANULADA = "ANULADA";
 
+const ESTADOS_COTIZACION: readonly EstadoCotizacion[] = [
+  "PENDIENTE",
+  "APROBADA",
+  "ANULADA",
+  "BORRADOR",
+  "SOLICITUD_RECIBIDA",
+  "EN_REVISION",
+  "PENDIENTE_APROBACION_CLIENTE",
+  "AJUSTE_SOLICITADO",
+  "ACEPTADA",
+  "RECHAZADA_CLIENTE",
+  "VENCIDA",
+  "CONVERTIDA_EN_PEDIDO",
+];
+
 const TIPO_NORMAL = "NORMAL";
 
 const esCliente = (usuarioAuth: any) => usuarioAuth?.rol === "Cliente";
@@ -51,6 +70,25 @@ const validarId = (idCotizacion: number) => {
 };
 
 const aNumero = (valor: any) => Number(valor ?? 0);
+
+const valorQuery = (valor: unknown) =>
+  Array.isArray(valor) ? valor[0] : valor;
+
+const obtenerEstadoCotizacionQuery = (
+  query: PaginationQuery,
+): EstadoCotizacion | undefined => {
+  const entrada = valorQuery(query.estado);
+  if (entrada === undefined || entrada === null || entrada === "") {
+    return undefined;
+  }
+
+  const estado = String(entrada).trim().toUpperCase() as EstadoCotizacion;
+  if (!ESTADOS_COTIZACION.includes(estado)) {
+    throw new Error("El estado de cotizacion no es valido.");
+  }
+
+  return estado;
+};
 
 const limpiarTextoOpcional = (valor: any) => {
   if (typeof valor !== "string") {
@@ -274,6 +312,25 @@ export class CotizacionService {
           ? nombresProductos.join(", ")
           : `${nombresProductos.slice(0, 2).join(", ")} y ${nombresProductos.length - 2} mas`,
       detalles,
+      propuestaActual: versionVigente
+        ? {
+            idVersion: versionVigente.idVersion,
+            precioFinal: versionVigente.precioFinal,
+            descuentoManual: versionVigente.descuentoManual,
+            costosAdicionales: versionVigente.costosAdicionales,
+            subtotalDesglose: versionVigente.subtotalDesglose,
+            ajusteManual: versionVigente.ajusteManual,
+            conceptosAdicionales: versionVigente.conceptosAdicionales,
+            disenosOficiales: versionVigente.disenosOficiales,
+            desgloseVisible: versionVigente.desgloseVisible,
+            observacionesCliente: versionVigente.observacionesCliente,
+            mensajeCliente: versionVigente.mensajeCliente,
+            validaHasta: versionVigente.validaHasta,
+            enviadaAt: versionVigente.enviadaAt,
+            estado: versionVigente.estado,
+            respuesta: versionVigente.respuesta ?? null,
+          }
+        : null,
       propuestaAdministrativa: {
         precioSugeridoSistema:
           cotizacion.precioSugeridoInterno ?? 0,
@@ -616,11 +673,17 @@ export class CotizacionService {
       allowedSortBy: ["idCotizacion", "fechaCreacion", "total", "estado"],
       maxLimit: 10,
     });
-    const filtros = esCliente(usuarioAuth)
-      ? { idCliente: idClienteAutenticado(usuarioAuth) }
-      : {};
+    const estado = obtenerEstadoCotizacionQuery(query);
+    const filtros: CotizacionListadoFiltros = esCliente(usuarioAuth)
+      ? {
+          idCliente: idClienteAutenticado(usuarioAuth),
+          ...(estado ? { estado } : {}),
+        }
+      : estado
+        ? { estado }
+        : { excluirConvertidas: true };
 
-    if (pagination.isPaginated) {
+    if (pagination.isPaginated || estado !== undefined) {
       const resultado = await cotizacionRepository.listarCotizacionesPaginado(
         filtros,
         pagination,
@@ -635,7 +698,7 @@ export class CotizacionService {
 
     const cotizaciones = esCliente(usuarioAuth)
       ? await cotizacionRepository.listarPorCliente(idClienteAutenticado(usuarioAuth))
-      : await cotizacionRepository.listarCotizaciones();
+      : await cotizacionRepository.listarCotizaciones(filtros);
 
     if (cotizaciones.length === 0) {
       throw new Error("No se encontraron resultados.");

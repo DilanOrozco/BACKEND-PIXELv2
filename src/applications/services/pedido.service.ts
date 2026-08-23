@@ -1,6 +1,10 @@
 import { runPrismaTransaction } from "../../config/prisma";
 import type { Prisma } from "../../../generated/prisma/client";
-import { PedidoRepository } from "../../infrastructure/repositories/pedido.repository";
+import {
+  PedidoRepository,
+  type PedidoListadoFiltros,
+} from "../../infrastructure/repositories/pedido.repository";
+import type { EstadoPedido } from "../../../generated/prisma/enums";
 import { AbonoRepository } from "../../infrastructure/repositories/abono.repository";
 import { AbonoService } from "./abono.service";
 import { NotificationService } from "./notification.service";
@@ -50,6 +54,15 @@ const ESTADO_PEDIDO_FINALIZADO = "FINALIZADO";
 const ESTADO_PEDIDO_ENTREGADO = "ENTREGADO";
 const ESTADO_PEDIDO_ANULADO = "ANULADO";
 
+const ESTADOS_PEDIDO: readonly EstadoPedido[] = [
+  "PENDIENTE",
+  "EN_PROCESO",
+  "PENDIENTE_SALDO_FINAL",
+  "FINALIZADO",
+  "ENTREGADO",
+  "ANULADO",
+];
+
 const ESTADO_PAGO_PENDIENTE = "PENDIENTE";
 const ESTADO_PAGO_COMPLETO = "COMPLETO";
 
@@ -73,6 +86,25 @@ const validarId = (idPedido: number) => {
 };
 
 const aNumero = (valor: any) => Number(valor ?? 0);
+
+const valorQuery = (valor: unknown) =>
+  Array.isArray(valor) ? valor[0] : valor;
+
+const obtenerEstadoPedidoQuery = (
+  query: PaginationQuery,
+): EstadoPedido | undefined => {
+  const entrada = valorQuery(query.estadoPedido ?? query.estado);
+  if (entrada === undefined || entrada === null || entrada === "") {
+    return undefined;
+  }
+
+  const estado = String(entrada).trim().toUpperCase() as EstadoPedido;
+  if (!ESTADOS_PEDIDO.includes(estado)) {
+    throw new Error("El estado del pedido no es valido.");
+  }
+
+  return estado;
+};
 
 const redondearMoneda = (valor: number) => Math.round(valor * 100) / 100;
 
@@ -513,11 +545,17 @@ export class PedidoService {
       allowedSortBy: ["idPedido", "fechaCreacion", "total", "estadoPedido"],
       maxLimit: 10,
     });
-    const filtros = esCliente(usuarioAuth)
-      ? { idCliente: idClienteAutenticado(usuarioAuth) }
-      : {};
+    const estadoPedido = obtenerEstadoPedidoQuery(query);
+    const filtros: PedidoListadoFiltros = esCliente(usuarioAuth)
+      ? {
+          idCliente: idClienteAutenticado(usuarioAuth),
+          ...(estadoPedido ? { estadoPedido } : {}),
+        }
+      : estadoPedido
+        ? { estadoPedido }
+        : { excluirEntregados: true };
 
-    if (pagination.isPaginated) {
+    if (pagination.isPaginated || estadoPedido !== undefined) {
       const resultado = await pedidoRepository.listarPedidosPaginado(
         filtros,
         pagination,
@@ -532,7 +570,7 @@ export class PedidoService {
 
     const pedidos = esCliente(usuarioAuth)
       ? await pedidoRepository.listarPorCliente(idClienteAutenticado(usuarioAuth))
-      : await pedidoRepository.listarPedidos();
+      : await pedidoRepository.listarPedidos(filtros);
 
     if (pedidos.length === 0) {
       throw new Error("No se encontraron resultados.");
