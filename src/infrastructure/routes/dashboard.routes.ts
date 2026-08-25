@@ -14,6 +14,13 @@ router.get(
 );
 
 router.get(
+  "/admin/tendencias",
+  verificarAuth,
+  autorizarPermiso("dashboard.admin"),
+  dashboardController.obtenerTendenciasAdmin,
+);
+
+router.get(
   "/cliente",
   verificarAuth,
   autorizarPermiso("dashboard.cliente"),

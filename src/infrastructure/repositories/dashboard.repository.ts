@@ -1,4 +1,5 @@
 import { prisma } from "../../config/prisma";
+import { Prisma } from "../../../generated/prisma/client";
 
 const ESTADOS_PEDIDO = [
   "PENDIENTE",
@@ -268,7 +269,120 @@ export interface VentaPorMesRaw {
   cantidadPedidos: number | bigint | string;
 }
 
+export type GranularidadTendencia = "DIA" | "SEMANA" | "MES" | "ANIO";
+
+export interface TendenciaAdminRaw {
+  fecha: string;
+  ingresos: unknown;
+  ventas: number | bigint | string;
+  pedidos: number | bigint | string;
+  cotizaciones: number | bigint | string;
+}
+
+const UNIDAD_SQL_POR_GRANULARIDAD: Record<GranularidadTendencia, string> = {
+  DIA: "day",
+  SEMANA: "week",
+  MES: "month",
+  ANIO: "year",
+};
+
+export const construirConsultaTendenciasAdmin = (
+  fechaInicio: string,
+  fechaFinExclusiva: string,
+  granularidad: GranularidadTendencia,
+) => {
+  const unidadSql = UNIDAD_SQL_POR_GRANULARIDAD[granularidad];
+
+  return Prisma.sql`
+    WITH limites AS (
+      SELECT
+        ((CAST(${fechaInicio} AS date)::timestamp AT TIME ZONE 'America/Bogota') AT TIME ZONE 'UTC') AS inicio,
+        ((CAST(${fechaFinExclusiva} AS date)::timestamp AT TIME ZONE 'America/Bogota') AT TIME ZONE 'UTC') AS fin
+    ),
+    eventos AS (
+      SELECT
+        date_trunc(${unidadSql}, ((a."fecha_confirmacion" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota'))::date AS periodo,
+        COALESCE(SUM(a."monto"), 0)::numeric AS ingresos,
+        0::bigint AS ventas,
+        0::bigint AS pedidos,
+        0::bigint AS cotizaciones
+      FROM "abonos" a
+      CROSS JOIN limites l
+      WHERE a."estado" = 'CONFIRMADO'
+        AND a."fecha_confirmacion" >= l.inicio
+        AND a."fecha_confirmacion" < l.fin
+      GROUP BY 1
+
+      UNION ALL
+
+      SELECT
+        date_trunc(${unidadSql}, ((v."fecha_primer_pago" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota'))::date AS periodo,
+        0::numeric AS ingresos,
+        COUNT(*)::bigint AS ventas,
+        0::bigint AS pedidos,
+        0::bigint AS cotizaciones
+      FROM "ventas" v
+      CROSS JOIN limites l
+      WHERE v."estado" <> 'ANULADA'
+        AND v."fecha_primer_pago" >= l.inicio
+        AND v."fecha_primer_pago" < l.fin
+      GROUP BY 1
+
+      UNION ALL
+
+      SELECT
+        date_trunc(${unidadSql}, ((p."fecha_creacion" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota'))::date AS periodo,
+        0::numeric AS ingresos,
+        0::bigint AS ventas,
+        COUNT(*)::bigint AS pedidos,
+        0::bigint AS cotizaciones
+      FROM "pedidos" p
+      CROSS JOIN limites l
+      WHERE p."fecha_creacion" >= l.inicio
+        AND p."fecha_creacion" < l.fin
+      GROUP BY 1
+
+      UNION ALL
+
+      SELECT
+        date_trunc(${unidadSql}, ((c."fecha_creacion" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota'))::date AS periodo,
+        0::numeric AS ingresos,
+        0::bigint AS ventas,
+        0::bigint AS pedidos,
+        COUNT(*)::bigint AS cotizaciones
+      FROM "cotizaciones" c
+      CROSS JOIN limites l
+      WHERE c."fecha_creacion" >= l.inicio
+        AND c."fecha_creacion" < l.fin
+      GROUP BY 1
+    )
+    SELECT
+      TO_CHAR(periodo, 'YYYY-MM-DD') AS fecha,
+      COALESCE(SUM(ingresos), 0) AS ingresos,
+      COALESCE(SUM(ventas), 0)::bigint AS ventas,
+      COALESCE(SUM(pedidos), 0)::bigint AS pedidos,
+      COALESCE(SUM(cotizaciones), 0)::bigint AS cotizaciones
+    FROM eventos
+    GROUP BY periodo
+    ORDER BY periodo ASC
+  `;
+};
+
 export class DashboardRepository {
+  async obtenerTendenciasPorRango(
+    fechaInicio: string,
+    fechaFinExclusiva: string,
+    granularidad: GranularidadTendencia,
+  ) {
+    return await prisma.$queryRaw<TendenciaAdminRaw[]>(
+      construirConsultaTendenciasAdmin(
+        fechaInicio,
+        fechaFinExclusiva,
+        granularidad,
+      ),
+    );
+  }
+
   async contarPedidos() {
     return await prisma.pedido.count();
   }

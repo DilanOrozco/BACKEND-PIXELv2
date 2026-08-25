@@ -1,5 +1,7 @@
 import {
   DashboardRepository,
+  type GranularidadTendencia,
+  type TendenciaAdminRaw,
   type VentaPorMesRaw,
 } from "../../infrastructure/repositories/dashboard.repository";
 import { ClienteAccessService } from "./cliente-access.service";
@@ -38,6 +40,17 @@ const MESES = [
 
 const ERROR_ANIO = "El a\u00f1o debe ser un n\u00famero v\u00e1lido.";
 const ERROR_LIMITE = "El l\u00edmite debe ser un n\u00famero entre 1 y 20.";
+const ERROR_FECHA = "Las fechas deben usar el formato YYYY-MM-DD.";
+const ERROR_RANGO = "El rango de fechas no es v\u00e1lido.";
+const ERROR_GRANULARIDAD =
+  "La granularidad debe ser DIA, SEMANA, MES o ANIO.";
+const MAXIMO_PUNTOS_TENDENCIA = 366;
+const GRANULARIDADES: GranularidadTendencia[] = [
+  "DIA",
+  "SEMANA",
+  "MES",
+  "ANIO",
+];
 
 type EstadoPedidoDashboard = (typeof ESTADOS_PEDIDO)[number];
 type ConteosPorEstado = Record<EstadoPedidoDashboard, number>;
@@ -58,6 +71,21 @@ export class DashboardValidationError extends Error {
     this.name = "DashboardValidationError";
     Object.setPrototypeOf(this, DashboardValidationError.prototype);
   }
+}
+
+interface PeriodoTendencias {
+  fechaInicio: string;
+  fechaFin: string;
+  fechaFinExclusiva: string;
+  granularidad: GranularidadTendencia;
+}
+
+interface PuntoTendencia {
+  fecha: string;
+  ingresos: number;
+  ventas: number;
+  pedidos: number;
+  cotizaciones: number;
 }
 
 export class DashboardForbiddenError extends Error {
@@ -85,6 +113,207 @@ const aNumero = (valor: unknown) => {
 };
 
 const redondearMoneda = (valor: number) => Math.round(valor * 100) / 100;
+
+const formatearFechaUTC = (fecha: Date) => {
+  const anio = fecha.getUTCFullYear();
+  const mes = String(fecha.getUTCMonth() + 1).padStart(2, "0");
+  const dia = String(fecha.getUTCDate()).padStart(2, "0");
+  return `${anio}-${mes}-${dia}`;
+};
+
+const fechaUTCDesdeCalendario = (fecha: string) => {
+  const [anio, mes, dia] = fecha.split("-").map(Number);
+  return new Date(Date.UTC(anio!, mes! - 1, dia!));
+};
+
+const sumarDiasCalendario = (fecha: string, dias: number) => {
+  const resultado = fechaUTCDesdeCalendario(fecha);
+  resultado.setUTCDate(resultado.getUTCDate() + dias);
+  return formatearFechaUTC(resultado);
+};
+
+const obtenerFechaActualColombia = () => {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const obtener = (tipo: Intl.DateTimeFormatPartTypes) =>
+    partes.find((parte) => parte.type === tipo)?.value ?? "";
+
+  return `${obtener("year")}-${obtener("month")}-${obtener("day")}`;
+};
+
+const validarFechaCalendario = (valor: unknown) => {
+  if (typeof valor !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(valor)) {
+    throw new DashboardValidationError(ERROR_FECHA);
+  }
+
+  const fecha = fechaUTCDesdeCalendario(valor);
+
+  if (formatearFechaUTC(fecha) !== valor) {
+    throw new DashboardValidationError(ERROR_FECHA);
+  }
+
+  return valor;
+};
+
+const validarGranularidad = (valorEntrada: unknown): GranularidadTendencia => {
+  const valor = obtenerValorQuery(valorEntrada);
+
+  if (valor === undefined || valor === null || String(valor).trim() === "") {
+    return "DIA";
+  }
+
+  const granularidad = String(valor).trim().toUpperCase();
+
+  if (!GRANULARIDADES.includes(granularidad as GranularidadTendencia)) {
+    throw new DashboardValidationError(ERROR_GRANULARIDAD);
+  }
+
+  return granularidad as GranularidadTendencia;
+};
+
+const inicioPeriodo = (
+  fechaEntrada: string,
+  granularidad: GranularidadTendencia,
+) => {
+  const fecha = fechaUTCDesdeCalendario(fechaEntrada);
+
+  if (granularidad === "SEMANA") {
+    const diasDesdeLunes = (fecha.getUTCDay() + 6) % 7;
+    fecha.setUTCDate(fecha.getUTCDate() - diasDesdeLunes);
+  } else if (granularidad === "MES") {
+    fecha.setUTCDate(1);
+  } else if (granularidad === "ANIO") {
+    fecha.setUTCMonth(0, 1);
+  }
+
+  return formatearFechaUTC(fecha);
+};
+
+const siguientePeriodo = (
+  fechaEntrada: string,
+  granularidad: GranularidadTendencia,
+) => {
+  const fecha = fechaUTCDesdeCalendario(fechaEntrada);
+
+  if (granularidad === "DIA") {
+    fecha.setUTCDate(fecha.getUTCDate() + 1);
+  } else if (granularidad === "SEMANA") {
+    fecha.setUTCDate(fecha.getUTCDate() + 7);
+  } else if (granularidad === "MES") {
+    fecha.setUTCMonth(fecha.getUTCMonth() + 1, 1);
+  } else {
+    fecha.setUTCFullYear(fecha.getUTCFullYear() + 1, 0, 1);
+  }
+
+  return formatearFechaUTC(fecha);
+};
+
+const validarCantidadPeriodos = (
+  fechaInicio: string,
+  fechaFin: string,
+  granularidad: GranularidadTendencia,
+) => {
+  const ultimoPeriodo = inicioPeriodo(fechaFin, granularidad);
+  let fecha = inicioPeriodo(fechaInicio, granularidad);
+  let cantidad = 0;
+
+  while (fecha <= ultimoPeriodo) {
+    cantidad += 1;
+
+    if (cantidad > MAXIMO_PUNTOS_TENDENCIA) {
+      throw new DashboardValidationError(
+        `El rango no puede superar ${MAXIMO_PUNTOS_TENDENCIA} periodos.`,
+      );
+    }
+
+    fecha = siguientePeriodo(fecha, granularidad);
+  }
+};
+
+const prepararPeriodoTendencias = (
+  query: Record<string, unknown>,
+): PeriodoTendencias => {
+  const inicioEntrada = obtenerValorQuery(query.fechaInicio);
+  const finEntrada = obtenerValorQuery(query.fechaFin);
+  const granularidad = validarGranularidad(query.granularidad);
+  let fechaInicio: string;
+  let fechaFin: string;
+
+  if (inicioEntrada === undefined && finEntrada === undefined) {
+    fechaFin = obtenerFechaActualColombia();
+    fechaInicio = sumarDiasCalendario(fechaFin, -29);
+  } else {
+    if (inicioEntrada === undefined || finEntrada === undefined) {
+      throw new DashboardValidationError(
+        "Debes enviar fechaInicio y fechaFin juntas.",
+      );
+    }
+
+    fechaInicio = validarFechaCalendario(inicioEntrada);
+    fechaFin = validarFechaCalendario(finEntrada);
+  }
+
+  if (fechaInicio > fechaFin) {
+    throw new DashboardValidationError(ERROR_RANGO);
+  }
+
+  validarCantidadPeriodos(fechaInicio, fechaFin, granularidad);
+
+  return {
+    fechaInicio,
+    fechaFin,
+    fechaFinExclusiva: sumarDiasCalendario(fechaFin, 1),
+    granularidad,
+  };
+};
+
+const normalizarPuntoTendencia = (punto: TendenciaAdminRaw): PuntoTendencia => ({
+  fecha: String(punto.fecha),
+  ingresos: redondearMoneda(aNumero(punto.ingresos)),
+  ventas: aNumero(punto.ventas),
+  pedidos: aNumero(punto.pedidos),
+  cotizaciones: aNumero(punto.cotizaciones),
+});
+
+const completarSerieTendencias = (
+  periodo: PeriodoTendencias,
+  resultados: TendenciaAdminRaw[],
+) => {
+  const resultadosPorFecha = new Map(
+    resultados.map((resultado) => {
+      const normalizado = normalizarPuntoTendencia(resultado);
+      return [normalizado.fecha, normalizado] as const;
+    }),
+  );
+  const serie: PuntoTendencia[] = [];
+  const ultimoPeriodo = inicioPeriodo(periodo.fechaFin, periodo.granularidad);
+  let fecha = inicioPeriodo(periodo.fechaInicio, periodo.granularidad);
+
+  while (fecha <= ultimoPeriodo) {
+    if (serie.length >= MAXIMO_PUNTOS_TENDENCIA) {
+      throw new DashboardValidationError(
+        `El rango no puede superar ${MAXIMO_PUNTOS_TENDENCIA} periodos.`,
+      );
+    }
+
+    serie.push(
+      resultadosPorFecha.get(fecha) ?? {
+        fecha,
+        ingresos: 0,
+        ventas: 0,
+        pedidos: 0,
+        cotizaciones: 0,
+      },
+    );
+    fecha = siguientePeriodo(fecha, periodo.granularidad);
+  }
+
+  return serie;
+};
 
 const obtenerValorQuery = (valor: unknown) => {
   if (Array.isArray(valor)) {
@@ -263,6 +492,36 @@ const prepararPedidoCliente = (pedido: any) => {
 };
 
 export class DashboardService {
+  async obtenerTendenciasAdmin(query: Record<string, unknown> = {}) {
+    const periodo = prepararPeriodoTendencias(query);
+    const resultados = await dashboardRepository.obtenerTendenciasPorRango(
+      periodo.fechaInicio,
+      periodo.fechaFinExclusiva,
+      periodo.granularidad,
+    );
+    const series = completarSerieTendencias(periodo, resultados);
+    const resumen = series.reduce(
+      (acumulado, punto) => ({
+        ingresos: redondearMoneda(acumulado.ingresos + punto.ingresos),
+        ventas: acumulado.ventas + punto.ventas,
+        pedidos: acumulado.pedidos + punto.pedidos,
+        cotizaciones: acumulado.cotizaciones + punto.cotizaciones,
+      }),
+      { ingresos: 0, ventas: 0, pedidos: 0, cotizaciones: 0 },
+    );
+
+    return {
+      periodo: {
+        fechaInicio: periodo.fechaInicio,
+        fechaFin: periodo.fechaFin,
+        granularidad: periodo.granularidad,
+        zonaHoraria: "America/Bogota",
+      },
+      resumen,
+      series,
+    };
+  }
+
   async obtenerDashboardAdmin(query: Record<string, unknown> = {}) {
     const anio = validarAnio(query);
     const limite = validarLimite(query.ultimos);
