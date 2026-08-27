@@ -21,11 +21,11 @@ export class TecnicaController {
 
   async listarTecnicas(req: Request, res: Response) {
     try {
-      const tecnicas = await tecnicaService.listarTecnicas();
+      const tecnicas = await tecnicaService.listarTecnicas(
+        req.query as Record<string, unknown>,
+      );
 
-      return res.status(200).json({
-        data: tecnicas,
-      });
+      return res.status(200).json(tecnicas);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,

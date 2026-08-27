@@ -3,6 +3,11 @@ import {
   validarCrearTecnica,
   validarActualizarTecnica,
 } from "../validators/tecnica.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
 
 const tecnicaRepository = new TecnicaRepository();
 
@@ -27,19 +32,45 @@ export class TecnicaService {
 
     return await tecnicaRepository.crearTecnica({
       nombre: nombreLimpio,
-      descripcion: data.descripcion?.trim(),
+      descripcion:
+        typeof data.descripcion === "string" &&
+        data.descripcion.trim() !== ""
+          ? data.descripcion.trim()
+          : null,
+      requiereMedidas:
+        data.requiereMedidas === undefined
+          ? true
+          : data.requiereMedidas,
       estado: true,
     });
   }
 
-  async listarTecnicas() {
+  async listarTecnicas(query: PaginationQuery = {}) {
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "idTecnica",
+      allowedSortBy: ["idTecnica", "nombre", "fechaCreacion"],
+      maxLimit: 10,
+    });
+
+    if (pagination.isPaginated) {
+      const resultado = await tecnicaRepository.listarTecnicasPaginado(
+        pagination,
+      );
+
+      if (resultado.data.length === 0) {
+        throw new Error("No se encontraron resultados.");
+      }
+
+      return paginatedResponse(resultado.data, pagination, resultado.total);
+    }
+
     const tecnicas = await tecnicaRepository.listarTecnicas();
 
     if (tecnicas.length === 0) {
       throw new Error("No se encontraron resultados.");
     }
 
-    return tecnicas;
+    return { data: tecnicas };
   }
 
   async buscarPorId(idTecnica: number) {
@@ -105,11 +136,19 @@ export class TecnicaService {
     }
 
     if (data.descripcion !== undefined) {
-      dataActualizar.descripcion = data.descripcion.trim();
+      dataActualizar.descripcion =
+        typeof data.descripcion === "string" &&
+        data.descripcion.trim() !== ""
+          ? data.descripcion.trim()
+          : null;
     }
 
     if (data.estado !== undefined) {
       dataActualizar.estado = data.estado;
+    }
+
+    if (data.requiereMedidas !== undefined) {
+      dataActualizar.requiereMedidas = data.requiereMedidas;
     }
 
     return await tecnicaRepository.actualizarTecnica(idTecnica, dataActualizar);

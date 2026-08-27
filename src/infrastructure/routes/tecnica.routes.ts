@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { TecnicaController } from "../controllers/tecnica.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
-import { autorizarRoles } from "../middlewares/roles.middleware";
+import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 
 const router = Router();
 const tecnicaController = new TecnicaController();
@@ -10,43 +11,49 @@ router.use(verificarAuth);
 
 router.post(
   "/",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("tecnicas.crear"),
   tecnicaController.crearTecnica,
 );
 
 router.get(
   "/",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  autorizarPermiso("tecnicas.ver"),
   tecnicaController.listarTecnicas,
 );
 
 router.get(
   "/buscar",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  autorizarPermiso("tecnicas.ver"),
   tecnicaController.buscarParcial,
 );
 
 router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("tecnicas.ver"),
+  crearControladorImpactoEliminacion("tecnica"),
+);
+
+router.get(
   "/:id",
-  autorizarRoles("Admin", "Secretaria", "Cliente"),
+  autorizarPermiso("tecnicas.ver"),
   tecnicaController.buscarPorId,
 );
 
 router.patch(
   "/:id",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("tecnicas.editar"),
   tecnicaController.actualizarTecnica,
 );
 
 router.delete(
   "/:id/eliminar",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("tecnicas.eliminar"),
   tecnicaController.eliminarTecnica,
 );
 
 router.delete(
   "/:id",
-  autorizarRoles("Admin", "Secretaria"),
+  autorizarPermiso("tecnicas.desactivar"),
   tecnicaController.desactivarTecnica,
 );
 

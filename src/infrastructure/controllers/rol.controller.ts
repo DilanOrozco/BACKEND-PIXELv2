@@ -24,11 +24,11 @@ export class RolController {
 
   async listarRoles(req: Request, res: Response) {
     try {
-      const roles = await rolService.listarRoles();
+      const roles = await rolService.listarRoles(
+        req.query as Record<string, unknown>,
+      );
 
-      return res.status(200).json({
-        data: roles,
-      });
+      return res.status(200).json(roles);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,
@@ -99,6 +99,19 @@ export class RolController {
       });
     } catch (error: any) {
       return res.status(400).json({
+        message: error.message,
+      });
+    }
+  }
+
+  async obtenerImpactoEliminacion(req: Request, res: Response) {
+    try {
+      const idRol = Number(req.params.id);
+      const impacto = await rolService.obtenerImpactoEliminacion(idRol);
+
+      return res.status(200).json({ data: impacto });
+    } catch (error: any) {
+      return res.status(404).json({
         message: error.message,
       });
     }

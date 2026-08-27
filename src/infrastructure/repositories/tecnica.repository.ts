@@ -1,5 +1,26 @@
 import {prisma} from "../../config/prisma";
-import { tecnicaSelect } from "../../utils/selects/tecnica.select";
+import {
+  tecnicaPublicSelect,
+  tecnicaSelect,
+} from "../../utils/selects/tecnica.select";
+import type { ParsedPagination } from "../../utils/pagination.util";
+
+const buildTecnicaWhere = (search?: string | null) => {
+  if (!search) {
+    return {};
+  }
+
+  return {
+    nombre: {
+      contains: search,
+      mode: "insensitive" as const,
+    },
+  };
+};
+
+const buildTecnicaOrderBy = (pagination: ParsedPagination) => ({
+  [pagination.sortBy]: pagination.order,
+});
 
 export class TecnicaRepository {
   async crearTecnica(data: any) {
@@ -18,9 +39,51 @@ export class TecnicaRepository {
     });
   }
 
+  async listarTecnicasActivas() {
+    return await prisma.tecnica.findMany({
+      where: {
+        estado: true,
+      },
+      select: tecnicaPublicSelect,
+      orderBy: {
+        idTecnica: "asc",
+      },
+    });
+  }
+
+  async listarTecnicasPaginado(pagination: ParsedPagination) {
+    const where = buildTecnicaWhere(pagination.search);
+    const [total, data] = await Promise.all([
+      prisma.tecnica.count({ where }),
+      prisma.tecnica.findMany({
+        where,
+        select: tecnicaSelect,
+        orderBy: buildTecnicaOrderBy(pagination),
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
+  }
+
   async buscarPorId(idTecnica: number) {
     return await prisma.tecnica.findUnique({
       where: { idTecnica },
+      select: tecnicaSelect,
+    });
+  }
+
+  async buscarActivasPorIds(idsTecnicas: number[]) {
+    if (idsTecnicas.length === 0) {
+      return [];
+    }
+
+    return await prisma.tecnica.findMany({
+      where: {
+        idTecnica: { in: idsTecnicas },
+        estado: true,
+      },
       select: tecnicaSelect,
     });
   }

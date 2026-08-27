@@ -1,10 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
+import jwt from "jsonwebtoken";
 import { verificarToken } from "../../utils/jwt.util";
-import { prisma } from "../../config/prisma";
+import { UsuarioRepository } from "../repositories/usuario.repository";
 
 export interface AuthRequest extends Request {
   user?: any;
 }
+
+const usuarioRepository = new UsuarioRepository();
 
 export const verificarAuth = async (
   req: AuthRequest,
@@ -28,7 +31,26 @@ export const verificarAuth = async (
       });
     }
 
-    const decoded: any = verificarToken(token);
+    let decoded: any;
+
+    try {
+      decoded = verificarToken(token);
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        return res.status(401).json({
+          message: "Sesi\u00f3n expirada. Inicia sesi\u00f3n nuevamente.",
+        });
+      }
+
+      if (error instanceof jwt.JsonWebTokenError) {
+        return res.status(401).json({
+          message: "Token invalido.",
+        });
+      }
+
+      throw error;
+    }
+
     const idUsuario = Number(decoded?.idUsuario);
 
     if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
@@ -37,21 +59,7 @@ export const verificarAuth = async (
       });
     }
 
-    const usuario = await prisma.usuario.findUnique({
-      where: { idUsuario },
-      select: {
-        idUsuario: true,
-        correo: true,
-        idRol: true,
-        estado: true,
-        rol: {
-          select: {
-            nombre: true,
-            estado: true,
-          },
-        },
-      },
-    });
+    const usuario = await usuarioRepository.buscarUsuarioAuthPorId(idUsuario);
 
     if (!usuario || !usuario.estado || !usuario.rol?.estado) {
       return res.status(401).json({
@@ -65,12 +73,25 @@ export const verificarAuth = async (
       correo: usuario.correo,
       idRol: usuario.idRol,
       rol: usuario.rol.nombre,
+      idCliente: usuario.cliente?.estado ? usuario.cliente.idCliente : null,
     };
 
     next();
   } catch {
     return res.status(401).json({
-      message: "Token invalido o expirado.",
+      message: "Token invalido.",
     });
   }
+};
+
+export const verificarAuthOpcional = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  if (!req.headers.authorization) {
+    return next();
+  }
+
+  return verificarAuth(req, res, next);
 };

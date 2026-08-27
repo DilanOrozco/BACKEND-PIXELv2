@@ -3,6 +3,12 @@ import {
   validarCrearRol,
   validarActualizarRol,
 } from "../validators/rol.validator";
+import {
+  paginatedResponse,
+  parsePaginationQuery,
+  type PaginationQuery,
+} from "../../utils/pagination.util";
+import { buildDeletionImpact } from "../../utils/deletion-impact.util";
 
 const rolRepository = new RolRepository();
 
@@ -25,14 +31,30 @@ export class RolService {
     return await rolRepository.crearRol(nombre.trim(), descripcion?.trim());
   }
 
-  async listarRoles() {
+  async listarRoles(query: PaginationQuery = {}) {
+    const pagination = parsePaginationQuery(query, {
+      defaultSortBy: "idRol",
+      allowedSortBy: ["idRol", "nombre"],
+      maxLimit: 10,
+    });
+
+    if (pagination.isPaginated) {
+      const resultado = await rolRepository.listarRolesPaginado(pagination);
+
+      if (resultado.data.length === 0) {
+        throw new Error("No se encontraron resultados.");
+      }
+
+      return paginatedResponse(resultado.data, pagination, resultado.total);
+    }
+
     const roles = await rolRepository.listarRoles();
 
     if (roles.length === 0) {
       throw new Error("No se encontraron resultados.");
     }
 
-    return roles;
+    return { data: roles };
   }
 
   async buscarPorNombre(nombre: string) {
@@ -110,5 +132,100 @@ export class RolService {
     }
 
     return await rolRepository.eliminarRol(idRol);
+  }
+
+  async obtenerImpactoEliminacion(idRol: number) {
+    if (isNaN(idRol) || idRol <= 0) {
+      throw new Error("El ID del rol no es valido.");
+    }
+
+    const rol = await rolRepository.buscarPorId(idRol);
+
+    if (!rol) {
+      throw new Error("No se encontraron resultados.");
+    }
+
+    const impacto = await rolRepository.obtenerImpactoEliminacion(idRol);
+
+    return buildDeletionImpact([
+      {
+        tipo: "Usuarios",
+        accion: "ELIMINAR",
+        cantidad: impacto.usuariosCantidad,
+        registros: impacto.usuarios.map((usuario) => ({
+          id: usuario.idUsuario,
+          nombre: usuario.nombre,
+        })),
+      },
+      {
+        tipo: "Asignaciones de permisos",
+        accion: "ELIMINAR",
+        cantidad: impacto.permisosCantidad,
+        registros: impacto.permisos.map(({ permiso }) => ({
+          id: permiso.idPermiso,
+          nombre: permiso.descripcion || permiso.codigo,
+        })),
+      },
+      {
+        tipo: "Tokens de recuperacion de contrasena",
+        accion: "ELIMINAR",
+        cantidad: impacto.tokensCantidad,
+        registros: [],
+      },
+      {
+        tipo: "Clientes vinculados",
+        accion: "DESVINCULAR",
+        cantidad: impacto.clientesCantidad,
+        registros: impacto.clientes.map((cliente) => ({
+          id: cliente.idCliente,
+          nombre: cliente.nombre,
+        })),
+      },
+      {
+        tipo: "Cotizaciones gestionadas",
+        accion: "DESVINCULAR",
+        cantidad: impacto.cotizacionesCantidad,
+        registros: impacto.cotizaciones.map((cotizacion) => ({
+          id: cotizacion.idCotizacion,
+          nombre: `Cotizacion #${cotizacion.idCotizacion}`,
+        })),
+      },
+      {
+        tipo: "Abonos gestionados",
+        accion: "DESVINCULAR",
+        cantidad: impacto.abonosCantidad,
+        registros: impacto.abonos.map((abono) => ({
+          id: abono.idAbono,
+          nombre: `Abono #${abono.idAbono}`,
+        })),
+      },
+      {
+        tipo: "Disenos gestionados",
+        accion: "DESVINCULAR",
+        cantidad: impacto.disenosCantidad,
+        registros: impacto.disenos.map((diseno) => ({
+          id: diseno.idDiseno,
+          nombre: diseno.descripcion || `Diseno #${diseno.idDiseno}`,
+        })),
+      },
+      {
+        tipo: "Compras registradas",
+        accion: "DESVINCULAR",
+        cantidad: impacto.comprasCantidad,
+        registros: impacto.compras.map((compra) => ({
+          id: compra.idCompra,
+          nombre: `Compra #${compra.idCompra}`,
+        })),
+      },
+      {
+        tipo: "Respuestas de cotizacion registradas",
+        accion: "DESVINCULAR",
+        cantidad: impacto.respuestasCantidad,
+        registros: impacto.respuestas.map((respuesta) => ({
+          id: respuesta.idRespuesta,
+          nombre: `Respuesta #${respuesta.idRespuesta}`,
+        })),
+      },
+    ]);
   }
 }

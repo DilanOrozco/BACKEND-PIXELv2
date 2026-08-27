@@ -1,6 +1,7 @@
 // backend/src/presentation/controllers/usuario.controller.ts
 import type { Request, Response } from "express";
 import { UsuarioService } from "../../applications/services/usuario.service";
+import type { AuthRequest } from "../middlewares/auth.middleware";
 
 const usuarioService = new UsuarioService();
 
@@ -22,14 +23,11 @@ export class UsuarioController {
 
   async listarUsuarios(req: Request, res: Response) {
     try {
-      const { idRol } = req.query;
-      const filtros = idRol ? { idRol: Number(idRol) } : undefined;
+      const usuarios = await usuarioService.listarUsuarios(
+        req.query as Record<string, unknown>,
+      );
 
-      const usuarios = await usuarioService.listarUsuarios(filtros);
-
-      return res.status(200).json({
-        data: usuarios,
-      });
+      return res.status(200).json(usuarios);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,
@@ -60,12 +58,11 @@ export class UsuarioController {
 
       const usuarios = await usuarioService.buscarParcial(
         String(termino || ""),
-        parsedIdRol
+        parsedIdRol,
+        req.query as Record<string, unknown>,
       );
 
-      return res.status(200).json({
-        data: usuarios,
-      });
+      return res.status(200).json(usuarios);
     } catch (error: any) {
       return res.status(404).json({
         message: error.message,
@@ -73,14 +70,15 @@ export class UsuarioController {
     }
   }
 
-  async actualizarUsuario(req: Request, res: Response) {
+  async actualizarUsuario(req: AuthRequest, res: Response) {
     try {
       const idUsuario = Number(req.params.id);
 
-      const usuario = await usuarioService.actualizarUsuario(
-        idUsuario,
-        req.body,
-      );
+      const esPerfilPropioCliente =
+        req.user?.rol === "Cliente" && Number(req.user.idUsuario) === idUsuario;
+      const usuario = esPerfilPropioCliente
+        ? await usuarioService.actualizarPerfilPropio(idUsuario, req.body)
+        : await usuarioService.actualizarUsuario(idUsuario, req.body);
 
       return res.status(200).json({
         message: "Usuario actualizado correctamente.",

@@ -12,93 +12,723 @@ datasource db {
   provider = "postgresql"
 }
 
-model Rol {
-  idRol       Int       @id @default(autoincrement()) @map("id_rol")
-  nombre     String    @unique @db.VarChar(50)
-  descripcion String?  @db.VarChar(255)
-  estado     Boolean   @default(true)
+// ==========================
+// ENUMS
+// ==========================
+enum EstadoCotizacion {
+  PENDIENTE
+  APROBADA
+  ANULADA
+  BORRADOR
+  SOLICITUD_RECIBIDA
+  EN_REVISION
+  PENDIENTE_APROBACION_CLIENTE
+  AJUSTE_SOLICITADO
+  ACEPTADA
+  RECHAZADA_CLIENTE
+  VENCIDA
+  CONVERTIDA_EN_PEDIDO
+}
 
-  usuarios   Usuario[]
+enum TipoProductoCotizacion {
+  CATALOGO
+  OTRO
+}
+
+enum SuministradoPorProducto {
+  PIXEL
+  CLIENTE
+}
+
+enum EstadoCotizacionVersion {
+  BORRADOR
+  ENVIADA
+  ACEPTADA
+  RECHAZADA
+  AJUSTE_SOLICITADO
+  VENCIDA
+  INVALIDADA
+}
+
+enum DecisionCotizacion {
+  ACEPTAR
+  RECHAZAR
+  SOLICITAR_AJUSTE
+}
+
+enum ActorRespuestaCotizacion {
+  CLIENTE
+  USUARIO_INTERNO
+}
+
+enum MedioRespuestaCotizacion {
+  SISTEMA
+  WHATSAPP
+  LLAMADA
+  CORREO
+  PRESENCIAL
+  OTRO
+}
+
+enum EstadoPedido {
+  PENDIENTE
+  EN_PROCESO
+  PENDIENTE_SALDO_FINAL
+  FINALIZADO
+  ENTREGADO
+  ANULADO
+}
+
+enum EstadoPago {
+  PENDIENTE
+  PARCIAL
+  COMPLETO
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TRANSFERENCIA
+  OTRO
+}
+
+enum EstadoAbono {
+  PENDIENTE
+  CONFIRMADO
+  RECHAZADO
+}
+
+enum EstadoDiseno {
+  PENDIENTE
+  ENVIADO
+  APROBADO
+  RECHAZADO
+}
+
+enum EstadoVenta {
+  PARCIAL
+  COMPLETA
+  ANULADA
+}
+
+enum EstadoCompra {
+  PENDIENTE
+  COMPRADA
+  ANULADA
+}
+
+// ==========================
+// MODELOS
+// ==========================
+
+model Rol {
+  idRol       Int     @id @default(autoincrement()) @map("id_rol")
+  nombre      String  @unique @db.VarChar(50)
+  descripcion String? @db.VarChar(255)
+  estado      Boolean @default(true)
+
+  usuarios Usuario[]
+  permisos RolPermiso[]
 
   @@map("roles")
 }
 
+model Permiso {
+  idPermiso     Int      @id @default(autoincrement()) @map("id_permiso")
+  codigo        String   @unique @db.VarChar(100)
+  modulo        String   @db.VarChar(50)
+  accion        String   @db.VarChar(50)
+  descripcion   String?  @db.VarChar(255)
+  estado        Boolean  @default(true)
+  fechaCreacion DateTime @default(now()) @map("fecha_creacion")
+
+  roles RolPermiso[]
+
+  @@map("permisos")
+}
+
+model RolPermiso {
+  idRol         Int      @map("id_rol")
+  idPermiso     Int      @map("id_permiso")
+  fechaCreacion DateTime @default(now()) @map("fecha_creacion")
+
+  rol     Rol     @relation(fields: [idRol], references: [idRol], onDelete: Cascade)
+  permiso Permiso @relation(fields: [idPermiso], references: [idPermiso], onDelete: Cascade)
+
+  @@id([idRol, idPermiso])
+  @@map("roles_permisos")
+}
+
 model Usuario {
-  idUsuario          Int       @id @default(autoincrement()) @map("id_usuario")
-  idRol              Int       @map("id_rol")
+  idUsuario          Int      @id @default(autoincrement()) @map("id_usuario")
+  idRol              Int      @map("id_rol")
+  nombre             String   @db.VarChar(100)
+  documento          String?  @unique @db.VarChar(30)
+  telefono           String?  @db.VarChar(20)
+  direccion          String?  @db.VarChar(150)
+  correo             String   @unique @db.VarChar(100)
+  contrasenaHash     String   @map("contrasena_hash") @db.VarChar(255)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
 
-  nombre             String    @db.VarChar(100)
-  documento          String?   @unique @db.VarChar(30)
-  telefono           String?   @db.VarChar(20)
-  direccion          String?   @db.VarChar(150)
-  correo             String    @unique @db.VarChar(100)
-  contrasenaHash     String    @map("contrasena_hash") @db.VarChar(255)
+  rol Rol @relation(fields: [idRol], references: [idRol], onDelete: Cascade)
 
-  estado             Boolean   @default(true)
-  fechaCreacion      DateTime  @default(now()) @map("fecha_creacion")
-  fechaActualizacion DateTime  @updatedAt @map("fecha_actualizacion")
-
-  rol                Rol       @relation(fields: [idRol], references: [idRol], onDelete: Cascade)
-
-  cotizacionesCliente Cotizacion[] @relation("CotizacionCliente")
-  cotizacionesCreadas  Cotizacion[] @relation("CotizacionCreador")
+  cotizacionesCreadas             Cotizacion[]          @relation("CotizacionCreador")
+  abonosConfirmados               Abonos[]              @relation("AbonosConfirmados")
+  abonosRechazados                Abonos[]              @relation("AbonosRechazados")
+  abonosCorregidos                Abonos[]              @relation("AbonosCorregidos")
+  disenos                         Diseno[]
+  disenosRespondidos              Diseno[]              @relation("DisenosRespuestaRegistrada")
+  disenosRecibidos                Diseno[]              @relation("DisenosRecibidos")
+  comprasRealizadas               Compra[]
+  passwordResetTokens             PasswordResetToken[]
+  respuestasCotizacionRegistradas CotizacionRespuesta[] @relation("CotizacionRespuestaRegistradaPor")
+  cliente                         Cliente?
 
   @@map("usuarios")
+}
+
+model PasswordResetToken {
+  idPasswordResetToken Int       @id @default(autoincrement()) @map("id_password_reset_token")
+  idUsuario            Int       @map("id_usuario")
+  tokenHash            String    @map("token_hash") @db.VarChar(128)
+  fechaExpiracion      DateTime  @map("fecha_expiracion")
+  fechaUso             DateTime? @map("fecha_uso")
+  fechaCreacion        DateTime  @default(now()) @map("fecha_creacion")
+
+  usuario Usuario @relation(fields: [idUsuario], references: [idUsuario], onDelete: Cascade)
+
+  @@unique([tokenHash])
+  @@index([idUsuario, fechaExpiracion])
+  @@map("password_reset_tokens")
+}
+
+model Cliente {
+  idCliente          Int      @id @default(autoincrement()) @map("id_cliente")
+  idUsuario          Int?     @unique @map("id_usuario")
+  nombre             String   @db.VarChar(100)
+  documento          String?  @db.VarChar(30)
+  correo             String?  @db.VarChar(100)
+  telefono           String?  @db.VarChar(20)
+  direccion          String?  @db.VarChar(150)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  usuario              Usuario?              @relation(fields: [idUsuario], references: [idUsuario], onDelete: SetNull)
+  cotizaciones         Cotizacion[]
+  pedidos              Pedido[]
+  ventas               Venta[]
+  respuestasCotizacion CotizacionRespuesta[]
+
+  @@index([correo])
+  @@index([telefono])
+  @@index([documento])
+  @@map("clientes")
 }
 
 model Tecnica {
   idTecnica          Int      @id @default(autoincrement()) @map("id_tecnica")
   nombre             String   @unique @db.VarChar(80)
   descripcion        String?  @db.VarChar(255)
+  requiereMedidas    Boolean  @default(true) @map("requiere_medidas")
   estado             Boolean  @default(true)
   fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
 
-  detallesCotizacion DetalleCotizacion[]
+  detallesCotizacion   DetalleCotizacion[]
+  detallesPedido       DetallePedido[]
+  tarifas              TarifaTecnica[]
+  descuentos           DescuentoTecnica[]
+  estampadosCotizacion DetalleEstampadoCotizacion[]
+  estampadosPedido     DetalleEstampadoPedido[]
 
   @@map("tecnicas")
 }
 
-enum EstadoCotizacion {
-  PENDIENTE
-  APROBADA
-  ANULADA
+model ProductoCotizable {
+  idProducto          Int      @id @default(autoincrement()) @map("id_producto")
+  idCategoriaProducto Int?     @map("id_categoria_producto")
+  nombre              String   @unique @db.VarChar(150)
+  descripcion         String?  @db.VarChar(255)
+  precioBase          Decimal? @map("precio_base") @db.Decimal(10, 2)
+  requiereDiseno      Boolean  @default(true) @map("requiere_diseno")
+  estado              Boolean  @default(true)
+  fechaCreacion       DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion  DateTime @updatedAt @map("fecha_actualizacion")
+
+  categoriaProducto  CategoriaProducto?    @relation(fields: [idCategoriaProducto], references: [idCategoriaProducto], onDelete: SetNull)
+  rangos             PrecioProductoRango[]
+  detallesCotizacion DetalleCotizacion[]
+  detallesPedido     DetallePedido[]
+
+  @@index([idCategoriaProducto])
+  @@map("productos_cotizables")
 }
 
-model Cotizacion {
-  idCotizacion       Int      @id @default(autoincrement()) @map("id_cotizacion")
-  idCliente          Int      @map("id_cliente")
-  creadoPorId        Int      @map("creado_por_id")
-  tipoCotizacion     String   @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
-  estado             EstadoCotizacion @default(PENDIENTE)
-  subtotal           Decimal  @default(0) @db.Decimal(10, 2)
-  costosAdicionales  Decimal  @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
-  total              Decimal  @default(0) @db.Decimal(10, 2)
-  observaciones      String?  @db.VarChar(255)
+model CategoriaProducto {
+  idCategoriaProducto Int      @id @default(autoincrement()) @map("id_categoria_producto")
+  nombre              String   @unique @db.VarChar(100)
+  descripcion         String?  @db.VarChar(255)
+  estado              Boolean  @default(true)
+  fechaCreacion       DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion  DateTime @updatedAt @map("fecha_actualizacion")
+
+  productos ProductoCotizable[]
+
+  @@map("categorias_producto")
+}
+
+model PrecioProductoRango {
+  idRango             Int      @id @default(autoincrement()) @map("id_rango")
+  idProducto          Int      @map("id_producto")
+  cantidadMin         Int      @map("cantidad_min")
+  descuentoPorcentaje Decimal  @default(0) @map("descuento_porcentaje") @db.Decimal(5, 2)
+  estado              Boolean  @default(true)
+  fechaCreacion       DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion  DateTime @updatedAt @map("fecha_actualizacion")
+
+  producto           ProductoCotizable   @relation(fields: [idProducto], references: [idProducto], onDelete: Cascade)
+  detallesCotizacion DetalleCotizacion[]
+
+  @@unique([idProducto, cantidadMin])
+  @@index([idProducto, estado, cantidadMin])
+  @@map("precios_producto_rangos")
+}
+
+model TarifaTecnica {
+  idTarifa           Int      @id @default(autoincrement()) @map("id_tarifa")
+  idTecnica          Int      @map("id_tecnica")
+  nombre             String   @default("Tarifa existente") @db.VarChar(100)
+  anchoHastaCm       Decimal? @map("ancho_hasta_cm") @db.Decimal(8, 2)
+  altoHastaCm        Decimal? @map("alto_hasta_cm") @db.Decimal(8, 2)
+  esGeneral          Boolean  @default(false) @map("es_general")
+  precioUnitario     Decimal  @map("precio_unitario") @db.Decimal(12, 2)
+  estado             Boolean  @default(true)
   fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
   fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
 
-  cliente            Usuario  @relation("CotizacionCliente", fields: [idCliente], references: [idUsuario], onDelete: Cascade)
-  creadoPor          Usuario  @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: Cascade)
-  detalles           DetalleCotizacion[]
+  tecnica              Tecnica                      @relation(fields: [idTecnica], references: [idTecnica], onDelete: Cascade)
+  estampadosCotizacion DetalleEstampadoCotizacion[]
 
+  @@unique([idTecnica, anchoHastaCm, altoHastaCm])
+  @@index([idTecnica, estado, esGeneral, anchoHastaCm, altoHastaCm])
+  @@map("tarifas_tecnica")
+}
+
+model DescuentoTecnica {
+  idDescuento        Int      @id @default(autoincrement()) @map("id_descuento")
+  idTecnica          Int      @map("id_tecnica")
+  cantidadMinima     Int      @map("cantidad_minima")
+  porcentaje         Decimal  @default(0) @db.Decimal(5, 2)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  tecnica Tecnica @relation(fields: [idTecnica], references: [idTecnica], onDelete: Cascade)
+
+  @@unique([idTecnica, cantidadMinima])
+  @@index([idTecnica, estado, cantidadMinima])
+  @@map("descuentos_tecnica")
+}
+
+model Cotizacion {
+  idCotizacion           Int              @id @default(autoincrement()) @map("id_cotizacion")
+  idCliente              Int              @map("id_cliente")
+  creadoPorId            Int?             @map("creado_por_id")
+  tipoCotizacion         String           @default("NORMAL") @map("tipo_cotizacion") @db.VarChar(20)
+  estado                 EstadoCotizacion @default(PENDIENTE)
+  subtotal               Decimal          @default(0) @db.Decimal(10, 2)
+  descuentoTotal         Decimal          @default(0) @map("descuento_total") @db.Decimal(10, 2)
+  costosAdicionales      Decimal          @default(0) @map("costos_adicionales") @db.Decimal(10, 2)
+  total                  Decimal          @default(0) @db.Decimal(10, 2)
+  precioSugeridoInterno  Decimal?         @map("precio_sugerido_interno") @db.Decimal(12, 2)
+  requiereRevisionPrecio Boolean          @default(false) @map("requiere_revision_precio")
+  advertenciasInternas   Json?            @map("advertencias_internas")
+  observacionesInternas  String?          @map("observaciones_internas")
+  observaciones          String?          @db.VarChar(255)
+  fechaCreacion          DateTime         @default(now()) @map("fecha_creacion")
+  fechaActualizacion     DateTime         @updatedAt @map("fecha_actualizacion")
+
+  cliente    Cliente               @relation(fields: [idCliente], references: [idCliente], onDelete: Cascade)
+  creadoPor  Usuario?              @relation("CotizacionCreador", fields: [creadoPorId], references: [idUsuario], onDelete: SetNull)
+  detalles   DetalleCotizacion[]
+  pedidos    Pedido[]              @relation("CotizacionPedidos")
+  versiones  CotizacionVersion[]
+  respuestas CotizacionRespuesta[]
+
+  @@index([idCliente, fechaCreacion])
   @@map("cotizaciones")
 }
 
 model DetalleCotizacion {
-  idDetalleCotizacion Int     @id @default(autoincrement()) @map("id_detalle_cotizacion")
-  idCotizacion        Int     @map("id_cotizacion")
-  idTecnica           Int     @map("id_tecnica")
-  descripcion         String  @db.VarChar(255)
-  cantidad            Int
-  precioUnitario      Decimal? @map("precio_unitario") @db.Decimal(10,2)
-  costoDiseno         Decimal? @default(0) @map("costo_diseno") @db.Decimal(10,2)
-  subtotal            Decimal? @db.Decimal(10,2)
-  imagenReferencia    String?  @map("imagen_referencia") @db.VarChar(255)
-  observaciones       String?  @db.VarChar(255)
+  idDetalleCotizacion             Int                     @id @default(autoincrement()) @map("id_detalle_cotizacion")
+  idCotizacion                    Int                     @map("id_cotizacion")
+  idTecnica                       Int?                    @map("id_tecnica")
+  idProducto                      Int?                    @map("id_producto")
+  idRangoDescuentoAplicado        Int?                    @map("id_rango_descuento_aplicado")
+  tipoProducto                    TipoProductoCotizacion  @default(CATALOGO) @map("tipo_producto")
+  nombrePersonalizado             String?                 @map("nombre_personalizado") @db.VarChar(150)
+  descripcionPersonalizada        String?                 @map("descripcion_personalizada") @db.VarChar(500)
+  materialReferencia              String?                 @map("material_referencia") @db.VarChar(255)
+  suministradoPor                 SuministradoPorProducto @default(PIXEL) @map("suministrado_por")
+  descripcion                     String                  @db.VarChar(255)
+  cantidad                        Int
+  precioBase                      Decimal?                @map("precio_base") @db.Decimal(10, 2)
+  descuentoPorcentaje             Decimal?                @default(0) @map("descuento_porcentaje") @db.Decimal(5, 2)
+  cantidadMinimaDescuentoSnapshot Int?                    @map("cantidad_minima_descuento_snapshot")
+  descuentoValorUnitario          Decimal?                @default(0) @map("descuento_valor_unitario") @db.Decimal(10, 2)
+  precioUnitario                  Decimal?                @map("precio_unitario") @db.Decimal(10, 2)
+  costoDiseno                     Decimal?                @default(0) @map("costo_diseno") @db.Decimal(10, 2)
+  subtotal                        Decimal?                @db.Decimal(10, 2)
+  subtotalBruto                   Decimal?                @map("subtotal_bruto") @db.Decimal(10, 2)
+  descuentoTotal                  Decimal?                @default(0) @map("descuento_total") @db.Decimal(10, 2)
+  subtotalConDescuento            Decimal?                @map("subtotal_con_descuento") @db.Decimal(10, 2)
+  precioSugeridoInterno           Decimal?                @map("precio_sugerido_interno") @db.Decimal(12, 2)
+  subtotalSugeridoInterno         Decimal?                @map("subtotal_sugerido_interno") @db.Decimal(12, 2)
+  requiereRevisionPrecio          Boolean                 @default(false) @map("requiere_revision_precio")
+  imagenReferencia                String?                 @map("imagen_referencia") @db.VarChar(255)
+  requiereDiseno                  Boolean                 @default(true) @map("requiere_diseno")
+  origenDiseno                    String                  @default("PIXEL") @map("origen_diseno") @db.VarChar(20)
+  archivoDisenoInicialUrl         String?                 @map("archivo_diseno_inicial_url") @db.VarChar(500)
+  esDisenoGeneral                 Boolean                 @default(false) @map("es_diseno_general")
+  medioRecepcionDiseno            String?                 @map("medio_recepcion_diseno") @db.VarChar(30)
+  observaciones                   String?                 @db.VarChar(255)
 
-  cotizacion          Cotizacion @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
-  tecnica             Tecnica    @relation(fields: [idTecnica], references: [idTecnica], onDelete: Cascade)
+  cotizacion             Cotizacion                   @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
+  tecnica                Tecnica?                     @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)
+  producto               ProductoCotizable?           @relation(fields: [idProducto], references: [idProducto], onDelete: SetNull)
+  rangoDescuentoAplicado PrecioProductoRango?         @relation(fields: [idRangoDescuentoAplicado], references: [idRango], onDelete: SetNull)
+  estampados             DetalleEstampadoCotizacion[]
 
+  @@index([idCotizacion])
+  @@index([idRangoDescuentoAplicado])
   @@map("detalle_cotizacion")
+}
+
+model DetalleEstampadoCotizacion {
+  idDetalleEstampadoCotizacion Int      @id @default(autoincrement()) @map("id_detalle_estampado_cotizacion")
+  idDetalleCotizacion          Int      @map("id_detalle_cotizacion")
+  idTecnica                    Int?     @map("id_tecnica")
+  idTarifaAplicada             Int?     @map("id_tarifa_aplicada")
+  ubicacion                    String   @db.VarChar(100)
+  anchoCm                      Decimal? @map("ancho_cm") @db.Decimal(8, 2)
+  altoCm                       Decimal? @map("alto_cm") @db.Decimal(8, 2)
+  descripcion                  String?  @db.VarChar(500)
+  observaciones                String?  @db.VarChar(500)
+  origenDiseno                 String   @default("PENDIENTE_DEFINIR") @map("origen_diseno") @db.VarChar(30)
+  grupoDisenoCompartido        String?  @map("grupo_diseno_compartido") @db.VarChar(100)
+  tarifaAnchoSnapshot          Decimal? @map("tarifa_ancho_snapshot") @db.Decimal(8, 2)
+  tarifaAltoSnapshot           Decimal? @map("tarifa_alto_snapshot") @db.Decimal(8, 2)
+  tarifaGeneralSnapshot        Boolean? @map("tarifa_general_snapshot")
+  precioUnitarioSugerido       Decimal? @map("precio_unitario_sugerido") @db.Decimal(12, 2)
+  descuentoPorcentajeSnapshot  Decimal? @map("descuento_porcentaje_snapshot") @db.Decimal(5, 2)
+  subtotalBrutoSugerido        Decimal? @map("subtotal_bruto_sugerido") @db.Decimal(12, 2)
+  descuentoTotalSugerido       Decimal? @map("descuento_total_sugerido") @db.Decimal(12, 2)
+  subtotalSugerido             Decimal? @map("subtotal_sugerido") @db.Decimal(12, 2)
+  costoDisenoSugerido          Decimal? @map("costo_diseno_sugerido") @db.Decimal(12, 2)
+  requiereRevisionPrecio       Boolean  @default(false) @map("requiere_revision_precio")
+  estadoMedidas                String   @default("PENDIENTES") @map("estado_medidas") @db.VarChar(20)
+  motivosRevision              Json?    @map("motivos_revision")
+  fechaCreacion                DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion           DateTime @updatedAt @map("fecha_actualizacion")
+
+  detalleCotizacion DetalleCotizacion @relation(fields: [idDetalleCotizacion], references: [idDetalleCotizacion], onDelete: Cascade)
+  tecnica           Tecnica?          @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)
+  tarifaAplicada    TarifaTecnica?    @relation(fields: [idTarifaAplicada], references: [idTarifa], onDelete: SetNull)
+
+  @@index([idDetalleCotizacion])
+  @@index([idTecnica, anchoCm, altoCm])
+  @@map("detalle_estampado_cotizacion")
+}
+
+model CotizacionVersion {
+  idVersion             Int                     @id @default(autoincrement()) @map("id_version")
+  idCotizacion          Int                     @map("id_cotizacion")
+  numeroVersion         Int                     @map("numero_version")
+  precioSugeridoInterno Decimal?                @map("precio_sugerido_interno") @db.Decimal(12, 2)
+  precioFinal           Decimal                 @map("precio_final") @db.Decimal(12, 2)
+  descuentoManual       Decimal                 @default(0) @map("descuento_manual") @db.Decimal(12, 2)
+  costosAdicionales     Decimal                 @default(0) @map("costos_adicionales") @db.Decimal(12, 2)
+  subtotalDesglose      Decimal                 @default(0) @map("subtotal_desglose") @db.Decimal(12, 2)
+  ajusteManual          Decimal                 @default(0) @map("ajuste_manual") @db.Decimal(12, 2)
+  motivoAjusteManual    String?                 @map("motivo_ajuste_manual") @db.VarChar(500)
+  conceptosAdicionales  Json?                   @map("conceptos_adicionales")
+  disenosOficiales      Json?                   @map("disenos_oficiales")
+  desgloseVisible       Json                    @map("desglose_visible")
+  snapshotCompleto      Json                    @map("snapshot_completo")
+  observacionesCliente  String?                 @map("observaciones_cliente")
+  observacionesInternas String?                 @map("observaciones_internas")
+  mensajeCliente        String?                 @map("mensaje_cliente")
+  validaHasta           DateTime                @map("valida_hasta")
+  enviadaAt             DateTime?               @map("enviada_at")
+  estado                EstadoCotizacionVersion @default(BORRADOR)
+  esVigente             Boolean                 @default(false) @map("es_vigente")
+  fechaCreacion         DateTime                @default(now()) @map("fecha_creacion")
+  fechaActualizacion    DateTime                @updatedAt @map("fecha_actualizacion")
+
+  cotizacion Cotizacion           @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
+  respuesta  CotizacionRespuesta?
+  pedido     Pedido?
+
+  @@unique([idCotizacion, numeroVersion])
+  @@index([idCotizacion, esVigente, estado])
+  @@map("cotizaciones_versiones")
+}
+
+model CotizacionRespuesta {
+  idRespuesta      Int                      @id @default(autoincrement()) @map("id_respuesta")
+  idCotizacion     Int                      @map("id_cotizacion")
+  idVersion        Int                      @unique @map("id_version")
+  decision         DecisionCotizacion
+  actor            ActorRespuestaCotizacion
+  idUsuarioInterno Int?                     @map("id_usuario_interno")
+  idCliente        Int                      @map("id_cliente")
+  medio            MedioRespuestaCotizacion
+  fechaRespuesta   DateTime                 @default(now()) @map("fecha_respuesta")
+  observaciones    String?
+  evidenciaUrl     String?                  @map("evidencia_url") @db.VarChar(500)
+  precioAceptado   Decimal?                 @map("precio_aceptado") @db.Decimal(12, 2)
+  fechaCreacion    DateTime                 @default(now()) @map("fecha_creacion")
+
+  cotizacion     Cotizacion        @relation(fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
+  version        CotizacionVersion @relation(fields: [idVersion], references: [idVersion], onDelete: Cascade)
+  cliente        Cliente           @relation(fields: [idCliente], references: [idCliente], onDelete: Restrict)
+  usuarioInterno Usuario?          @relation("CotizacionRespuestaRegistradaPor", fields: [idUsuarioInterno], references: [idUsuario], onDelete: SetNull)
+
+  @@index([idCotizacion, fechaRespuesta])
+  @@map("cotizaciones_respuestas")
+}
+
+model Pedido {
+  idPedido             Int          @id @default(autoincrement()) @map("id_pedido")
+  idCotizacion         Int          @unique @map("id_cotizacion")
+  idCotizacionVersion  Int?         @unique @map("id_cotizacion_version")
+  idCliente            Int          @map("id_cliente")
+  estadoPedido         EstadoPedido @default(PENDIENTE)
+  estadoPago           EstadoPago   @default(PENDIENTE)
+  total                Decimal      @default(0) @db.Decimal(10, 2)
+  totalPagado          Decimal      @default(0) @map("total_pagado") @db.Decimal(10, 2)
+  saldoPendiente       Decimal      @default(0) @map("saldo_pendiente") @db.Decimal(10, 2)
+  fechaCreacion        DateTime     @default(now()) @map("fecha_creacion")
+  fechaEntregaEstimada DateTime?    @map("fecha_entrega_estimada")
+  fechaFinalizado      DateTime?    @map("fecha_finalizado")
+  fechaEntregado       DateTime?    @map("fecha_entregado")
+  observaciones        String?
+
+  cliente           Cliente            @relation(fields: [idCliente], references: [idCliente], onDelete: Cascade)
+  cotizacion        Cotizacion         @relation("CotizacionPedidos", fields: [idCotizacion], references: [idCotizacion], onDelete: Cascade)
+  cotizacionVersion CotizacionVersion? @relation(fields: [idCotizacionVersion], references: [idVersion], onDelete: SetNull)
+  detalles          DetallePedido[]
+  abonos            Abonos[]
+  disenos           Diseno[]
+  compras           Compra[]
+  venta             Venta?
+
+  @@index([idCliente, fechaCreacion])
+  @@index([idCotizacion])
+  @@map("pedidos")
+}
+
+model DetallePedido {
+  idDetallePedido         Int                     @id @default(autoincrement()) @map("id_detalle_pedido")
+  idPedido                Int                     @map("id_pedido")
+  idTecnica               Int?                    @map("id_tecnica")
+  idProducto              Int?                    @map("id_producto")
+  tipoProducto            TipoProductoCotizacion  @default(CATALOGO) @map("tipo_producto")
+  nombrePersonalizado     String?                 @map("nombre_personalizado") @db.VarChar(150)
+  materialReferencia      String?                 @map("material_referencia") @db.VarChar(255)
+  suministradoPor         SuministradoPorProducto @default(PIXEL) @map("suministrado_por")
+  descripcion             String
+  cantidad                Int
+  precioUnitario          Decimal                 @db.Decimal(10, 2)
+  subtotal                Decimal                 @db.Decimal(10, 2)
+  costoDiseno             Decimal?                @default(0) @map("costo_diseno") @db.Decimal(10, 2)
+  requiereDiseno          Boolean                 @default(true) @map("requiere_diseno")
+  origenDiseno            String                  @default("PIXEL") @map("origen_diseno") @db.VarChar(20)
+  archivoDisenoInicialUrl String?                 @map("archivo_diseno_inicial_url") @db.VarChar(500)
+  esDisenoGeneral         Boolean                 @default(false) @map("es_diseno_general")
+  medioRecepcionDiseno    String?                 @map("medio_recepcion_diseno") @db.VarChar(30)
+  observaciones           String?
+
+  pedido     Pedido                   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  tecnica    Tecnica?                 @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)
+  producto   ProductoCotizable?       @relation(fields: [idProducto], references: [idProducto], onDelete: SetNull)
+  disenos    Diseno[]
+  estampados DetalleEstampadoPedido[]
+
+  @@map("detalle_pedido")
+}
+
+model DetalleEstampadoPedido {
+  idDetalleEstampadoPedido Int      @id @default(autoincrement()) @map("id_detalle_estampado_pedido")
+  idDetallePedido          Int      @map("id_detalle_pedido")
+  idTecnica                Int?     @map("id_tecnica")
+  ubicacion                String   @db.VarChar(100)
+  anchoCm                  Decimal? @map("ancho_cm") @db.Decimal(8, 2)
+  altoCm                   Decimal? @map("alto_cm") @db.Decimal(8, 2)
+  descripcion              String?  @db.VarChar(500)
+  observaciones            String?  @db.VarChar(500)
+  origenDiseno             String   @default("PENDIENTE_DEFINIR") @map("origen_diseno") @db.VarChar(30)
+  grupoDisenoCompartido    String?  @map("grupo_diseno_compartido") @db.VarChar(100)
+  precioUnitario           Decimal  @map("precio_unitario") @db.Decimal(12, 2)
+  descuentoPorcentaje      Decimal  @default(0) @map("descuento_porcentaje") @db.Decimal(5, 2)
+  subtotalBruto            Decimal  @map("subtotal_bruto") @db.Decimal(12, 2)
+  descuentoTotal           Decimal  @default(0) @map("descuento_total") @db.Decimal(12, 2)
+  subtotal                 Decimal  @db.Decimal(12, 2)
+  fechaCreacion            DateTime @default(now()) @map("fecha_creacion")
+
+  detallePedido DetallePedido @relation(fields: [idDetallePedido], references: [idDetallePedido], onDelete: Cascade)
+  tecnica       Tecnica?      @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)
+  disenos       Diseno[]
+
+  @@index([idDetallePedido])
+  @@map("detalle_estampado_pedido")
+}
+
+model Abonos {
+  idAbono                   Int         @id @default(autoincrement()) @map("id_abono")
+  idPedido                  Int         @map("id_pedido")
+  monto                     Decimal?    @db.Decimal(10, 2)
+  metodoPago                MetodoPago
+  referencia                String?
+  fechaPago                 DateTime?   @map("fecha_pago")
+  comprobanteUrl            String?     @map("comprobante_url")
+  comprobantePath           String?     @map("comprobante_path") @db.VarChar(500)
+  nombreOriginalComprobante String?     @map("nombre_original_comprobante") @db.VarChar(255)
+  nombreSeguroComprobante   String?     @map("nombre_seguro_comprobante") @db.VarChar(255)
+  comprobanteMimeType       String?     @map("comprobante_mime_type") @db.VarChar(100)
+  comprobanteSizeBytes      Int?        @map("comprobante_size_bytes")
+  comprobanteHash           String?     @map("comprobante_hash") @db.VarChar(64)
+  comprobanteSubidoEn       DateTime?   @map("comprobante_subido_en")
+  textoOcr                  String?     @map("texto_ocr")
+  montoDetectadoOcr         Decimal?    @map("monto_detectado_ocr") @db.Decimal(10, 2)
+  referenciaDetectadaOcr    String?     @map("referencia_detectada_ocr") @db.VarChar(255)
+  fechaDetectadaOcr         DateTime?   @map("fecha_detectada_ocr")
+  bancoDetectadoOcr         String?     @map("banco_detectado_ocr") @db.VarChar(100)
+  confianzaOcr              Decimal?    @map("confianza_ocr") @db.Decimal(5, 2)
+  requiereRevisionManual    Boolean     @default(false) @map("requiere_revision_manual")
+  origenRegistro            String      @default("ADMIN_MANUAL") @map("origen_registro") @db.VarChar(30)
+  observaciones             String?     @db.VarChar(500)
+  corregidoPorId            Int?        @map("corregido_por_id")
+  fechaCorreccion           DateTime?   @map("fecha_correccion")
+  estado                    EstadoAbono @default(PENDIENTE)
+  fechaCreacion             DateTime    @default(now()) @map("fecha_creacion")
+  confirmadoPorId           Int?        @map("confirmado_por_id")
+  fechaConfirmacion         DateTime?   @map("fecha_confirmacion")
+  rechazadoPorId            Int?        @map("rechazado_por_id")
+  fechaRechazo              DateTime?   @map("fecha_rechazo")
+  motivoRechazo             String?     @map("motivo_rechazo")
+
+  pedido        Pedido   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  confirmadoPor Usuario? @relation("AbonosConfirmados", fields: [confirmadoPorId], references: [idUsuario], onDelete: SetNull)
+  rechazadoPor  Usuario? @relation("AbonosRechazados", fields: [rechazadoPorId], references: [idUsuario], onDelete: SetNull)
+  corregidoPor  Usuario? @relation("AbonosCorregidos", fields: [corregidoPorId], references: [idUsuario], onDelete: SetNull)
+
+  @@index([idPedido, comprobanteHash])
+  @@index([estado, fechaCreacion])
+  @@map("abonos")
+}
+
+model Venta {
+  idVenta            Int         @id @default(autoincrement()) @map("id_venta")
+  idPedido           Int         @unique @map("id_pedido")
+  idCliente          Int         @map("id_cliente")
+  totalPedido        Decimal     @map("total_pedido") @db.Decimal(10, 2)
+  totalPagado        Decimal     @map("total_pagado") @db.Decimal(10, 2)
+  saldoPendiente     Decimal     @map("saldo_pendiente") @db.Decimal(10, 2)
+  fechaPrimerPago    DateTime    @map("fecha_primer_pago")
+  estado             EstadoVenta @default(PARCIAL)
+  fechaCreacion      DateTime    @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime    @updatedAt @map("fecha_actualizacion")
+
+  pedido  Pedido  @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  cliente Cliente @relation(fields: [idCliente], references: [idCliente], onDelete: Restrict)
+
+  @@index([idCliente, fechaPrimerPago])
+  @@index([estado, fechaPrimerPago])
+  @@map("ventas")
+}
+
+model Diseno {
+  idDiseno                 Int          @id @default(autoincrement()) @map("id_diseno")
+  idPedido                 Int          @map("id_pedido")
+  idDetallePedido          Int?         @map("id_detalle_pedido")
+  idDetalleEstampadoPedido Int?         @map("id_detalle_estampado_pedido")
+  esDisenoGeneral          Boolean      @default(false) @map("es_diseno_general")
+  grupoDisenoCompartido    String?      @map("grupo_diseno_compartido") @db.VarChar(100)
+  idDisenador              Int?         @map("id_disenador")
+  archivoUrl               String?      @map("archivo_url")
+  descripcion              String?
+  observaciones            String?
+  estado                   EstadoDiseno @default(PENDIENTE)
+  origenDiseno             String       @default("DISENADOR") @map("origen_diseno") @db.VarChar(30)
+  medioRecepcion           String?      @map("medio_recepcion") @db.VarChar(30)
+  recibidoPorId            Int?         @map("recibido_por_id")
+  fechaRecepcion           DateTime?    @map("fecha_recepcion")
+  medioRespuestaCliente    String?      @map("medio_respuesta_cliente") @db.VarChar(30)
+  observacionesCliente     String?      @map("observaciones_cliente")
+  fechaRespuestaCliente    DateTime?    @map("fecha_respuesta_cliente")
+  respuestaRegistradaPorId Int?         @map("respuesta_registrada_por_id")
+  fechaCreacion            DateTime     @default(now()) @map("fecha_creacion")
+  fechaActualizacion       DateTime     @updatedAt @map("fecha_actualizacion")
+  fechaEnvio               DateTime?    @map("fecha_envio")
+  fechaAprobacion          DateTime?    @map("fecha_aprobacion")
+
+  pedido                 Pedido                  @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  detallePedido          DetallePedido?          @relation(fields: [idDetallePedido], references: [idDetallePedido], onDelete: SetNull)
+  detalleEstampadoPedido DetalleEstampadoPedido? @relation(fields: [idDetalleEstampadoPedido], references: [idDetalleEstampadoPedido], onDelete: SetNull)
+  disenador              Usuario?                @relation(fields: [idDisenador], references: [idUsuario], onDelete: SetNull)
+  respuestaRegistradaPor Usuario?                @relation("DisenosRespuestaRegistrada", fields: [respuestaRegistradaPorId], references: [idUsuario], onDelete: SetNull)
+  recibidoPor            Usuario?                @relation("DisenosRecibidos", fields: [recibidoPorId], references: [idUsuario], onDelete: SetNull)
+
+  @@index([idDetallePedido])
+  @@index([idDetalleEstampadoPedido])
+  @@map("disenos")
+}
+
+model Proveedor {
+  idProveedor        Int      @id @default(autoincrement()) @map("id_proveedor")
+  nombre             String   @unique @db.VarChar(100)
+  telefono           String?  @db.VarChar(20)
+  correo             String?  @db.VarChar(100)
+  direccion          String?  @db.VarChar(150)
+  estado             Boolean  @default(true)
+  fechaCreacion      DateTime @default(now()) @map("fecha_creacion")
+  fechaActualizacion DateTime @updatedAt @map("fecha_actualizacion")
+
+  compras Compra[]
+
+  @@map("proveedores")
+}
+
+model Compra {
+  idCompra      Int          @id @default(autoincrement()) @map("id_compra")
+  idPedido      Int          @map("id_pedido")
+  idProveedor   Int          @map("id_proveedor")
+  compradoPorId Int?         @map("comprado_por_id")
+  estado        EstadoCompra @default(PENDIENTE)
+  total         Decimal      @default(0) @db.Decimal(10, 2)
+  fechaCompra   DateTime     @default(now()) @map("fecha_compra")
+  observaciones String?
+
+  pedido      Pedido          @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
+  proveedor   Proveedor       @relation(fields: [idProveedor], references: [idProveedor])
+  compradoPor Usuario?        @relation(fields: [compradoPorId], references: [idUsuario], onDelete: SetNull)
+  detalles    DetalleCompra[]
+
+  @@map("compras")
+}
+
+model DetalleCompra {
+  idDetalleCompra   Int     @id @default(autoincrement()) @map("id_detalle_compra")
+  idCompra          Int     @map("id_compra")
+  descripcionInsumo String  @map("descripcion_insumo") @db.VarChar(255)
+  cantidad          Int
+  costoUnitario     Decimal @map("costo_unitario") @db.Decimal(10, 2)
+  subtotal          Decimal @db.Decimal(10, 2)
+
+  compra Compra @relation(fields: [idCompra], references: [idCompra], onDelete: Cascade)
+
+  @@map("detalle_compra")
 }

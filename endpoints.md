@@ -307,6 +307,23 @@ Resultado:
 
 ```txt
 estado = APROBADA
+pedido.estadoPedido = PENDIENTE
+pedido.estadoPago = PENDIENTE
+```
+
+Al aprobar, el backend crea automaticamente el pedido en la misma transaccion.
+Si el pedido no puede crearse, la cotizacion no queda aprobada.
+
+### Respuesta
+
+```json
+{
+  "message": "Cotizacion aprobada y pedido creado correctamente.",
+  "data": {
+    "cotizacion": {},
+    "pedido": {}
+  }
+}
 ```
 
 ---
@@ -496,7 +513,337 @@ Busca por:
 
 ---
 
-# 6. Credenciales de prueba
+# 6. Pedidos
+
+La API de pedidos parte de cotizaciones `APROBADA`. Todas las rutas usan JWT y devuelven cliente, cotizacion, creador de la cotizacion, detalles del pedido y la relacion `abonos` preparada para la futura API de pagos.
+
+Estados de pedido:
+
+```txt
+PENDIENTE, EN_PROCESO, FINALIZADO, ANULADO
+```
+
+Estados de pago:
+
+```txt
+PENDIENTE, PARCIAL, COMPLETO
+```
+
+Reglas principales:
+
+- Al aprobar una cotizacion se crea automaticamente un pedido `PENDIENTE`.
+- `POST /api/pedidos` se conserva como endpoint administrativo de recuperacion para cotizaciones antiguas o casos excepcionales donde una cotizacion ya estuviera `APROBADA` y aun no tenga pedido. No es el flujo principal y puede marcarse como deprecado cuando no existan datos antiguos por corregir.
+- Un pedido solo se crea desde una cotizacion `APROBADA`.
+- No se crea mas de un pedido por cotizacion.
+- El pedido inicia en `PENDIENTE`.
+- El cliente solo ve sus pedidos y solo puede agregar observaciones mientras el pedido este `PENDIENTE`.
+- Admin y Secretaria pueden asignar `fechaEntregaEstimada` mientras el pedido este `PENDIENTE` o `EN_PROCESO`.
+- No se aceptan fechas estimadas de entrega pasadas.
+- Las fechas de pedidos se devuelven como texto legible, por ejemplo `15 de junio de 2026`; si el campo no tiene valor, se devuelve `null`.
+- El paso a `EN_PROCESO` exige confirmacion manual del primer abono y monto minimo del 50% del total. Esto queda como hook temporal hasta implementar la API de Abonos.
+- Un pedido solo puede finalizar si esta `EN_PROCESO`.
+- Un pedido solo puede anularse si sigue `PENDIENTE`.
+- No hay eliminacion fisica de pedidos desde esta API.
+
+---
+
+## Crear pedido desde cotizacion aprobada
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+POST /api/pedidos
+```
+
+### Body
+
+```json
+{
+  "idCotizacion": 12,
+  "fechaEntregaEstimada": "2026-06-15",
+  "observaciones": "Cliente aprobo condiciones y tiempos."
+}
+```
+
+Notas:
+
+- Este endpoint se mantiene para recuperacion/backfill. El flujo normal crea el pedido desde `PATCH /api/cotizaciones/:id/aprobar`.
+- Si se envia `fechaEntregaEstimada`, no puede ser una fecha pasada.
+- La respuesta devuelve las fechas de pedido en formato legible.
+
+---
+
+## Listar pedidos
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+GET /api/pedidos
+```
+
+Comportamiento:
+
+- Admin y Secretaria ven todos.
+- Cliente solo ve sus propios pedidos.
+
+---
+
+## Buscar pedido por ID
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+GET /api/pedidos/:id
+```
+
+---
+
+## Buscar pedidos parcialmente
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+GET /api/pedidos/buscar?termino=pendiente
+```
+
+Busca por:
+
+- ID de pedido.
+- ID de cotizacion.
+- Estado.
+- Nombre del cliente.
+
+---
+
+## Actualizar pedido
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria, Cliente
+```
+
+```http
+PATCH /api/pedidos/:id
+```
+
+Comportamiento por rol:
+
+- Cliente: solo puede enviar `observaciones`, y solo si el pedido esta `PENDIENTE`.
+- Admin y Secretaria: pueden enviar `observaciones` y/o `fechaEntregaEstimada`.
+- `fechaEntregaEstimada` solo se puede asignar o actualizar si el pedido esta `PENDIENTE` o `EN_PROCESO`.
+- `fechaEntregaEstimada` no puede ser una fecha pasada.
+
+### Body cliente
+
+```json
+{
+  "observaciones": "Confirmo direccion de entrega."
+}
+```
+
+### Body Admin/Secretaria
+
+```json
+{
+  "fechaEntregaEstimada": "2026-06-15",
+  "observaciones": "Entrega estimada asignada por secretaria."
+}
+```
+
+---
+
+## Pasar pedido a EN_PROCESO
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+PATCH /api/pedidos/:id/en-proceso
+```
+
+Hook temporal para la futura API de Abonos. No crea registros en `Abonos`, pero valida la confirmacion y registra el resumen de pago en el pedido.
+
+### Body
+
+```json
+{
+  "abonoConfirmado": true,
+  "montoPrimerAbono": 50000,
+  "observaciones": "Primer abono confirmado por transferencia."
+}
+```
+
+---
+
+## Finalizar pedido
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+PATCH /api/pedidos/:id/finalizar
+```
+
+Solo permitido si el pedido esta `EN_PROCESO`.
+
+### Body
+
+```json
+{
+  "fechaEntregado": "2026-06-20",
+  "observaciones": "Produccion entregada al cliente."
+}
+```
+
+---
+
+## Anular pedido
+
+Roles permitidos:
+
+```txt
+Admin, Secretaria
+```
+
+```http
+PATCH /api/pedidos/:id/anular
+```
+
+Solo permitido si el pedido esta `PENDIENTE`, antes de iniciar produccion.
+
+### Body
+
+```json
+{
+  "observaciones": "Cliente cancelo antes del primer abono."
+}
+```
+
+---
+
+# 7. Proveedores
+
+Modulo interno. Todas las rutas usan JWT. Cliente no tiene acceso a proveedores.
+
+```http
+POST /api/proveedores
+GET /api/proveedores
+GET /api/proveedores/buscar?termino=dtf
+GET /api/proveedores/:id
+PATCH /api/proveedores/:id
+DELETE /api/proveedores/:id
+DELETE /api/proveedores/:id/eliminar
+```
+
+Roles:
+
+- Crear, listar, buscar, consultar, actualizar y desactivar: `Admin`, `Secretaria`.
+- Eliminar fisicamente: `Admin`.
+
+Reglas principales:
+
+- `nombre` es obligatorio y unico.
+- `telefono`, `correo` y `direccion` son opcionales.
+- `correo`, si se envia, debe tener formato valido.
+- `DELETE /api/proveedores/:id` hace eliminacion logica con `estado=false`.
+- `DELETE /api/proveedores/:id/eliminar` solo elimina si no tiene compras asociadas.
+- Un proveedor inactivo no puede usarse en compras nuevas.
+
+---
+
+# 8. Compras
+
+Modulo interno de operacion. Cliente no tiene acceso a compras, proveedores, costos, subtotales ni totales de compra. Admin y Secretaria gestionan el modulo. Disenador solo consulta compras asociadas a pedidos y recibe una vista reducida sin proveedor, comprador ni valores financieros.
+
+Estados validos:
+
+```txt
+PENDIENTE, COMPRADA, ANULADA
+```
+
+Calculos del backend:
+
+```txt
+subtotalDetalle = cantidad * costoUnitario
+totalCompra = suma de subtotales
+```
+
+```http
+POST /api/compras
+GET /api/compras?idPedido=8
+GET /api/compras/resumen
+GET /api/compras/:id
+GET /api/pedidos/:idPedido/compras
+PATCH /api/compras/:id
+PATCH /api/compras/:id/confirmar
+PATCH /api/compras/:id/anular
+DELETE /api/compras/:id
+```
+
+Roles:
+
+- Crear, actualizar, confirmar, anular, eliminar y ver resumen: `Admin`, `Secretaria`.
+- Consultar por pedido o por id: `Admin`, `Secretaria`, `Disenador`.
+- Cliente: sin acceso.
+
+Crear compra:
+
+```json
+{
+  "idPedido": 8,
+  "idProveedor": 2,
+  "observaciones": "Compra de insumos para pedido urgente.",
+  "confirmar": false,
+  "detalles": [
+    {
+      "descripcionInsumo": "Pelicula DTF",
+      "cantidad": 2,
+      "costoUnitario": 45000
+    }
+  ]
+}
+```
+
+Reglas principales:
+
+- Toda compra pertenece a un pedido y a un proveedor.
+- `compradoPorId` sale del usuario autenticado.
+- No se aceptan `subtotal` ni `total` desde frontend.
+- Cada compra requiere minimo un detalle.
+- `cantidad` y `costoUnitario` deben ser mayores a cero.
+- Solo se crean compras para pedidos `PENDIENTE` o `EN_PROCESO`; no para `FINALIZADO`.
+- Solo compras `PENDIENTE` pueden actualizarse, confirmarse, anularse o eliminarse.
+- Confirmar cambia estado a `COMPRADA`.
+- Anular cambia estado a `ANULADA` y conserva detalles.
+- Eliminar borra fisicamente solo compras `PENDIENTE`; los detalles caen por cascade.
+- `/api/compras/resumen` no esta disponible para `Disenador`.
+
+---
+
+# 9. Credenciales de prueba
 
 ## Admin
 
@@ -536,7 +883,7 @@ Busca por:
 
 ---
 
-# 7. Errores comunes
+# 10. Errores comunes
 
 ## Token no enviado
 
@@ -580,7 +927,7 @@ Busca por:
 
 ---
 
-# 8. Orden recomendado de prueba
+# 11. Orden recomendado de prueba
 
 ```txt
 1. Crear roles
@@ -591,4 +938,7 @@ Busca por:
 6. Crear solicitud como cliente o solicitud presencial
 7. Cotizar solicitud como Admin/Secretaria
 8. Aprobar, anular o eliminar la cotizacion
+9. Crear pedido desde la cotizacion aprobada
+10. Confirmar primer abono para pasar el pedido a EN_PROCESO
+11. Finalizar o anular segun el estado del flujo
 ```
