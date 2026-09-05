@@ -4,7 +4,10 @@ import { DisenoController } from "../controllers/diseno.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
 import { AbonoController } from "../controllers/abono.controller";
-import { uploadPaymentReceipt } from "../middlewares/upload.middleware";
+import {
+  uploadDesignFile,
+  uploadPaymentReceipt,
+} from "../middlewares/upload.middleware";
 
 const router = Router();
 const dashboardController = new DashboardController();
@@ -53,7 +56,15 @@ router.get(
 router.patch(
   "/pedidos/:idPedido/detalles/:idDetallePedido/diseno-url",
   autorizarPermiso("disenos.cliente.aprobar"),
+  uploadDesignFile,
   disenoController.registrarUrlDisenoCliente,
+);
+
+router.patch(
+  "/pedidos/:idPedido/requerimientos-diseno/:idRequerimientoDiseno/diseno",
+  autorizarPermiso("disenos.cliente.aprobar"),
+  uploadDesignFile,
+  disenoController.registrarDisenoClienteAutenticadoPorRequerimiento,
 );
 
 router.get(

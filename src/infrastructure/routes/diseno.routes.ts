@@ -3,13 +3,19 @@ import { DisenoController } from "../controllers/diseno.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
 import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
+import { uploadDesignFile } from "../middlewares/upload.middleware";
 
 const router = Router();
 const controller = new DisenoController();
 
 router.use(verificarAuth);
 
-router.post("/", autorizarPermiso("disenos.crear"), controller.crearDiseno);
+router.post(
+  "/",
+  autorizarPermiso("disenos.crear"),
+  uploadDesignFile,
+  controller.crearDiseno,
+);
 router.get("/", autorizarPermiso("disenos.ver"), controller.listarDisenos);
 router.get(
   "/produccion/pendientes",
@@ -22,7 +28,12 @@ router.get(
   crearControladorImpactoEliminacion("diseno"),
 );
 router.get("/:id", autorizarPermiso("disenos.ver"), controller.buscarPorId);
-router.patch("/:id", autorizarPermiso("disenos.editar"), controller.actualizarDiseno);
+router.patch(
+  "/:id",
+  autorizarPermiso("disenos.editar"),
+  uploadDesignFile,
+  controller.actualizarDiseno,
+);
 router.patch("/:id/aprobar", autorizarPermiso("disenos.aprobar"), controller.aprobarDiseno);
 router.patch(
   "/:id/aprobar-cliente",

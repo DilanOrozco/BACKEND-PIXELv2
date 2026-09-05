@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { DisenoService } from "../../applications/services/diseno.service";
+import { DesignFileStorageError } from "../../applications/services/cloudinary-design-storage.service";
 import type { AuthRequest } from "../middlewares/auth.middleware";
 
 const disenoService = new DisenoService();
@@ -7,17 +8,38 @@ const disenoService = new DisenoService();
 const mensajeError = (error: unknown) =>
   error instanceof Error ? error.message : "Error inesperado.";
 
+const normalizarBodyMultipart = (req: AuthRequest) => {
+  const body = { ...(req.body ?? {}) };
+
+  if (typeof body.esDisenoGeneral === "string") {
+    if (body.esDisenoGeneral.toLowerCase() === "true") {
+      body.esDisenoGeneral = true;
+    } else if (body.esDisenoGeneral.toLowerCase() === "false") {
+      body.esDisenoGeneral = false;
+    }
+  }
+
+  return body;
+};
+
+const statusErrorDiseno = (error: unknown) =>
+  error instanceof DesignFileStorageError ? 502 : 400;
+
 export class DisenoController {
   async crearDiseno(req: AuthRequest, res: Response) {
     try {
-      const diseno = await disenoService.crearDiseno(req.body, req.user);
+      const diseno = await disenoService.crearDiseno(
+        normalizarBodyMultipart(req),
+        req.user,
+        req.file,
+      );
 
       return res.status(201).json({
         message: "Diseño creado correctamente.",
         data: diseno,
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }
@@ -89,8 +111,9 @@ export class DisenoController {
       const idDiseno = Number(req.params.id);
       const diseno = await disenoService.actualizarDiseno(
         idDiseno,
-        req.body,
+        normalizarBodyMultipart(req),
         req.user,
+        req.file,
       );
 
       return res.status(200).json({
@@ -98,7 +121,7 @@ export class DisenoController {
         data: diseno,
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }
@@ -125,7 +148,7 @@ export class DisenoController {
         },
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }
@@ -163,7 +186,7 @@ export class DisenoController {
         data: requerimiento,
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }
@@ -178,8 +201,9 @@ export class DisenoController {
         await disenoService.registrarDisenoClientePorRequerimiento(
           Number(req.params.idPedido),
           String(req.params.idRequerimientoDiseno),
-          req.body,
+          normalizarBodyMultipart(req),
           req.user,
+          req.file,
         );
 
       return res.status(200).json({
@@ -187,7 +211,7 @@ export class DisenoController {
         data: requerimiento,
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }
@@ -198,8 +222,10 @@ export class DisenoController {
       const diseno = await disenoService.registrarUrlDisenoCliente(
         Number(req.params.idPedido),
         Number(req.params.idDetallePedido),
-        req.body,
+        normalizarBodyMultipart(req),
         req.user,
+        false,
+        req.file,
       );
 
       return res.status(200).json({
@@ -207,7 +233,7 @@ export class DisenoController {
         data: diseno,
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }
@@ -218,8 +244,9 @@ export class DisenoController {
       const diseno = await disenoService.registrarUrlDisenoRecibidoAdmin(
         Number(req.params.idPedido),
         Number(req.params.idDetallePedido),
-        req.body,
+        normalizarBodyMultipart(req),
         req.user,
+        req.file,
       );
 
       return res.status(200).json({
@@ -227,7 +254,33 @@ export class DisenoController {
         data: diseno,
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
+        message: mensajeError(error),
+      });
+    }
+  }
+
+  async registrarDisenoClienteAutenticadoPorRequerimiento(
+    req: AuthRequest,
+    res: Response,
+  ) {
+    try {
+      const requerimiento =
+        await disenoService.registrarDisenoClientePorRequerimiento(
+          Number(req.params.idPedido),
+          String(req.params.idRequerimientoDiseno),
+          normalizarBodyMultipart(req),
+          req.user,
+          req.file,
+          true,
+        );
+
+      return res.status(200).json({
+        message: "Diseno del cliente cargado correctamente.",
+        data: requerimiento,
+      });
+    } catch (error: unknown) {
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }
@@ -250,7 +303,7 @@ export class DisenoController {
         },
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorDiseno(error)).json({
         message: mensajeError(error),
       });
     }

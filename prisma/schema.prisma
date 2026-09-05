@@ -659,6 +659,12 @@ model Diseno {
   grupoDisenoCompartido    String?      @map("grupo_diseno_compartido") @db.VarChar(100)
   idDisenador              Int?         @map("id_disenador")
   archivoUrl               String?      @map("archivo_url")
+  archivoPublicId          String?      @map("archivo_public_id") @db.VarChar(255)
+  archivoNombreOriginal    String?      @map("archivo_nombre_original") @db.VarChar(255)
+  archivoMimeType          String?      @map("archivo_mime_type") @db.VarChar(100)
+  archivoFormato           String?      @map("archivo_formato") @db.VarChar(20)
+  archivoBytes             Int?         @map("archivo_bytes")
+  archivoResourceType      String?      @map("archivo_resource_type") @db.VarChar(30)
   descripcion              String?
   observaciones            String?
   estado                   EstadoDiseno @default(PENDIENTE)

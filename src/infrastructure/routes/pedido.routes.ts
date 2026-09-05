@@ -5,6 +5,7 @@ import { DisenoController } from "../controllers/diseno.controller";
 import { CompraController } from "../controllers/compra.controller";
 import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import { uploadDesignFile } from "../middlewares/upload.middleware";
 
 const router = Router();
 const pedidoController = new PedidoController();
@@ -65,6 +66,7 @@ router.patch(
 router.patch(
   "/:idPedido/detalles/:idDetallePedido/diseno-recibido-cliente",
   autorizarPermiso("disenos.crear"),
+  uploadDesignFile,
   disenoController.registrarUrlDisenoRecibidoAdmin,
 );
 
@@ -119,6 +121,7 @@ router.patch(
 router.patch(
   "/:idPedido/requerimientos-diseno/:idRequerimientoDiseno/diseno-recibido-cliente",
   autorizarPermiso("disenos.crear"),
+  uploadDesignFile,
   disenoController.registrarDisenoClientePorRequerimiento,
 );
 

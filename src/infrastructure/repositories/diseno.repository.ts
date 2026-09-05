@@ -28,6 +28,12 @@ export interface CrearDisenoData {
   esDisenoGeneral: boolean;
   idDisenador: number | null;
   archivoUrl: string | null;
+  archivoPublicId?: string | null;
+  archivoNombreOriginal?: string | null;
+  archivoMimeType?: string | null;
+  archivoFormato?: string | null;
+  archivoBytes?: number | null;
+  archivoResourceType?: string | null;
   descripcion: string | null;
   observaciones: string | null;
   origenDiseno: OrigenDisenoPermitido;
@@ -46,6 +52,12 @@ export interface CrearDisenoData {
 export interface ActualizarDisenoData {
   idDisenador?: number | null;
   archivoUrl?: string | null;
+  archivoPublicId?: string | null;
+  archivoNombreOriginal?: string | null;
+  archivoMimeType?: string | null;
+  archivoFormato?: string | null;
+  archivoBytes?: number | null;
+  archivoResourceType?: string | null;
   descripcion?: string | null;
   observaciones?: string | null;
   estado?: "PENDIENTE" | "ENVIADO" | "APROBADO" | "RECHAZADO";

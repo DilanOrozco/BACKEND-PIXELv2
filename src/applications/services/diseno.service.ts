@@ -21,10 +21,17 @@ import {
   resolverRequerimientosDiseno,
   type TipoObjetivoDiseno,
 } from "../../utils/design-coverage.util";
+import {
+  CloudinaryDesignStorageService,
+  DesignFileValidationError,
+  type DesignUploadFile,
+  type StoredDesignFile,
+} from "./cloudinary-design-storage.service";
 
 const disenoRepository = new DisenoRepository();
 const abonoService = new AbonoService();
 const notificationService = new NotificationService();
+const designStorageService = new CloudinaryDesignStorageService();
 
 const ESTADO_PEDIDO_PENDIENTE = "PENDIENTE" as const;
 const ESTADO_PEDIDO_EN_PROCESO = "EN_PROCESO" as const;
@@ -117,6 +124,48 @@ const aNumero = (valor: unknown) => Number(valor ?? 0);
 
 const redondearMoneda = (valor: number) => Math.round(valor * 100) / 100;
 
+const metadataArchivo = (archivo: StoredDesignFile | null) =>
+  archivo
+    ? {
+        archivoPublicId: archivo.publicId,
+        archivoNombreOriginal: archivo.originalName,
+        archivoMimeType: archivo.mimeType,
+        archivoFormato: archivo.format,
+        archivoBytes: archivo.sizeBytes,
+        archivoResourceType: archivo.resourceType,
+      }
+    : {};
+
+const serializarArchivoDiseno = (diseno: any) => {
+  if (!diseno || typeof diseno !== "object") {
+    return diseno;
+  }
+
+  const {
+    archivoPublicId: _archivoPublicId,
+    archivoNombreOriginal,
+    archivoMimeType,
+    archivoFormato,
+    archivoBytes,
+    archivoResourceType,
+    ...respuesta
+  } = diseno;
+
+  return {
+    ...respuesta,
+    archivo: diseno.archivoUrl
+      ? {
+          url: diseno.archivoUrl,
+          nombre: archivoNombreOriginal ?? null,
+          tipo: archivoMimeType ?? null,
+          formato: archivoFormato ?? null,
+          bytes: archivoBytes ?? null,
+          resourceType: archivoResourceType ?? null,
+        }
+      : null,
+  };
+};
+
 const pedidoTienePagoInicial = (pedido: {
   total: unknown;
   totalPagado: unknown;
@@ -138,6 +187,33 @@ export class DisenoService {
   constructor(
     private readonly ejecutarTransaccion = runPrismaTransaction,
   ) {}
+
+  private async subirArchivo(
+    file: DesignUploadFile | undefined,
+    idPedido: number,
+  ) {
+    return file ? await designStorageService.subirDiseno(file, idPedido) : null;
+  }
+
+  private async limpiarArchivoNoPersistido(archivo: StoredDesignFile | null) {
+    if (archivo) {
+      await designStorageService.eliminarRecienSubido(
+        archivo.publicId,
+        archivo.resourceType,
+      );
+    }
+  }
+
+  private exigirArchivoOUrlLegacy(
+    file: DesignUploadFile | undefined,
+    data: DatosEntrada,
+  ) {
+    if (!file && !limpiarTextoOpcional(data.archivoDisenoInicialUrl)) {
+      throw new DesignFileValidationError(
+        "Debes adjuntar un archivo de diseno.",
+      );
+    }
+  }
 
   private obtenerUsuario(usuarioAuth: AuthUser | undefined) {
     if (!usuarioAuth) {
@@ -547,9 +623,10 @@ export class DisenoService {
     );
 
     return disenos.map((diseno) => {
+      const disenoSeguro = serializarArchivoDiseno(diseno);
       const pedido = pedidoPorId.get(Number(diseno.idPedido));
       if (!pedido) {
-        return diseno;
+        return disenoSeguro;
       }
 
       const resolucion = resolverRequerimientosDiseno(
@@ -580,7 +657,7 @@ export class DisenoService {
       const ordenCronologico = [...versiones].reverse();
 
       return {
-        ...diseno,
+        ...disenoSeguro,
         tipoObjetivo,
         idRequerimientoDiseno:
           requerimiento?.idRequerimientoDiseno ??
@@ -749,15 +826,23 @@ export class DisenoService {
     idRequerimientoDiseno: string,
     data: DatosEntrada,
     usuarioAuth: AuthUser | undefined,
+    file?: DesignUploadFile,
+    desdePanelCliente = false,
   ) {
     const user = this.obtenerUsuario(usuarioAuth);
     validarId(idPedido, "El ID del pedido no es valido.");
-    if (!puedeGestionarDisenos(user) && !esDisenador(user)) {
+    if (desdePanelCliente ? !esCliente(user) : !puedeGestionarDisenos(user) && !esDisenador(user)) {
       throw new Error(
-        "No tienes permiso para registrar disenos recibidos del cliente.",
+        desdePanelCliente
+          ? "Solo un cliente puede cargar su diseno desde este endpoint."
+          : "No tienes permiso para registrar disenos recibidos del cliente.",
       );
     }
-    const error = validarUrlDisenoCliente(data);
+    this.exigirArchivoOUrlLegacy(file, data);
+    const datosValidacion = file
+      ? { ...data, archivoDisenoInicialUrl: "https://archivo-cloudinary.valido" }
+      : data;
+    const error = validarUrlDisenoCliente(datosValidacion);
     if (error) {
       throw new Error(error);
     }
@@ -773,6 +858,18 @@ export class DisenoService {
     const pedido = await disenoRepository.buscarPedidoPorId(idPedido);
     if (!pedido) {
       throw new Error("Pedido no encontrado.");
+    }
+    if (desdePanelCliente) {
+      this.validarAccesoClienteAlPedido(
+        pedido,
+        user,
+        "No tienes permiso para modificar este pedido.",
+      );
+      if (pedido.estadoPedido !== ESTADO_PEDIDO_PENDIENTE) {
+        throw new Error(
+          "Solo puedes adjuntar el diseno mientras el pedido esta PENDIENTE.",
+        );
+      }
     }
     const resolucion = resolverRequerimientosDiseno(
       pedido.idPedido,
@@ -802,9 +899,14 @@ export class DisenoService {
       );
     }
 
+    const archivoSubido = await this.subirArchivo(file, idPedido);
+    const archivoUrl =
+      archivoSubido?.secureUrl ?? String(data.archivoDisenoInicialUrl).trim();
     const ahora = new Date();
     const medioRecepcion =
-      normalizarMayusculaOpcional(data.medioRecepcion) ?? "OTRO";
+      desdePanelCliente
+        ? "SISTEMA"
+        : normalizarMayusculaOpcional(data.medioRecepcion) ?? "OTRO";
     const dataCrear: CrearDisenoData = {
       idPedido,
       idDetallePedido: requerimiento.idDetallePedido ?? null,
@@ -819,9 +921,12 @@ export class DisenoService {
       esDisenoGeneral:
         requerimiento.tipo === "PRODUCTO_GENERAL",
       idDisenador: null,
-      archivoUrl: String(data.archivoDisenoInicialUrl).trim(),
+      archivoUrl,
+      ...metadataArchivo(archivoSubido),
       descripcion:
-        "Diseno del cliente registrado por un usuario interno.",
+        desdePanelCliente
+          ? "Diseno entregado por el cliente desde su panel."
+          : "Diseno del cliente registrado por un usuario interno.",
       observaciones: limpiarTextoOpcional(data.observaciones),
       origenDiseno: ORIGEN_DISENO_CLIENTE,
       medioRecepcion,
@@ -832,11 +937,17 @@ export class DisenoService {
       fechaEnvio: ahora,
     };
 
-    await this.ejecutarTransaccion(
-      async (tx: Prisma.TransactionClient) => {
-        await disenoRepository.crearDisenoOperacion(dataCrear, tx);
-      },
-    );
+    let idDisenoCreado: number;
+    try {
+      const creado = await this.ejecutarTransaccion(
+        async (tx: Prisma.TransactionClient) =>
+          await disenoRepository.crearDisenoOperacion(dataCrear, tx),
+      );
+      idDisenoCreado = creado.idDiseno;
+    } catch (error) {
+      await this.limpiarArchivoNoPersistido(archivoSubido);
+      throw error;
+    }
 
     const pedidoActualizado =
       await disenoRepository.buscarPedidoPorId(idPedido);
@@ -857,12 +968,24 @@ export class DisenoService {
       );
     }
 
-    return requerimientoActualizado;
+    const disenoRegistrado = await disenoRepository.buscarPorId(idDisenoCreado);
+
+    return {
+      ...requerimientoActualizado,
+      disenoRegistrado: serializarArchivoDiseno(disenoRegistrado),
+    };
   }
 
-  async crearDiseno(data: DatosEntrada, usuarioAuth: AuthUser | undefined) {
+  async crearDiseno(
+    data: DatosEntrada,
+    usuarioAuth: AuthUser | undefined,
+    file?: DesignUploadFile,
+  ) {
     const user = this.obtenerUsuario(usuarioAuth);
-    const error = validarCrearDiseno(data, user.rol);
+    const datosValidacion = file
+      ? { ...data, archivoUrl: "https://archivo-cloudinary.valido" }
+      : data;
+    const error = validarCrearDiseno(datosValidacion, user.rol);
 
     if (error) {
       throw new Error(error);
@@ -915,7 +1038,9 @@ export class DisenoService {
       await this.validarDisenador(idDisenador);
     }
 
-    const archivoUrl = limpiarTextoOpcional(data.archivoUrl);
+    const archivoSubido = await this.subirArchivo(file, idPedido);
+    const archivoUrl =
+      archivoSubido?.secureUrl ?? limpiarTextoOpcional(data.archivoUrl);
     const estadoSolicitado = normalizarMayusculaOpcional(data.estado);
     const estado =
       estadoSolicitado === ESTADO_APROBADO_DISENO && puedeGestionarDisenos(user)
@@ -939,6 +1064,7 @@ export class DisenoService {
       esDisenoGeneral: objetivo.esDisenoGeneral,
       idDisenador,
       archivoUrl,
+      ...metadataArchivo(archivoSubido),
       descripcion: limpiarTextoOpcional(data.descripcion),
       observaciones: limpiarTextoOpcional(data.observaciones),
       origenDiseno,
@@ -958,28 +1084,34 @@ export class DisenoService {
         estado === ESTADO_APROBADO_DISENO ? Number(user.idUsuario) : null,
     };
 
-    const resultadoCreacion = await this.ejecutarTransaccion(
-      async (tx: Prisma.TransactionClient) => {
-        const diseno = await disenoRepository.crearDiseno(dataCrear, tx);
-        let pasoAProduccion = false;
+    let resultadoCreacion: { diseno: any; pasoAProduccion: boolean };
+    try {
+      resultadoCreacion = await this.ejecutarTransaccion(
+        async (tx: Prisma.TransactionClient) => {
+          const diseno = await disenoRepository.crearDiseno(dataCrear, tx);
+          let pasoAProduccion = false;
 
-        if (estado === ESTADO_APROBADO_DISENO) {
-          const todosAprobados =
-            await disenoRepository.todosDisenosRequeridosAprobados(idPedido, tx);
+          if (estado === ESTADO_APROBADO_DISENO) {
+            const todosAprobados =
+              await disenoRepository.todosDisenosRequeridosAprobados(idPedido, tx);
 
-          if (todosAprobados) {
-            await disenoRepository.actualizarEstadoPedido(
-              idPedido,
-              ESTADO_PEDIDO_EN_PROCESO,
-              tx,
-            );
-            pasoAProduccion = true;
+            if (todosAprobados) {
+              await disenoRepository.actualizarEstadoPedido(
+                idPedido,
+                ESTADO_PEDIDO_EN_PROCESO,
+                tx,
+              );
+              pasoAProduccion = true;
+            }
           }
-        }
 
-        return { diseno, pasoAProduccion };
-      },
-    );
+          return { diseno, pasoAProduccion };
+        },
+      );
+    } catch (error) {
+      await this.limpiarArchivoNoPersistido(archivoSubido);
+      throw error;
+    }
 
     const disenoCreado = resultadoCreacion.diseno;
 
@@ -1003,7 +1135,7 @@ export class DisenoService {
       }
     }
 
-    return disenoCreado;
+    return serializarArchivoDiseno(disenoCreado);
   }
 
   async registrarUrlDisenoCliente(
@@ -1012,6 +1144,7 @@ export class DisenoService {
     data: DatosEntrada,
     usuarioAuth: AuthUser | undefined,
     registroInterno = false,
+    file?: DesignUploadFile,
   ) {
     const user = this.obtenerUsuario(usuarioAuth);
     validarId(idPedido, "El pedido debe ser valido.");
@@ -1029,7 +1162,11 @@ export class DisenoService {
       );
     }
 
-    const error = validarUrlDisenoCliente(data);
+    this.exigirArchivoOUrlLegacy(file, data);
+    const datosValidacion = file
+      ? { ...data, archivoDisenoInicialUrl: "https://archivo-cloudinary.valido" }
+      : data;
+    const error = validarUrlDisenoCliente(datosValidacion);
 
     if (error) {
       throw new Error(error);
@@ -1083,72 +1220,88 @@ export class DisenoService {
       throw new Error("El diseno ya fue aprobado y no puede reemplazarse.");
     }
 
-    const archivoUrl = String(data.archivoDisenoInicialUrl).trim();
+    if (file && disenoVigente?.archivoUrl) {
+      throw new Error(
+        "Para conservar el historial, registra la correccion como un nuevo diseno.",
+      );
+    }
+
+    const archivoSubido = await this.subirArchivo(file, idPedido);
+    const archivoUrl =
+      archivoSubido?.secureUrl ?? String(data.archivoDisenoInicialUrl).trim();
     const medioRecepcion = registroInterno
       ? normalizarMayusculaOpcional(data.medioRecepcion) ?? "OTRO"
       : "SISTEMA";
     const observaciones = limpiarTextoOpcional(data.observaciones);
     const ahora = new Date();
-    const resultado = await this.ejecutarTransaccion(
-      async (tx: Prisma.TransactionClient) => {
-        await disenoRepository.actualizarArchivoDetallePedido(
-          idDetallePedido,
-          archivoUrl,
-          tx,
-        );
-        const existente = await disenoRepository.buscarDisenoParaCargaCliente(
-          idPedido,
-          idDetallePedido,
-          esDisenoGeneral,
-          tx,
-        );
+    let resultado: { idDiseno: number };
+    try {
+      resultado = await this.ejecutarTransaccion(
+        async (tx: Prisma.TransactionClient) => {
+          await disenoRepository.actualizarArchivoDetallePedido(
+            idDetallePedido,
+            archivoUrl,
+            tx,
+          );
+          const existente = await disenoRepository.buscarDisenoParaCargaCliente(
+            idPedido,
+            idDetallePedido,
+            esDisenoGeneral,
+            tx,
+          );
 
-        if (existente && existente.estado !== ESTADO_RECHAZADO_DISENO) {
-          return await disenoRepository.actualizarDisenoOperacion(
-            existente.idDiseno,
+          if (existente && existente.estado !== ESTADO_RECHAZADO_DISENO) {
+            return await disenoRepository.actualizarDisenoOperacion(
+              existente.idDiseno,
+              {
+                idDisenador: null,
+                archivoUrl,
+                ...metadataArchivo(archivoSubido),
+                observaciones,
+                estado: ESTADO_DISENO_ENVIADO,
+                origenDiseno: ORIGEN_DISENO_CLIENTE,
+                medioRecepcion,
+                recibidoPorId: Number(user.idUsuario),
+                fechaRecepcion: ahora,
+                fechaEnvio: ahora,
+                fechaAprobacion: null,
+                medioRespuestaCliente: null,
+                observacionesCliente: null,
+                fechaRespuestaCliente: null,
+                respuestaRegistradaPorId: null,
+              },
+              tx,
+            );
+          }
+
+          return await disenoRepository.crearDisenoOperacion(
             {
+              idPedido,
+              idDetallePedido: esDisenoGeneral ? null : idDetallePedido,
+              esDisenoGeneral,
               idDisenador: null,
               archivoUrl,
+              ...metadataArchivo(archivoSubido),
+              descripcion: registroInterno
+                ? "Diseno del cliente registrado por un usuario interno."
+                : "Diseno entregado por el cliente desde su panel.",
               observaciones,
-              estado: ESTADO_DISENO_ENVIADO,
               origenDiseno: ORIGEN_DISENO_CLIENTE,
               medioRecepcion,
               recibidoPorId: Number(user.idUsuario),
               fechaRecepcion: ahora,
-              fechaEnvio: ahora,
-              fechaAprobacion: null,
-              medioRespuestaCliente: null,
               observacionesCliente: null,
-              fechaRespuestaCliente: null,
-              respuestaRegistradaPorId: null,
+              estado: ESTADO_DISENO_ENVIADO,
+              fechaEnvio: ahora,
             },
             tx,
           );
-        }
-
-        return await disenoRepository.crearDisenoOperacion(
-          {
-            idPedido,
-            idDetallePedido: esDisenoGeneral ? null : idDetallePedido,
-            esDisenoGeneral,
-            idDisenador: null,
-            archivoUrl,
-            descripcion: registroInterno
-              ? "Diseno del cliente registrado por un usuario interno."
-              : "Diseno entregado por el cliente desde su panel.",
-            observaciones,
-            origenDiseno: ORIGEN_DISENO_CLIENTE,
-            medioRecepcion,
-            recibidoPorId: Number(user.idUsuario),
-            fechaRecepcion: ahora,
-            observacionesCliente: null,
-            estado: ESTADO_DISENO_ENVIADO,
-            fechaEnvio: ahora,
-          },
-          tx,
-        );
-      },
-    );
+        },
+      );
+    } catch (error) {
+      await this.limpiarArchivoNoPersistido(archivoSubido);
+      throw error;
+    }
 
     const diseno = await disenoRepository.buscarPorId(resultado.idDiseno);
 
@@ -1156,7 +1309,7 @@ export class DisenoService {
       throw new Error("No fue posible cargar el diseno actualizado.");
     }
 
-    return diseno;
+    return serializarArchivoDiseno(diseno);
   }
 
   async registrarUrlDisenoRecibidoAdmin(
@@ -1164,6 +1317,7 @@ export class DisenoService {
     idDetallePedido: number,
     data: DatosEntrada,
     usuarioAuth: AuthUser | undefined,
+    file?: DesignUploadFile,
   ) {
     return await this.registrarUrlDisenoCliente(
       idPedido,
@@ -1171,6 +1325,7 @@ export class DisenoService {
       data,
       usuarioAuth,
       true,
+      file,
     );
   }
 
@@ -1262,11 +1417,15 @@ export class DisenoService {
     idDiseno: number,
     data: DatosEntrada,
     usuarioAuth: AuthUser | undefined,
+    file?: DesignUploadFile,
   ) {
     const user = this.obtenerUsuario(usuarioAuth);
     validarId(idDiseno, "El ID del diseno no es valido.");
 
-    const error = validarActualizarDiseno(data);
+    const datosValidacion = file
+      ? { ...data, archivoUrl: "https://archivo-cloudinary.valido" }
+      : data;
+    const error = validarActualizarDiseno(datosValidacion);
 
     if (error) {
       throw new Error(error);
@@ -1284,11 +1443,31 @@ export class DisenoService {
       throw new Error("Solo se pueden editar disenos no aprobados.");
     }
 
-    const dataActualizar: ActualizarDisenoData = {};
-    const archivoUrl = limpiarTextoOpcional(data.archivoUrl);
+    if (file && diseno.archivoUrl) {
+      throw new Error(
+        "Para conservar el historial, registra la correccion como un nuevo diseno.",
+      );
+    }
 
-    if (data.archivoUrl !== undefined) {
+    if (
+      !file &&
+      data.archivoUrl !== undefined &&
+      diseno.archivoPublicId &&
+      limpiarTextoOpcional(data.archivoUrl) !== diseno.archivoUrl
+    ) {
+      throw new Error(
+        "Un archivo almacenado no puede reemplazarse por una URL manual.",
+      );
+    }
+
+    const dataActualizar: ActualizarDisenoData = {};
+    const archivoSubido = await this.subirArchivo(file, diseno.idPedido);
+    const archivoUrl =
+      archivoSubido?.secureUrl ?? limpiarTextoOpcional(data.archivoUrl);
+
+    if (data.archivoUrl !== undefined || archivoSubido) {
       dataActualizar.archivoUrl = archivoUrl;
+      Object.assign(dataActualizar, metadataArchivo(archivoSubido));
 
       if (archivoUrl) {
         dataActualizar.estado = ESTADO_DISENO_ENVIADO;
@@ -1326,10 +1505,16 @@ export class DisenoService {
       );
     }
 
-    const disenoActualizado = await disenoRepository.actualizarDiseno(
-      idDiseno,
-      dataActualizar,
-    );
+    let disenoActualizado: any;
+    try {
+      disenoActualizado = await disenoRepository.actualizarDiseno(
+        idDiseno,
+        dataActualizar,
+      );
+    } catch (error) {
+      await this.limpiarArchivoNoPersistido(archivoSubido);
+      throw error;
+    }
 
     if (
       dataActualizar.estado === ESTADO_DISENO_ENVIADO &&
@@ -1342,7 +1527,7 @@ export class DisenoService {
       }
     }
 
-    return disenoActualizado;
+    return serializarArchivoDiseno(disenoActualizado);
   }
 
   async aprobarDiseno(
@@ -1499,7 +1684,7 @@ export class DisenoService {
     }
 
     return {
-      diseno,
+      diseno: serializarArchivoDiseno(diseno),
       pedido,
       pasoAProduccion: resultado.pasoAProduccion,
       todosDisenosRequeridosAprobados:
@@ -1528,14 +1713,22 @@ export class DisenoService {
 
     await disenoRepository.eliminarDiseno(idDiseno);
 
-    return diseno;
+    if (diseno.archivoPublicId) {
+      await designStorageService.eliminarRecienSubido(
+        diseno.archivoPublicId,
+        diseno.archivoResourceType ?? "image",
+      );
+    }
+
+    return serializarArchivoDiseno(diseno);
   }
 
   async listarProduccionPendiente(usuarioAuth: AuthUser | undefined) {
     const user = this.obtenerUsuario(usuarioAuth);
-
-    return await disenoRepository.listarProduccionPendiente(
+    const disenos = await disenoRepository.listarProduccionPendiente(
       esDisenador(user) ? Number(user.idUsuario) : undefined,
     );
+
+    return await this.enriquecerDisenosConObjetivo(disenos);
   }
 }

@@ -8,6 +8,11 @@ import {
 } from "../../infrastructure/repositories/diseno.repository";
 import { AbonoService } from "./abono.service";
 import { NotificationService } from "./notification.service";
+import {
+  CloudinaryDesignStorageService,
+  DesignFileStorageError,
+  type DesignUploadFile,
+} from "./cloudinary-design-storage.service";
 
 const transaccionFake = async <T>(
   handler: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -1236,6 +1241,16 @@ for (const idRequerimiento of [
       "crearDisenoOperacion",
       async (data: any) => ({ idDiseno: 90, ...data }),
     );
+    t.mock.method(
+      DisenoRepository.prototype,
+      "buscarPorId",
+      async () => ({
+        ...disenoBase,
+        idDiseno: 90,
+        origenDiseno: "CLIENTE",
+        estado: "ENVIADO",
+      }),
+    );
 
     const resultado =
       await servicio().registrarDisenoClientePorRequerimiento(
@@ -1591,4 +1606,343 @@ test("DisenoService bloquea URL invalida y detalle de otro cliente", async (t) =
       ),
     /No tienes permiso/,
   );
+});
+
+const archivoJpg: DesignUploadFile = {
+  originalname: "arte-final.jpg",
+  mimetype: "image/jpeg",
+  buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+  size: 4,
+};
+
+const archivoCloudinary = {
+  secureUrl: "https://res.cloudinary.com/pixel/image/upload/diseno-uuid.jpg",
+  publicId: "pixel/disenos/pedido-100/diseno-uuid",
+  originalName: "arte-final.jpg",
+  mimeType: "image/jpeg",
+  format: "jpg",
+  sizeBytes: 4,
+  resourceType: "image",
+};
+
+test("DisenoService guarda archivo Cloudinary con metadata sin exponer publicId", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedidoBase,
+  );
+  t.mock.method(
+    AbonoService.prototype,
+    "pedidoTienePagoInicialValido",
+    async () => true,
+  );
+  t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "subirDiseno",
+    async () => archivoCloudinary,
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async (data: any) => ({ ...disenoBase, ...data }),
+  );
+  t.mock.method(
+    NotificationService.prototype,
+    "disenoEnviadoParaRevision",
+    async () => ({ event: "DISENO_ENVIADO_PARA_REVISION" }),
+  );
+
+  const resultado = await servicio().crearDiseno(
+    {
+      idPedido: 100,
+      descripcion: "Arte final para camiseta",
+      origenDiseno: "PIXEL",
+    },
+    { idUsuario: 99, rol: "Admin" },
+    archivoJpg,
+  );
+
+  const data = crear.mock.calls[0]?.arguments[0] as any;
+  assert.equal(data.archivoUrl, archivoCloudinary.secureUrl);
+  assert.equal(data.archivoPublicId, archivoCloudinary.publicId);
+  assert.equal(data.archivoNombreOriginal, "arte-final.jpg");
+  assert.equal(data.archivoMimeType, "image/jpeg");
+  assert.equal(data.archivoBytes, 4);
+  assert.equal(resultado.archivoUrl, archivoCloudinary.secureUrl);
+  assert.equal(resultado.archivoPublicId, undefined);
+  assert.deepEqual(resultado.archivo, {
+    url: archivoCloudinary.secureUrl,
+    nombre: "arte-final.jpg",
+    tipo: "image/jpeg",
+    formato: "jpg",
+    bytes: 4,
+    resourceType: "image",
+  });
+});
+
+test("DisenoService no escribe en BD cuando Cloudinary falla", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedidoBase,
+  );
+  t.mock.method(
+    AbonoService.prototype,
+    "pedidoTienePagoInicialValido",
+    async () => true,
+  );
+  t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "subirDiseno",
+    async () => {
+      throw new DesignFileStorageError("No pudimos almacenar el archivo. Intenta nuevamente.");
+    },
+  );
+  const crear = t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async () => disenoBase,
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().crearDiseno(
+        {
+          idPedido: 100,
+          descripcion: "Arte final",
+          origenDiseno: "PIXEL",
+        },
+        { idUsuario: 99, rol: "Admin" },
+        archivoJpg,
+      ),
+    /No pudimos almacenar el archivo/,
+  );
+  assert.equal(crear.mock.calls.length, 0);
+});
+
+test("DisenoService elimina el archivo recien subido si falla la persistencia", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedidoBase,
+  );
+  t.mock.method(
+    AbonoService.prototype,
+    "pedidoTienePagoInicialValido",
+    async () => true,
+  );
+  t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "subirDiseno",
+    async () => archivoCloudinary,
+  );
+  const limpiar = t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "eliminarRecienSubido",
+    async () => true,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "crearDiseno",
+    async () => {
+      throw new Error("Fallo controlado de persistencia");
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().crearDiseno(
+        {
+          idPedido: 100,
+          descripcion: "Arte final",
+          origenDiseno: "PIXEL",
+        },
+        { idUsuario: 99, rol: "Admin" },
+        archivoJpg,
+      ),
+    /Fallo controlado de persistencia/,
+  );
+  assert.equal(limpiar.mock.calls.length, 1);
+  assert.deepEqual(limpiar.mock.calls[0]?.arguments, [
+    archivoCloudinary.publicId,
+    "image",
+  ]);
+});
+
+test("DisenoService valida ownership antes de subir archivo del cliente", async (t) => {
+  const pedido = actualizarOrigenFixture(
+    pedidoConOrigenPendiente(),
+    "STAMP-601",
+    "CLIENTE",
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => ({ ...pedido, idCliente: 20, cliente: clienteB }),
+  );
+  const subir = t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "subirDiseno",
+    async () => archivoCloudinary,
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().registrarDisenoClientePorRequerimiento(
+        100,
+        "STAMP-601",
+        {},
+        { idUsuario: 70, idCliente: 10, rol: "Cliente" },
+        archivoJpg,
+        true,
+      ),
+    /No tienes permiso/,
+  );
+  assert.equal(subir.mock.calls.length, 0);
+});
+
+test("DisenoService no reemplaza un archivo activo y conserva su historial", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => ({
+      ...disenoBase,
+      archivoPublicId: "pixel/disenos/pedido-100/anterior",
+    }),
+  );
+  const subir = t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "subirDiseno",
+    async () => archivoCloudinary,
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().actualizarDiseno(
+        1,
+        {},
+        { idUsuario: 99, rol: "Admin" },
+        archivoJpg,
+      ),
+    /conservar el historial/,
+  );
+  assert.equal(subir.mock.calls.length, 0);
+});
+
+test("DisenoService mantiene consultable un diseno historico con URL externa", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => disenoBase,
+  );
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidosParaRequerimientos",
+    async () => [],
+  );
+
+  const resultado = await servicio().buscarPorId(
+    1,
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.equal(resultado?.archivoUrl, disenoBase.archivoUrl);
+  assert.deepEqual(resultado?.archivo, {
+    url: disenoBase.archivoUrl,
+    nombre: null,
+    tipo: null,
+    formato: null,
+    bytes: null,
+    resourceType: null,
+  });
+});
+
+test("DisenoService exige archivo en la carga por requerimiento", async (t) => {
+  const buscarPedido = t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => pedidoBase,
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().registrarDisenoClientePorRequerimiento(
+        100,
+        "LEGACY-501",
+        {},
+        { idUsuario: 99, rol: "Admin" },
+      ),
+    /Debes adjuntar un archivo/,
+  );
+  assert.equal(buscarPedido.mock.calls.length, 0);
+});
+
+test("DisenoService valida el requerimiento antes de subir a Cloudinary", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => ({
+      ...pedidoBase,
+      detalles: [
+        {
+          idDetallePedido: 501,
+          requiereDiseno: true,
+          origenDiseno: "CLIENTE",
+          esDisenoGeneral: false,
+          estampados: [],
+        },
+      ],
+      disenos: [],
+    }),
+  );
+  const subir = t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "subirDiseno",
+    async () => archivoCloudinary,
+  );
+
+  await assert.rejects(
+    () =>
+      servicio().registrarDisenoClientePorRequerimiento(
+        100,
+        "LEGACY-999",
+        {},
+        { idUsuario: 99, rol: "Admin" },
+        archivoJpg,
+      ),
+    /no pertenece al pedido/,
+  );
+  assert.equal(subir.mock.calls.length, 0);
+});
+
+test("DisenoService limpia Cloudinary solo al eliminar un diseno no historico", async (t) => {
+  t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPorId",
+    async () => ({
+      ...disenoBase,
+      estado: "PENDIENTE",
+      archivoPublicId: archivoCloudinary.publicId,
+      archivoResourceType: "image",
+    }),
+  );
+  const eliminarDb = t.mock.method(
+    DisenoRepository.prototype,
+    "eliminarDiseno",
+    async () => ({ idDiseno: 1 }),
+  );
+  const limpiar = t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "eliminarRecienSubido",
+    async () => true,
+  );
+
+  const eliminado = await servicio().eliminarDiseno(
+    1,
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.equal(eliminarDb.mock.calls.length, 1);
+  assert.equal(limpiar.mock.calls.length, 1);
+  assert.equal(eliminado.archivoPublicId, undefined);
 });
