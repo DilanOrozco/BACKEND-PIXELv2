@@ -594,10 +594,13 @@ model Abonos {
   referencia                String?
   fechaPago                 DateTime?   @map("fecha_pago")
   comprobanteUrl            String?     @map("comprobante_url")
+  comprobantePublicId       String?     @map("comprobante_public_id") @db.VarChar(255)
   comprobantePath           String?     @map("comprobante_path") @db.VarChar(500)
   nombreOriginalComprobante String?     @map("nombre_original_comprobante") @db.VarChar(255)
   nombreSeguroComprobante   String?     @map("nombre_seguro_comprobante") @db.VarChar(255)
   comprobanteMimeType       String?     @map("comprobante_mime_type") @db.VarChar(100)
+  comprobanteFormato        String?     @map("comprobante_formato") @db.VarChar(20)
+  comprobanteResourceType   String?     @map("comprobante_resource_type") @db.VarChar(30)
   comprobanteSizeBytes      Int?        @map("comprobante_size_bytes")
   comprobanteHash           String?     @map("comprobante_hash") @db.VarChar(64)
   comprobanteSubidoEn       DateTime?   @map("comprobante_subido_en")

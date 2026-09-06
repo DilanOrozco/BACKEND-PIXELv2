@@ -8,6 +8,8 @@ export const abonoSelect = {
   comprobanteUrl: true,
   nombreOriginalComprobante: true,
   comprobanteMimeType: true,
+  comprobanteFormato: true,
+  comprobanteResourceType: true,
   comprobanteSizeBytes: true,
   comprobanteSubidoEn: true,
   montoDetectadoOcr: true,

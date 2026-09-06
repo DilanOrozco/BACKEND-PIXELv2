@@ -172,6 +172,8 @@ export const pedidoSelect = {
       motivoRechazo: true,
       nombreOriginalComprobante: true,
       comprobanteMimeType: true,
+      comprobanteFormato: true,
+      comprobanteResourceType: true,
       comprobanteSizeBytes: true,
       comprobanteSubidoEn: true,
       montoDetectadoOcr: true,

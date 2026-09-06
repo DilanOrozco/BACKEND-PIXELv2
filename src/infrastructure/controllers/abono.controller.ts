@@ -1,11 +1,15 @@
 import type { Response } from "express";
 import { AbonoService } from "../../applications/services/abono.service";
+import { PaymentReceiptStorageError } from "../../applications/services/cloudinary-payment-receipt-storage.service";
 import type { AuthRequest } from "../middlewares/auth.middleware";
 
 const abonoService = new AbonoService();
 
 const mensajeError = (error: unknown) =>
   error instanceof Error ? error.message : "Error inesperado.";
+
+const statusErrorComprobante = (error: unknown) =>
+  error instanceof PaymentReceiptStorageError ? 502 : 400;
 
 export class AbonoController {
   async crearAbono(req: AuthRequest, res: Response) {
@@ -24,7 +28,7 @@ export class AbonoController {
         data: abono,
       });
     } catch (error: unknown) {
-      return res.status(400).json({
+      return res.status(statusErrorComprobante(error)).json({
         message: mensajeError(error),
       });
     }
@@ -175,7 +179,9 @@ export class AbonoController {
         data: resultado,
       });
     } catch (error: unknown) {
-      return res.status(400).json({ message: mensajeError(error) });
+      return res.status(statusErrorComprobante(error)).json({
+        message: mensajeError(error),
+      });
     }
   }
 
@@ -185,6 +191,9 @@ export class AbonoController {
         Number(req.params.idAbono ?? req.params.id),
         req.user,
       );
+      if ("url" in comprobante) {
+        return res.redirect(302, comprobante.url);
+      }
       res.setHeader("Content-Type", comprobante.mimeType);
       res.setHeader(
         "Content-Disposition",

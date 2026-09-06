@@ -1,6 +1,9 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { v2 as cloudinary, type UploadApiResponse } from "cloudinary";
+import {
+  eliminarAssetCloudinary,
+  subirBufferCloudinary,
+} from "./cloudinary-asset-storage.service";
 
 export type DesignUploadFile = {
   buffer: Buffer;
@@ -120,59 +123,16 @@ export const validarArchivoDiseno = (file: DesignUploadFile) => {
   };
 };
 
-const configurarCloudinary = () => {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
-  const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
-  const apiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
-
-  if (!cloudName || !apiKey || !apiSecret) {
-    throw new DesignFileStorageError(
-      "El almacenamiento de archivos no esta configurado.",
-    );
-  }
-
-  cloudinary.config({
-    cloud_name: cloudName,
-    api_key: apiKey,
-    api_secret: apiSecret,
-    secure: true,
-  });
-};
-
-const subirBuffer = (
-  file: DesignUploadFile,
-  idPedido: number,
-): Promise<UploadApiResponse> =>
-  new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: "auto",
-        folder: `pixel/disenos/pedido-${idPedido}`,
-        public_id: `diseno-${randomUUID()}`,
-        overwrite: false,
-        unique_filename: false,
-        allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
-      },
-      (error, resultado) => {
-        if (error || !resultado) {
-          reject(error ?? new Error("Cloudinary no devolvio una respuesta."));
-          return;
-        }
-
-        resolve(resultado);
-      },
-    );
-
-    stream.end(file.buffer);
-  });
-
 export class CloudinaryDesignStorageService {
   async subirDiseno(file: DesignUploadFile, idPedido: number): Promise<StoredDesignFile> {
     const archivoValidado = validarArchivoDiseno(file);
-    configurarCloudinary();
 
     try {
-      const resultado = await subirBuffer(file, idPedido);
+      const resultado = await subirBufferCloudinary(file.buffer, {
+        folder: `pixel/disenos/pedido-${idPedido}`,
+        publicId: `diseno-${randomUUID()}`,
+        allowedFormats: ["jpg", "jpeg", "png", "webp", "pdf"],
+      });
 
       return {
         secureUrl: resultado.secure_url,
@@ -196,13 +156,7 @@ export class CloudinaryDesignStorageService {
     }
 
     try {
-      configurarCloudinary();
-      await cloudinary.uploader.destroy(publicId, {
-        resource_type: resourceType === "raw" || resourceType === "video"
-          ? resourceType
-          : "image",
-        invalidate: true,
-      });
+      await eliminarAssetCloudinary(publicId, resourceType);
       return true;
     } catch {
       console.warn("No fue posible limpiar un archivo de diseno recien subido.");
