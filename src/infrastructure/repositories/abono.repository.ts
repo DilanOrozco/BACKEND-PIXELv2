@@ -24,6 +24,7 @@ export interface CrearAbonoData {
   referencia: string | null;
   fechaPago?: Date | null;
   comprobanteUrl: string | null;
+  comprobantePublicId?: string | null;
   estado?: EstadoAbonoPermitido;
   confirmadoPorId?: number | null;
   fechaConfirmacion?: Date | null;
@@ -31,6 +32,8 @@ export interface CrearAbonoData {
   nombreOriginalComprobante?: string | null;
   nombreSeguroComprobante?: string | null;
   comprobanteMimeType?: string | null;
+  comprobanteFormato?: string | null;
+  comprobanteResourceType?: string | null;
   comprobanteSizeBytes?: number | null;
   comprobanteHash?: string | null;
   comprobanteSubidoEn?: Date | null;
@@ -303,9 +306,14 @@ export class AbonoRepository {
       where: { idAbono },
       select: {
         idAbono: true,
+        comprobanteUrl: true,
+        comprobantePublicId: true,
         comprobantePath: true,
         nombreOriginalComprobante: true,
         comprobanteMimeType: true,
+        comprobanteFormato: true,
+        comprobanteResourceType: true,
+        comprobanteSizeBytes: true,
         pedido: {
           select: {
             idPedido: true,

@@ -29,6 +29,10 @@ import {
   type SugerenciasComprobante,
 } from "../validators/abono.validator";
 import { describirOrigenAnalisis } from "../../utils/receipt-analysis.util";
+import {
+  CloudinaryPaymentReceiptStorageService,
+  type StoredPaymentReceipt,
+} from "./cloudinary-payment-receipt-storage.service";
 
 const abonoRepository = new AbonoRepository();
 const notificationService = new NotificationService();
@@ -51,6 +55,27 @@ interface AuthUser {
 }
 
 type DatosEntrada = Record<string, unknown>;
+
+type StoredPaymentReceiptCompat = Partial<StoredPaymentReceipt> & {
+  relativePath?: string;
+  safeName?: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+};
+
+interface PaymentReceiptStorage {
+  savePaymentReceipt(
+    file: Express.Multer.File,
+    context: { idCliente: number; idPedido: number },
+  ): Promise<StoredPaymentReceiptCompat>;
+  deletePaymentReceipt?(publicId: string, resourceType: string): Promise<boolean>;
+  deleteFile?(relativePath: string): Promise<boolean>;
+  resolveSafePath?(relativePath: string): string;
+  getFileMetadata?(relativePath: string): Promise<{ sizeBytes: number }>;
+  getFileStream?(relativePath: string): NodeJS.ReadableStream;
+}
 
 interface ResumenConfirmacionPago {
   idCliente: number;
@@ -223,11 +248,37 @@ const cargarAbonoParaNotificacion = async (abono: any) => {
 };
 
 export class AbonoService {
+  private readonly legacyFileStorage = new FileStorageService();
+
   constructor(
     private readonly ejecutarTransaccion = runPrismaTransaction,
-    private readonly fileStorage = new FileStorageService(),
+    private readonly fileStorage: PaymentReceiptStorage =
+      new CloudinaryPaymentReceiptStorageService(),
     private readonly ocrService: OcrService = new TesseractOcrService(),
   ) {}
+
+  private async eliminarComprobanteGuardado(
+    stored: StoredPaymentReceiptCompat,
+  ) {
+    if (stored.publicId && this.fileStorage.deletePaymentReceipt) {
+      return await this.fileStorage.deletePaymentReceipt(
+        stored.publicId,
+        stored.resourceType ?? "image",
+      );
+    }
+
+    if (stored.relativePath && this.fileStorage.deleteFile) {
+      return await this.fileStorage.deleteFile(stored.relativePath);
+    }
+
+    return false;
+  }
+
+  private rutaLocalParaOcr(stored: StoredPaymentReceiptCompat) {
+    return stored.relativePath && this.fileStorage.resolveSafePath
+      ? this.fileStorage.resolveSafePath(stored.relativePath)
+      : null;
+  }
 
   private obtenerUsuario(usuarioAuth: AuthUser | undefined) {
     if (!usuarioAuth) {
@@ -390,6 +441,21 @@ export class AbonoService {
 
   private prepararRespuestaAbono(abono: any) {
     const origen = describirOrigenAnalisis(abono?.origenRegistro);
+    const comprobanteDisponible = Boolean(
+      abono?.comprobantePath ??
+        abono?.nombreOriginalComprobante ??
+        abono?.comprobanteUrl,
+    );
+    const comprobante = comprobanteDisponible
+      ? {
+          url: abono?.comprobanteUrl ?? null,
+          nombre: abono?.nombreOriginalComprobante ?? null,
+          tipo: abono?.comprobanteMimeType ?? null,
+          formato: abono?.comprobanteFormato ?? null,
+          bytes: abono?.comprobanteSizeBytes ?? null,
+          resourceType: abono?.comprobanteResourceType ?? null,
+        }
+      : null;
     const datosDetectados = {
       monto:
         abono?.montoDetectadoOcr === null ||
@@ -416,6 +482,7 @@ export class AbonoService {
 
     if (!abono?.pedido) {
       const {
+        comprobantePublicId: _comprobantePublicId,
         comprobantePath: _comprobantePath,
         nombreSeguroComprobante: _nombreSeguroComprobante,
         textoOcr: _textoOcr,
@@ -428,15 +495,13 @@ export class AbonoService {
         origenRegistroLabel: origen.etiqueta,
         datosDetectados,
         datosDefinitivos,
-        comprobanteDisponible: Boolean(
-          abono?.comprobantePath ??
-            abono?.nombreOriginalComprobante ??
-            abono?.comprobanteUrl,
-        ),
+        comprobanteDisponible,
+        comprobante,
       };
     }
 
     const {
+      comprobantePublicId: _comprobantePublicId,
       comprobantePath: _comprobantePath,
       nombreSeguroComprobante: _nombreSeguroComprobante,
       textoOcr: _textoOcr,
@@ -456,11 +521,8 @@ export class AbonoService {
       origenRegistroLabel: origen.etiqueta,
       datosDetectados,
       datosDefinitivos,
-      comprobanteDisponible: Boolean(
-        abono.comprobantePath ??
-          abono.nombreOriginalComprobante ??
-          abono.comprobanteUrl,
-      ),
+      comprobanteDisponible,
+      comprobante,
       totalPedido,
       totalConfirmado,
       saldoPendiente,
@@ -639,42 +701,50 @@ export class AbonoService {
       throw new Error("No tienes permiso para registrar abonos en este pedido.");
     }
 
-    let storedPath: string | null = null;
+    let storedFile: StoredPaymentReceiptCompat | null = null;
 
     if (file) {
       const stored = await this.fileStorage.savePaymentReceipt(file, {
         idCliente: Number(pedido.idCliente),
         idPedido: datosBase.idPedido,
       });
-      storedPath = stored.relativePath;
+      storedFile = stored;
       const duplicado = await abonoRepository.buscarPorHash(
         datosBase.idPedido,
         stored.sha256,
       );
 
       if (duplicado) {
-        await this.fileStorage.deleteFile(stored.relativePath);
+        await this.eliminarComprobanteGuardado(stored);
         throw new Error("Este comprobante ya fue registrado.");
       }
 
       let ocr: PaymentReceiptOcrResult | null = null;
+      const rutaLocalOcr = this.rutaLocalParaOcr(stored);
 
-      try {
-        ocr = await this.ocrService.analyzePaymentReceipt(
-          this.fileStorage.resolveSafePath(stored.relativePath),
-        );
-      } catch (error) {
-        console.error(
-          "OCR administrativo no disponible:",
-          error instanceof Error ? error.message : "error desconocido",
-        );
+      if (
+        obtenerModoAnalisisComprobante() !== "FRONTEND_ONLY" &&
+        rutaLocalOcr
+      ) {
+        try {
+          ocr = await this.ocrService.analyzePaymentReceipt(rutaLocalOcr);
+        } catch (error) {
+          console.error(
+            "OCR administrativo no disponible:",
+            error instanceof Error ? error.message : "error desconocido",
+          );
+        }
       }
 
       Object.assign(datosBase, {
-        comprobantePath: stored.relativePath,
+        comprobanteUrl: stored.secureUrl ?? null,
+        comprobantePublicId: stored.publicId ?? null,
+        comprobantePath: stored.relativePath ?? null,
         nombreOriginalComprobante: stored.originalName,
-        nombreSeguroComprobante: stored.safeName,
+        nombreSeguroComprobante: stored.safeName ?? null,
         comprobanteMimeType: stored.mimeType,
+        comprobanteFormato: stored.format ?? null,
+        comprobanteResourceType: stored.resourceType ?? null,
         comprobanteSizeBytes: stored.sizeBytes,
         comprobanteHash: stored.sha256,
         comprobanteSubidoEn: new Date(),
@@ -685,7 +755,7 @@ export class AbonoService {
         bancoDetectadoOcr: ocr?.bancoDetectado ?? null,
         confianzaOcr: ocr?.confianza ?? null,
         requiereRevisionManual: ocr?.requiereRevisionManual ?? true,
-        origenRegistro: "ADMIN_OCR",
+        origenRegistro: ocr ? "ADMIN_OCR" : "ADMIN_MANUAL",
       });
     }
 
@@ -719,8 +789,8 @@ export class AbonoService {
         }),
       );
     } catch (error) {
-      if (storedPath) {
-        await this.fileStorage.deleteFile(storedPath);
+      if (storedFile) {
+        await this.eliminarComprobanteGuardado(storedFile);
       }
       throw error;
     }
@@ -741,10 +811,6 @@ export class AbonoService {
 
     if (!file) {
       throw new Error("El comprobante es obligatorio.");
-    }
-
-    if (process.env.LOCAL_STORAGE_ENABLED === "false") {
-      throw new Error("El almacenamiento local de comprobantes esta deshabilitado.");
     }
 
     const pedido = await abonoRepository.buscarPedidoPorId(idPedido);
@@ -783,7 +849,7 @@ export class AbonoService {
     const duplicado = await abonoRepository.buscarPorHash(idPedido, stored.sha256);
 
     if (duplicado) {
-      await this.fileStorage.deleteFile(stored.relativePath);
+      await this.eliminarComprobanteGuardado(stored);
       const analisisDuplicado: PaymentReceiptOcrResult = {
         textoCompleto: "",
         montoDetectado: aNumero(duplicado.montoDetectadoOcr) || null,
@@ -838,19 +904,24 @@ export class AbonoService {
       ocr = resultadoManual();
       origenAnalisis = "MANUAL";
     } else {
-      try {
-        ocr = await this.ocrService.analyzePaymentReceipt(
-          this.fileStorage.resolveSafePath(stored.relativePath),
-        );
-        origenAnalisis = ocr.requiereRevisionManual &&
-          ocr.montoDetectado === null
-          ? "MANUAL"
-          : "BACKEND";
-      } catch (error) {
-        console.error(
-          "OCR de comprobante no disponible; se requiere revision manual:",
-          error instanceof Error ? error.message : "error desconocido",
-        );
+      const rutaLocalOcr = this.rutaLocalParaOcr(stored);
+
+      if (rutaLocalOcr) {
+        try {
+          ocr = await this.ocrService.analyzePaymentReceipt(rutaLocalOcr);
+          origenAnalisis = ocr.requiereRevisionManual &&
+            ocr.montoDetectado === null
+            ? "MANUAL"
+            : "BACKEND";
+        } catch (error) {
+          console.error(
+            "OCR de comprobante no disponible; se requiere revision manual:",
+            error instanceof Error ? error.message : "error desconocido",
+          );
+          ocr = resultadoManual();
+          origenAnalisis = "MANUAL";
+        }
+      } else {
         ocr = resultadoManual();
         origenAnalisis = "MANUAL";
       }
@@ -871,11 +942,14 @@ export class AbonoService {
         metodoPago: "TRANSFERENCIA",
         referencia: null,
         fechaPago: null,
-        comprobanteUrl: null,
-        comprobantePath: stored.relativePath,
+        comprobanteUrl: stored.secureUrl ?? null,
+        comprobantePublicId: stored.publicId ?? null,
+        comprobantePath: stored.relativePath ?? null,
         nombreOriginalComprobante: stored.originalName,
-        nombreSeguroComprobante: stored.safeName,
+        nombreSeguroComprobante: stored.safeName ?? null,
         comprobanteMimeType: stored.mimeType,
+        comprobanteFormato: stored.format ?? null,
+        comprobanteResourceType: stored.resourceType ?? null,
         comprobanteSizeBytes: stored.sizeBytes,
         comprobanteHash: stored.sha256,
         comprobanteSubidoEn: new Date(),
@@ -907,7 +981,7 @@ export class AbonoService {
         duplicado: false,
       };
     } catch (error) {
-      await this.fileStorage.deleteFile(stored.relativePath);
+      await this.eliminarComprobanteGuardado(stored);
       throw error;
     }
   }
@@ -915,7 +989,10 @@ export class AbonoService {
   async obtenerComprobante(
     idAbono: number,
     usuarioAuth: AuthUser | undefined,
-  ) {
+  ): Promise<
+    | { url: string; mimeType: string; fileName: string }
+    | { stream: NodeJS.ReadableStream; mimeType: string; fileName: string }
+  > {
     const user = this.obtenerUsuario(usuarioAuth);
     validarId(idAbono, "El ID del abono no es valido.");
     const comprobante =
@@ -932,14 +1009,40 @@ export class AbonoService {
       throw new Error("No tienes permiso para consultar este comprobante.");
     }
 
+    if (comprobante.comprobanteUrl) {
+      let url: URL;
+      try {
+        url = new URL(comprobante.comprobanteUrl);
+      } catch {
+        throw new Error("La URL del comprobante almacenado no es valida.");
+      }
+
+      if (!["http:", "https:"].includes(url.protocol)) {
+        throw new Error("La URL del comprobante almacenado no es valida.");
+      }
+
+      return {
+        url: url.toString(),
+        mimeType: comprobante.comprobanteMimeType ?? "application/octet-stream",
+        fileName:
+          comprobante.nombreOriginalComprobante ??
+          `comprobante-${comprobante.idAbono}`,
+      };
+    }
+
     if (!comprobante.comprobantePath) {
       throw new Error("El abono no tiene comprobante almacenado.");
     }
 
-    await this.fileStorage.getFileMetadata(comprobante.comprobantePath);
+    const storageLocal =
+      this.fileStorage.getFileMetadata && this.fileStorage.getFileStream
+        ? this.fileStorage
+        : this.legacyFileStorage;
+
+    await storageLocal.getFileMetadata!(comprobante.comprobantePath);
 
     return {
-      stream: this.fileStorage.getFileStream(comprobante.comprobantePath),
+      stream: storageLocal.getFileStream!(comprobante.comprobantePath),
       mimeType: comprobante.comprobanteMimeType ?? "application/octet-stream",
       fileName:
         comprobante.nombreOriginalComprobante ??
@@ -1312,9 +1415,21 @@ export class AbonoService {
       throw new Error("Solo se pueden eliminar abonos pendientes.");
     }
 
+    const comprobante = await abonoRepository.buscarComprobanteMetadata(idAbono);
+
     await abonoRepository.eliminarAbono(idAbono);
 
-    return abono;
+    if (
+      comprobante?.comprobantePublicId &&
+      this.fileStorage.deletePaymentReceipt
+    ) {
+      await this.fileStorage.deletePaymentReceipt(
+        comprobante.comprobantePublicId,
+        comprobante.comprobanteResourceType ?? "image",
+      );
+    }
+
+    return this.prepararRespuestaAbono(abono);
   }
 
 }

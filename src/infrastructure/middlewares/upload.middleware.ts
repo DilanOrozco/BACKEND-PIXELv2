@@ -32,3 +32,34 @@ export const uploadPaymentReceipt = (
     return res.status(400).json({ message });
   });
 };
+
+const maxDesignSizeMb = Math.min(
+  Number(process.env.MAX_DESIGN_FILE_SIZE_MB ?? 10) || 10,
+  10,
+);
+const designUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: maxDesignSizeMb * 1024 * 1024,
+    files: 1,
+  },
+});
+
+export const uploadDesignFile = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  designUpload.single("archivo")(req, res, (error: unknown) => {
+    if (!error) {
+      return next();
+    }
+
+    const message =
+      error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE"
+        ? `El archivo supera el tamano maximo permitido de ${maxDesignSizeMb} MB.`
+        : "No fue posible procesar el archivo de diseno.";
+
+    return res.status(400).json({ message });
+  });
+};

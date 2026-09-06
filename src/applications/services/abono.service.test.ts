@@ -4,6 +4,10 @@ import type { Prisma } from "../../../generated/prisma/client";
 import { AbonoService } from "./abono.service";
 import { NotificationService } from "./notification.service";
 import { AbonoRepository } from "../../infrastructure/repositories/abono.repository";
+import {
+  CloudinaryPaymentReceiptStorageService,
+  PaymentReceiptStorageError,
+} from "./cloudinary-payment-receipt-storage.service";
 
 const admin = { idUsuario: 99, rol: "Admin" };
 
@@ -883,4 +887,304 @@ test("AbonoService protege descarga de comprobante por ownership", async (t) => 
       }),
     /No tienes permiso/,
   );
+});
+
+const comprobanteCloudinary = {
+  secureUrl: "https://res.cloudinary.com/pixel/image/upload/comprobante.png",
+  publicId: "pixel/comprobantes-abonos/pedido-1/comprobante-uuid",
+  originalName: "comprobante.png",
+  mimeType: "image/png",
+  format: "png",
+  sizeBytes: 220000,
+  resourceType: "image",
+  sha256: "a".repeat(64),
+};
+
+const archivoComprobante = {
+  originalname: "comprobante.png",
+  mimetype: "image/png",
+  buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  size: 8,
+} as Express.Multer.File;
+
+test("AbonoService guarda Cloudinary y conserva sugerencias FRONTEND sin ejecutar OCR", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_ONLY";
+  t.after(() => {
+    if (modoAnterior === undefined) delete process.env.RECEIPT_ANALYSIS_MODE;
+    else process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+  });
+
+  let ejecucionesOcr = 0;
+  t.mock.method(
+    CloudinaryPaymentReceiptStorageService.prototype,
+    "savePaymentReceipt",
+    async () => comprobanteCloudinary,
+  );
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  const crear = t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async (data: any) => ({ ...abonoPendiente, ...data, idAbono: 90 }),
+  );
+  const ocr = {
+    analyzePaymentReceipt: async () => {
+      ejecucionesOcr += 1;
+      return assert.fail("OCR backend no debe ejecutarse");
+    },
+  };
+
+  const resultado = await new AbonoService(
+    transaccionFake,
+    new CloudinaryPaymentReceiptStorageService(),
+    ocr as any,
+  ).crearDesdeComprobanteCliente(
+    1,
+    archivoComprobante,
+    {
+      montoDetectado: "100000",
+      referenciaDetectada: "M123456",
+      fechaDetectada: "2026-07-26",
+      bancoDetectado: "Nequi",
+      calidadLectura: "82",
+      requiereRevisionManual: "false",
+      origenAnalisis: "FRONTEND",
+      observaciones: "Pago enviado desde el portal.",
+    },
+    { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+  );
+
+  const data = crear.mock.calls[0]?.arguments[0] as any;
+  assert.equal(ejecucionesOcr, 0);
+  assert.equal(data.comprobanteUrl, comprobanteCloudinary.secureUrl);
+  assert.equal(data.comprobantePublicId, comprobanteCloudinary.publicId);
+  assert.equal(data.comprobanteFormato, "png");
+  assert.equal(data.comprobanteResourceType, "image");
+  assert.equal(data.comprobanteHash, comprobanteCloudinary.sha256);
+  assert.equal(data.montoDetectadoOcr, 100000);
+  assert.equal(data.referenciaDetectadaOcr, "M123456");
+  assert.equal(data.bancoDetectadoOcr, "Nequi");
+  assert.equal(data.origenRegistro, "FRONTEND");
+  assert.equal(data.monto, null);
+  assert.equal(data.estado, "PENDIENTE");
+  assert.equal(resultado.abono.comprobantePublicId, undefined);
+  assert.deepEqual(resultado.abono.comprobante, {
+    url: comprobanteCloudinary.secureUrl,
+    nombre: "comprobante.png",
+    tipo: "image/png",
+    formato: "png",
+    bytes: 220000,
+    resourceType: "image",
+  });
+});
+
+test("AbonoService no crea abono cuando Cloudinary falla", async (t) => {
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(
+    CloudinaryPaymentReceiptStorageService.prototype,
+    "savePaymentReceipt",
+    async () => {
+      throw new PaymentReceiptStorageError(
+        "No pudimos almacenar el comprobante. Intenta nuevamente.",
+      );
+    },
+  );
+  const crear = t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async () => abonoPendiente,
+  );
+
+  await assert.rejects(
+    () =>
+      new AbonoService(transaccionFake).crearDesdeComprobanteCliente(
+        1,
+        archivoComprobante,
+        { origenAnalisis: "FRONTEND" },
+        { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+      ),
+    /No pudimos almacenar el comprobante/,
+  );
+  assert.equal(crear.mock.calls.length, 0);
+});
+
+test("AbonoService limpia Cloudinary si PostgreSQL falla despues de la subida", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_ONLY";
+  t.after(() => {
+    if (modoAnterior === undefined) delete process.env.RECEIPT_ANALYSIS_MODE;
+    else process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+  });
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  t.mock.method(
+    CloudinaryPaymentReceiptStorageService.prototype,
+    "savePaymentReceipt",
+    async () => comprobanteCloudinary,
+  );
+  const limpiar = t.mock.method(
+    CloudinaryPaymentReceiptStorageService.prototype,
+    "deletePaymentReceipt",
+    async () => true,
+  );
+  t.mock.method(AbonoRepository.prototype, "crearAbono", async () => {
+    throw new Error("Fallo controlado de persistencia");
+  });
+
+  await assert.rejects(
+    () =>
+      new AbonoService(transaccionFake).crearDesdeComprobanteCliente(
+        1,
+        archivoComprobante,
+        { origenAnalisis: "FRONTEND" },
+        { idUsuario: 7, idCliente: 10, rol: "Cliente" },
+      ),
+    /Fallo controlado de persistencia/,
+  );
+  assert.deepEqual(limpiar.mock.calls[0]?.arguments, [
+    comprobanteCloudinary.publicId,
+    "image",
+  ]);
+});
+
+test("AbonoService devuelve URL Cloudinary y conserva descarga local legacy", async (t) => {
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarComprobanteMetadata",
+    async () => ({
+      idAbono: 91,
+      comprobanteUrl: comprobanteCloudinary.secureUrl,
+      comprobantePublicId: comprobanteCloudinary.publicId,
+      comprobantePath: null,
+      nombreOriginalComprobante: "comprobante.png",
+      comprobanteMimeType: "image/png",
+      comprobanteFormato: "png",
+      comprobanteResourceType: "image",
+      comprobanteSizeBytes: 220000,
+      pedido: { idPedido: 1, idCliente: 10 },
+    }),
+  );
+
+  const resultado = await new AbonoService(transaccionFake).obtenerComprobante(
+    91,
+    { idUsuario: 99, rol: "Admin" },
+  );
+
+  assert.ok("url" in resultado);
+  assert.equal(
+    "url" in resultado ? resultado.url : null,
+    comprobanteCloudinary.secureUrl,
+  );
+});
+
+test("AbonoService DELETE pendiente limpia Cloudinary despues de borrar BD", async (t) => {
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarPorId",
+    async () => ({ ...abonoPendiente, estado: "PENDIENTE" }),
+  );
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarComprobanteMetadata",
+    async () => ({
+      idAbono: 5,
+      comprobantePublicId: comprobanteCloudinary.publicId,
+      comprobanteResourceType: "image",
+      pedido: { idPedido: 1, idCliente: 10 },
+    }),
+  );
+  const borrarDb = t.mock.method(
+    AbonoRepository.prototype,
+    "eliminarAbono",
+    async () => ({ idAbono: 5 }),
+  );
+  const limpiar = t.mock.method(
+    CloudinaryPaymentReceiptStorageService.prototype,
+    "deletePaymentReceipt",
+    async () => true,
+  );
+
+  await new AbonoService(transaccionFake).eliminarAbonoPendiente(5);
+
+  assert.equal(borrarDb.mock.calls.length, 1);
+  assert.equal(limpiar.mock.calls.length, 1);
+});
+
+test("AbonoService DELETE bloqueado no elimina fila ni asset Cloudinary", async (t) => {
+  t.mock.method(
+    AbonoRepository.prototype,
+    "buscarPorId",
+    async () => ({ ...abonoConfirmado, estado: "CONFIRMADO" }),
+  );
+  const buscarMetadata = t.mock.method(
+    AbonoRepository.prototype,
+    "buscarComprobanteMetadata",
+    async () => null,
+  );
+  const borrarDb = t.mock.method(
+    AbonoRepository.prototype,
+    "eliminarAbono",
+    async () => ({ idAbono: 5 }),
+  );
+  const limpiar = t.mock.method(
+    CloudinaryPaymentReceiptStorageService.prototype,
+    "deletePaymentReceipt",
+    async () => true,
+  );
+
+  await assert.rejects(
+    () => new AbonoService(transaccionFake).eliminarAbonoPendiente(5),
+    /Solo se pueden eliminar abonos pendientes/,
+  );
+  assert.equal(buscarMetadata.mock.calls.length, 0);
+  assert.equal(borrarDb.mock.calls.length, 0);
+  assert.equal(limpiar.mock.calls.length, 0);
+});
+
+test("AbonoService admin almacena comprobante en Cloudinary sin OCR en FRONTEND_ONLY", async (t) => {
+  const modoAnterior = process.env.RECEIPT_ANALYSIS_MODE;
+  process.env.RECEIPT_ANALYSIS_MODE = "FRONTEND_ONLY";
+  t.after(() => {
+    if (modoAnterior === undefined) delete process.env.RECEIPT_ANALYSIS_MODE;
+    else process.env.RECEIPT_ANALYSIS_MODE = modoAnterior;
+  });
+  let ejecucionesOcr = 0;
+  t.mock.method(AbonoRepository.prototype, "buscarPedidoPorId", async () => pedidoBase);
+  t.mock.method(AbonoRepository.prototype, "buscarPorHash", async () => null);
+  t.mock.method(
+    CloudinaryPaymentReceiptStorageService.prototype,
+    "savePaymentReceipt",
+    async () => comprobanteCloudinary,
+  );
+  const crear = t.mock.method(
+    AbonoRepository.prototype,
+    "crearAbono",
+    async (data: any) => ({ ...abonoPendiente, ...data, idAbono: 92 }),
+  );
+
+  const resultado = await new AbonoService(
+    transaccionFake,
+    new CloudinaryPaymentReceiptStorageService(),
+    {
+      analyzePaymentReceipt: async () => {
+        ejecucionesOcr += 1;
+        return assert.fail("OCR backend no debe ejecutarse");
+      },
+    } as any,
+  ).crearAbono(
+    {
+      idPedido: 1,
+      monto: 50000,
+      metodoPago: "TRANSFERENCIA",
+    },
+    admin,
+    archivoComprobante,
+  );
+
+  const data = crear.mock.calls[0]?.arguments[0] as any;
+  assert.equal(ejecucionesOcr, 0);
+  assert.equal(data.comprobanteUrl, comprobanteCloudinary.secureUrl);
+  assert.equal(data.origenRegistro, "ADMIN_MANUAL");
+  assert.equal(resultado.estado, "PENDIENTE");
 });

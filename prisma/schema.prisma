@@ -594,10 +594,13 @@ model Abonos {
   referencia                String?
   fechaPago                 DateTime?   @map("fecha_pago")
   comprobanteUrl            String?     @map("comprobante_url")
+  comprobantePublicId       String?     @map("comprobante_public_id") @db.VarChar(255)
   comprobantePath           String?     @map("comprobante_path") @db.VarChar(500)
   nombreOriginalComprobante String?     @map("nombre_original_comprobante") @db.VarChar(255)
   nombreSeguroComprobante   String?     @map("nombre_seguro_comprobante") @db.VarChar(255)
   comprobanteMimeType       String?     @map("comprobante_mime_type") @db.VarChar(100)
+  comprobanteFormato        String?     @map("comprobante_formato") @db.VarChar(20)
+  comprobanteResourceType   String?     @map("comprobante_resource_type") @db.VarChar(30)
   comprobanteSizeBytes      Int?        @map("comprobante_size_bytes")
   comprobanteHash           String?     @map("comprobante_hash") @db.VarChar(64)
   comprobanteSubidoEn       DateTime?   @map("comprobante_subido_en")
@@ -659,6 +662,12 @@ model Diseno {
   grupoDisenoCompartido    String?      @map("grupo_diseno_compartido") @db.VarChar(100)
   idDisenador              Int?         @map("id_disenador")
   archivoUrl               String?      @map("archivo_url")
+  archivoPublicId          String?      @map("archivo_public_id") @db.VarChar(255)
+  archivoNombreOriginal    String?      @map("archivo_nombre_original") @db.VarChar(255)
+  archivoMimeType          String?      @map("archivo_mime_type") @db.VarChar(100)
+  archivoFormato           String?      @map("archivo_formato") @db.VarChar(20)
+  archivoBytes             Int?         @map("archivo_bytes")
+  archivoResourceType      String?      @map("archivo_resource_type") @db.VarChar(30)
   descripcion              String?
   observaciones            String?
   estado                   EstadoDiseno @default(PENDIENTE)
