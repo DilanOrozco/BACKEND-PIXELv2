@@ -5,17 +5,16 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx src/app.ts",
-    "build": "tsc --noEmit",
+    "build": "tsc",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:watch": "tsx --test --watch \"src/**/*.test.ts\"",
     "sync:productos": "tsx scripts/sync-productos-cotizables.ts",
     "backfill:tarifas-tecnicas": "tsx scripts/backfill-tarifa-tecnica-nombres.ts",
-    "start": "tsx src/app.ts"
+    "start": "node dist/src/app.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
