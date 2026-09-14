@@ -1,3 +1,5 @@
+export const CODIGO_PERMISO_COLA_PRODUCCION = "disenos.produccion" as const;
+
 export const PERMISOS_SISTEMA = [
   { codigo: "permisos.ver", modulo: "permisos", accion: "ver", descripcion: "Consultar permisos disponibles" },
   { codigo: "permisos.asignar", modulo: "permisos", accion: "asignar", descripcion: "Asignar permisos a roles" },
@@ -55,7 +57,7 @@ export const PERMISOS_SISTEMA = [
   { codigo: "disenos.aprobar_cliente", modulo: "disenos", accion: "aprobar_cliente", descripcion: "Registrar aprobacion de diseno por cliente" },
   { codigo: "disenos.rechazar_cliente", modulo: "disenos", accion: "rechazar_cliente", descripcion: "Registrar rechazo de diseno por cliente" },
   { codigo: "disenos.eliminar", modulo: "disenos", accion: "eliminar", descripcion: "Eliminar disenos" },
-  { codigo: "disenos.produccion", modulo: "disenos", accion: "produccion", descripcion: "Consultar produccion pendiente" },
+  { codigo: CODIGO_PERMISO_COLA_PRODUCCION, modulo: "produccion", accion: "cola_ver", descripcion: "Consultar cola de producción" },
   { codigo: "proveedores.ver", modulo: "proveedores", accion: "ver", descripcion: "Consultar proveedores" },
   { codigo: "proveedores.crear", modulo: "proveedores", accion: "crear", descripcion: "Crear proveedores" },
   { codigo: "proveedores.editar", modulo: "proveedores", accion: "editar", descripcion: "Editar proveedores" },
