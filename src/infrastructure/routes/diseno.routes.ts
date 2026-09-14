@@ -4,11 +4,18 @@ import { verificarAuth } from "../middlewares/auth.middleware";
 import { autorizarPermiso } from "../middlewares/permisos.middleware";
 import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
 import { uploadDesignFile } from "../middlewares/upload.middleware";
+import { CODIGO_PERMISO_COLA_PRODUCCION } from "../../utils/permisos";
 
 const router = Router();
 const controller = new DisenoController();
 
 router.use(verificarAuth);
+
+router.get(
+  "/pedidos-pendientes",
+  autorizarPermiso("disenos.crear"),
+  controller.listarPedidosPendientesRegistro,
+);
 
 router.post(
   "/",
@@ -19,7 +26,7 @@ router.post(
 router.get("/", autorizarPermiso("disenos.ver"), controller.listarDisenos);
 router.get(
   "/produccion/pendientes",
-  autorizarPermiso("disenos.produccion"),
+  autorizarPermiso(CODIGO_PERMISO_COLA_PRODUCCION),
   controller.listarProduccionPendiente,
 );
 router.get(

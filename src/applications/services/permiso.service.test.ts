@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { PermisoService } from "./permiso.service";
 import { PermisoRepository } from "../../infrastructure/repositories/permiso.repository";
 import { RolRepository } from "../../infrastructure/repositories/rol.repository";
+import {
+  CODIGO_PERMISO_COLA_PRODUCCION,
+  PERMISOS_SISTEMA,
+} from "../../utils/permisos";
 
 const rolCliente = {
   idRol: 5,
@@ -78,7 +82,7 @@ test("PermisoService sincronizarPermisosSistema conserva sincronizacion admin", 
   const syncMock = t.mock.method(
     PermisoRepository.prototype,
     "sincronizarPermisosSistema",
-    async () => [{ codigo: "dashboard.cliente" }],
+    async () => PERMISOS_SISTEMA.map((permiso) => ({ ...permiso })),
   );
   const asegurarRolMock = t.mock.method(
     RolRepository.prototype,
@@ -88,7 +92,14 @@ test("PermisoService sincronizarPermisosSistema conserva sincronizacion admin", 
 
   const permisos = await new PermisoService().sincronizarPermisosSistema();
 
-  assert.equal(permisos.length, 1);
+  assert.ok(
+    permisos.some(
+      (permiso) =>
+        permiso.codigo === CODIGO_PERMISO_COLA_PRODUCCION &&
+        permiso.modulo === "produccion" &&
+        permiso.accion === "cola_ver",
+    ),
+  );
   assert.equal(syncMock.mock.calls.length, 1);
   assert.equal(asegurarRolMock.mock.calls.length, 1);
 });
@@ -150,6 +161,57 @@ test("PermisoService asigna permisos a rol existente sin sincronizar catalogo", 
     ],
   ]);
   assert.equal(syncMock.mock.calls.length, 0);
+});
+
+test("PermisoService expone Cola de Produccion en catalogo fallback", async (t) => {
+  t.mock.method(
+    PermisoRepository.prototype,
+    "listarPermisos",
+    async () => [],
+  );
+
+  const permisos = await new PermisoService().listarPermisos();
+  const permiso = permisos.find(
+    (item) => item.codigo === CODIGO_PERMISO_COLA_PRODUCCION,
+  );
+
+  assert.deepEqual(permiso, {
+    codigo: CODIGO_PERMISO_COLA_PRODUCCION,
+    modulo: "produccion",
+    accion: "cola_ver",
+    descripcion: "Consultar cola de producción",
+  });
+});
+
+test("PermisoService permite asignar Cola de Produccion a cualquier rol", async (t) => {
+  t.mock.method(RolRepository.prototype, "buscarPorId", async () => rolOperario);
+  const listarPermisosMock = t.mock.method(
+    PermisoRepository.prototype,
+    "listarPermisosActivosPorCodigos",
+    async () => [{ idPermiso: 25, codigo: "disenos.produccion" }],
+  );
+  const reemplazarMock = t.mock.method(
+    PermisoRepository.prototype,
+    "reemplazarPermisosARol",
+    async (idRol: number, permisos: { idPermiso: number; codigo: string }[]) => ({
+      ...rolOperario,
+      idRol,
+      permisos,
+    }),
+  );
+
+  const rol = await new PermisoService().asignarPermisosARol(8, [
+    "disenos.produccion",
+  ]);
+
+  assert.equal(rol.idRol, 8);
+  assert.deepEqual(listarPermisosMock.mock.calls[0]?.arguments[0], [
+    "disenos.produccion",
+  ]);
+  assert.deepEqual(reemplazarMock.mock.calls[0]?.arguments, [
+    8,
+    [{ idPermiso: 25, codigo: "disenos.produccion" }],
+  ]);
 });
 
 test("PermisoService asigna permisos a rol recien creado sin sincronizacion pesada", async (t) => {

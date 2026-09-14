@@ -714,6 +714,40 @@ export class DisenoService {
     );
   }
 
+  async listarPedidosPendientesRegistroDiseno(
+    usuarioAuth: AuthUser | undefined,
+  ) {
+    this.obtenerUsuario(usuarioAuth);
+    const pedidos =
+      await disenoRepository.listarPedidosPendientesRegistroDiseno();
+
+    return pedidos.flatMap((pedido) => {
+      const resolucion = resolverRequerimientosDiseno(
+        pedido.idPedido,
+        pedido.detalles,
+        pedido.disenos,
+      );
+      const cantidadRequerimientosPendientes =
+        resolucion.requerimientos.filter(
+          (requerimiento) =>
+            requerimiento.puedeCrearDiseno ||
+            requerimiento.puedeCargarCorreccion,
+        ).length;
+
+      return cantidadRequerimientosPendientes > 0
+        ? [
+            {
+              idPedido: pedido.idPedido,
+              cliente: {
+                nombre: pedido.cliente.nombre,
+              },
+              cantidadRequerimientosPendientes,
+            },
+          ]
+        : [];
+    });
+  }
+
   async definirOrigenRequerimiento(
     idPedido: number,
     idRequerimientoDiseno: string,

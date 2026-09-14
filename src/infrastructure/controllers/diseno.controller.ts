@@ -26,6 +26,17 @@ const statusErrorDiseno = (error: unknown) =>
   error instanceof DesignFileStorageError ? 502 : 400;
 
 export class DisenoController {
+  async listarPedidosPendientesRegistro(req: AuthRequest, res: Response) {
+    try {
+      const pedidos =
+        await disenoService.listarPedidosPendientesRegistroDiseno(req.user);
+
+      return res.status(200).json({ data: pedidos });
+    } catch (error: unknown) {
+      return res.status(400).json({ message: mensajeError(error) });
+    }
+  }
+
   async crearDiseno(req: AuthRequest, res: Response) {
     try {
       const diseno = await disenoService.crearDiseno(

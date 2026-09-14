@@ -151,6 +151,18 @@ const pedidoResumenSelect = {
   },
 } as const;
 
+const pedidoPendienteRegistroDisenoSelect = {
+  idPedido: true,
+  estadoPedido: true,
+  detalles: pedidoResumenSelect.detalles,
+  disenos: pedidoResumenSelect.disenos,
+  cliente: {
+    select: {
+      nombre: true,
+    },
+  },
+} as const;
+
 const disenoOperacionSelect = {
   idDiseno: true,
   idPedido: true,
@@ -246,6 +258,23 @@ export class DisenoRepository {
       select: disenoSelect,
       orderBy: {
         fechaCreacion: "desc",
+      },
+    });
+  }
+
+  async listarPedidosPendientesRegistroDiseno() {
+    return await prisma.pedido.findMany({
+      where: {
+        estadoPedido: "PENDIENTE",
+        detalles: {
+          some: {
+            requiereDiseno: true,
+          },
+        },
+      },
+      select: pedidoPendienteRegistroDisenoSelect,
+      orderBy: {
+        idPedido: "desc",
       },
     });
   }

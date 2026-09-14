@@ -1946,3 +1946,134 @@ test("DisenoService limpia Cloudinary solo al eliminar un diseno no historico", 
   assert.equal(limpiar.mock.calls.length, 1);
   assert.equal(eliminado.archivoPublicId, undefined);
 });
+
+test("DisenoService lista solo pedidos con creacion o correccion accionable sin N+1", async (t) => {
+  const detalle = (
+    idPedido: number,
+    idDetallePedido: number,
+    estampados: Array<{ id: number; origen: string }>,
+  ) => ({
+    idDetallePedido,
+    idPedido,
+    descripcion: `Producto ${idDetallePedido}`,
+    cantidad: 1,
+    requiereDiseno: true,
+    origenDiseno: "PIXEL",
+    archivoDisenoInicialUrl: null,
+    esDisenoGeneral: false,
+    producto: { idProducto: idDetallePedido, nombre: `Producto ${idDetallePedido}` },
+    estampados: estampados.map((estampado) => ({
+      idDetalleEstampadoPedido: estampado.id,
+      idDetallePedido,
+      idTecnica: 1,
+      ubicacion: "FRENTE",
+      anchoCm: 10,
+      altoCm: 10,
+      descripcion: null,
+      observaciones: null,
+      origenDiseno: estampado.origen,
+      grupoDisenoCompartido: null,
+      tecnica: { idTecnica: 1, nombre: "DTF" },
+    })),
+  });
+  const version = (
+    idPedido: number,
+    idDetallePedido: number,
+    idEstampado: number,
+    estado: "APROBADO" | "RECHAZADO",
+    idDiseno: number,
+  ) => ({
+    idDiseno,
+    idPedido,
+    idDetallePedido,
+    idDetalleEstampadoPedido: idEstampado,
+    grupoDisenoCompartido: null,
+    esDisenoGeneral: false,
+    estado,
+    origenDiseno: "DISENADOR",
+    archivoUrl: "https://pixel.test/diseno.png",
+    fechaCreacion: new Date(`2026-01-${String(idDiseno).padStart(2, "0")}`),
+    fechaActualizacion: new Date(`2026-01-${String(idDiseno).padStart(2, "0")}`),
+    fechaEnvio: new Date(`2026-01-${String(idDiseno).padStart(2, "0")}`),
+  });
+  const pedido = (
+    idPedido: number,
+    detalles: any[],
+    disenos: any[] = [],
+  ) => ({
+    idPedido,
+    estadoPedido: "PENDIENTE",
+    cliente: { nombre: `Cliente ${idPedido}` },
+    detalles,
+    disenos,
+  });
+
+  const pedidos = [
+    pedido(101, [detalle(101, 1001, [{ id: 2001, origen: "PIXEL" }])]),
+    pedido(
+      102,
+      [detalle(102, 1002, [{ id: 2002, origen: "PIXEL" }])],
+      [version(102, 1002, 2002, "RECHAZADO", 2)],
+    ),
+    pedido(
+      103,
+      [detalle(103, 1003, [{ id: 2003, origen: "PIXEL" }])],
+      [version(103, 1003, 2003, "APROBADO", 3)],
+    ),
+    pedido(104, [detalle(104, 1004, [{ id: 2004, origen: "CLIENTE" }])]),
+    pedido(
+      105,
+      [
+        detalle(105, 1005, [
+          { id: 2005, origen: "PIXEL" },
+          { id: 2006, origen: "PIXEL" },
+        ]),
+      ],
+      [version(105, 1005, 2005, "APROBADO", 5)],
+    ),
+    pedido(106, [
+      {
+        ...detalle(106, 1006, []),
+        requiereDiseno: false,
+      },
+    ]),
+  ];
+  const listar = t.mock.method(
+    DisenoRepository.prototype,
+    "listarPedidosPendientesRegistroDiseno",
+    async () => pedidos,
+  );
+  const buscarIndividual = t.mock.method(
+    DisenoRepository.prototype,
+    "buscarPedidoPorId",
+    async () => {
+      throw new Error("No debe consultar cada pedido por separado.");
+    },
+  );
+
+  const resultado =
+    await servicio().listarPedidosPendientesRegistroDiseno({
+      idUsuario: 99,
+      rol: "Admin",
+    });
+
+  assert.deepEqual(resultado, [
+    {
+      idPedido: 101,
+      cliente: { nombre: "Cliente 101" },
+      cantidadRequerimientosPendientes: 1,
+    },
+    {
+      idPedido: 102,
+      cliente: { nombre: "Cliente 102" },
+      cantidadRequerimientosPendientes: 1,
+    },
+    {
+      idPedido: 105,
+      cliente: { nombre: "Cliente 105" },
+      cantidadRequerimientosPendientes: 1,
+    },
+  ]);
+  assert.equal(listar.mock.callCount(), 1);
+  assert.equal(buscarIndividual.mock.callCount(), 0);
+});

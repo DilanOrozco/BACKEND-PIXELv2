@@ -6,7 +6,11 @@ import {
   autorizarPermiso,
 } from "./permisos.middleware";
 import { PermisoService } from "../../applications/services/permiso.service";
-import { PERMISOS_VALIDOS } from "../../utils/permisos";
+import {
+  CODIGO_PERMISO_COLA_PRODUCCION,
+  PERMISOS_SISTEMA,
+  PERMISOS_VALIDOS,
+} from "../../utils/permisos";
 
 const crearRespuesta = () => {
   const respuesta: any = {
@@ -51,6 +55,144 @@ test("catalogo incluye permisos del nuevo flujo de cotizaciones y tarifas", () =
   ]) {
     assert.equal(PERMISOS_VALIDOS.has(codigo), true);
   }
+});
+
+test("catalogo contiene una sola entrada especifica para Cola de Produccion", () => {
+  const permisosCola = PERMISOS_SISTEMA.filter(
+    (permiso) => permiso.codigo === CODIGO_PERMISO_COLA_PRODUCCION,
+  );
+  const codigos = PERMISOS_SISTEMA.map((permiso) => permiso.codigo);
+
+  assert.equal(permisosCola.length, 1);
+  assert.deepEqual(permisosCola[0], {
+    codigo: "disenos.produccion",
+    modulo: "produccion",
+    accion: "cola_ver",
+    descripcion: "Consultar cola de producción",
+  });
+  assert.equal(new Set(codigos).size, codigos.length);
+  assert.equal(PERMISOS_VALIDOS.has(CODIGO_PERMISO_COLA_PRODUCCION), true);
+});
+
+test("usuario con permiso puede consultar Cola de Produccion", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async (_idRol: number, codigo: string) =>
+      codigo === CODIGO_PERMISO_COLA_PRODUCCION,
+  );
+  const req: any = { user: { idRol: 7, rol: "Disenador" } };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarPermiso(CODIGO_PERMISO_COLA_PRODUCCION)(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.deepEqual(rolTienePermisoMock.mock.calls[0]?.arguments, [
+    7,
+    CODIGO_PERMISO_COLA_PRODUCCION,
+  ]);
+});
+
+test("usuario sin permiso recibe 403 al consultar Cola de Produccion", async (t) => {
+  t.mock.method(PermisoService.prototype, "rolTienePermiso", async () => false);
+  const req: any = { user: { idRol: 7, rol: "Disenador" } };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarPermiso(CODIGO_PERMISO_COLA_PRODUCCION)(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, false);
+  assert.equal(res.statusCode, 403);
+});
+
+test("Admin conserva bypass para consultar Cola de Produccion", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async () => false,
+  );
+  const req: any = { user: { idRol: 1, rol: "Admin" } };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarPermiso(CODIGO_PERMISO_COLA_PRODUCCION)(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.equal(rolTienePermisoMock.mock.callCount(), 0);
+});
+
+test("permisos de Disenos y acciones de Produccion permanecen independientes", () => {
+  for (const codigo of [
+    "disenos.ver",
+    "disenos.crear",
+    "disenos.editar",
+    "disenos.aprobar",
+    "disenos.eliminar",
+    "pedidos.pasar_proceso",
+    "pedidos.finalizar",
+  ]) {
+    assert.equal(PERMISOS_VALIDOS.has(codigo), true);
+  }
+  assert.notEqual(CODIGO_PERMISO_COLA_PRODUCCION, "pedidos.pasar_proceso");
+  assert.notEqual(CODIGO_PERMISO_COLA_PRODUCCION, "pedidos.finalizar");
+});
+
+test("consulta de pedidos pendientes usa exactamente disenos.crear", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async (_idRol: number, codigo: string) => codigo === "disenos.crear",
+  );
+  const req: any = { user: { idRol: 7, rol: "Disenador" } };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarPermiso("disenos.crear")(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.deepEqual(rolTienePermisoMock.mock.calls[0]?.arguments, [
+    7,
+    "disenos.crear",
+  ]);
+});
+
+test("consulta de pedidos pendientes rechaza con 403 sin disenos.crear", async (t) => {
+  t.mock.method(PermisoService.prototype, "rolTienePermiso", async () => false);
+  const req: any = { user: { idRol: 7, rol: "Disenador" } };
+  const res = crearRespuesta();
+
+  await autorizarPermiso("disenos.crear")(req, res, () => {
+    throw new Error("No debe autorizar.");
+  });
+
+  assert.equal(res.statusCode, 403);
+});
+
+test("Admin accede a pedidos pendientes sin consultar RolPermiso", async (t) => {
+  const rolTienePermisoMock = t.mock.method(
+    PermisoService.prototype,
+    "rolTienePermiso",
+    async () => false,
+  );
+  const req: any = { user: { idRol: 1, rol: "Admin" } };
+  const res = crearRespuesta();
+  let llamado = false;
+
+  await autorizarPermiso("disenos.crear")(req, res, () => {
+    llamado = true;
+  });
+
+  assert.equal(llamado, true);
+  assert.equal(rolTienePermisoMock.mock.callCount(), 0);
 });
 
 test("autorizarPermiso permite Admin por bypass sin consultar permisos", async (t) => {
