@@ -1,0 +1,50 @@
+import { Router } from "express";
+import { DisenoController } from "../controllers/diseno.controller";
+import { verificarAuth } from "../middlewares/auth.middleware";
+import { autorizarPermiso } from "../middlewares/permisos.middleware";
+import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
+import { uploadDesignFile } from "../middlewares/upload.middleware";
+
+const router = Router();
+const controller = new DisenoController();
+
+router.use(verificarAuth);
+
+router.post(
+  "/",
+  autorizarPermiso("disenos.crear"),
+  uploadDesignFile,
+  controller.crearDiseno,
+);
+router.get("/", autorizarPermiso("disenos.ver"), controller.listarDisenos);
+router.get(
+  "/produccion/pendientes",
+  autorizarPermiso("disenos.produccion"),
+  controller.listarProduccionPendiente,
+);
+router.get(
+  "/:id/impacto-eliminacion",
+  autorizarPermiso("disenos.ver"),
+  crearControladorImpactoEliminacion("diseno"),
+);
+router.get("/:id", autorizarPermiso("disenos.ver"), controller.buscarPorId);
+router.patch(
+  "/:id",
+  autorizarPermiso("disenos.editar"),
+  uploadDesignFile,
+  controller.actualizarDiseno,
+);
+router.patch("/:id/aprobar", autorizarPermiso("disenos.aprobar"), controller.aprobarDiseno);
+router.patch(
+  "/:id/aprobar-cliente",
+  autorizarPermiso("disenos.aprobar_cliente"),
+  controller.aprobarDiseno,
+);
+router.patch(
+  "/:id/rechazar-cliente",
+  autorizarPermiso("disenos.rechazar_cliente"),
+  controller.rechazarDiseno,
+);
+router.delete("/:id", autorizarPermiso("disenos.eliminar"), controller.eliminarDiseno);
+
+export default router;

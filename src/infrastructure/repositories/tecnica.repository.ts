@@ -1,0 +1,157 @@
+import {prisma} from "../../config/prisma";
+import {
+  tecnicaPublicSelect,
+  tecnicaSelect,
+} from "../../utils/selects/tecnica.select";
+import type { ParsedPagination } from "../../utils/pagination.util";
+
+const buildTecnicaWhere = (search?: string | null) => {
+  if (!search) {
+    return {};
+  }
+
+  return {
+    nombre: {
+      contains: search,
+      mode: "insensitive" as const,
+    },
+  };
+};
+
+const buildTecnicaOrderBy = (pagination: ParsedPagination) => ({
+  [pagination.sortBy]: pagination.order,
+});
+
+export class TecnicaRepository {
+  async crearTecnica(data: any) {
+    return await prisma.tecnica.create({
+      data,
+      select: tecnicaSelect,
+    });
+  }
+
+  async listarTecnicas() {
+    return await prisma.tecnica.findMany({
+      select: tecnicaSelect,
+      orderBy: {
+        idTecnica: "asc",
+      },
+    });
+  }
+
+  async listarTecnicasActivas() {
+    return await prisma.tecnica.findMany({
+      where: {
+        estado: true,
+      },
+      select: tecnicaPublicSelect,
+      orderBy: {
+        idTecnica: "asc",
+      },
+    });
+  }
+
+  async listarTecnicasPaginado(pagination: ParsedPagination) {
+    const where = buildTecnicaWhere(pagination.search);
+    const [total, data] = await Promise.all([
+      prisma.tecnica.count({ where }),
+      prisma.tecnica.findMany({
+        where,
+        select: tecnicaSelect,
+        orderBy: buildTecnicaOrderBy(pagination),
+        skip: pagination.skip,
+        take: pagination.limit,
+      }),
+    ]);
+
+    return { data, total };
+  }
+
+  async buscarPorId(idTecnica: number) {
+    return await prisma.tecnica.findUnique({
+      where: { idTecnica },
+      select: tecnicaSelect,
+    });
+  }
+
+  async buscarActivasPorIds(idsTecnicas: number[]) {
+    if (idsTecnicas.length === 0) {
+      return [];
+    }
+
+    return await prisma.tecnica.findMany({
+      where: {
+        idTecnica: { in: idsTecnicas },
+        estado: true,
+      },
+      select: tecnicaSelect,
+    });
+  }
+
+  async buscarPorNombreExacto(nombre: string) {
+    return await prisma.tecnica.findUnique({
+      where: { nombre },
+      select: tecnicaSelect,
+    });
+  }
+
+  async buscarParcial(termino: string) {
+    return await prisma.tecnica.findMany({
+      where: {
+        OR: [
+          {
+            nombre: {
+              contains: termino,
+              mode: "insensitive",
+            },
+          },
+          {
+            descripcion: {
+              contains: termino,
+              mode: "insensitive",
+            },
+          },
+        ],
+      },
+      select: tecnicaSelect,
+      orderBy: {
+        idTecnica: "asc",
+      },
+    });
+  }
+
+  async actualizarTecnica(idTecnica: number, data: any) {
+    return await prisma.tecnica.update({
+      where: { idTecnica },
+      data,
+      select: tecnicaSelect,
+    });
+  }
+
+  async desactivarTecnica(idTecnica: number) {
+    // 1. Buscamos la técnica usando la variable 'prisma' directa (sin 'this.')
+    const tecnica = await prisma.tecnica.findUnique({
+      where: { idTecnica },
+    });
+
+    if (!tecnica) {
+      throw new Error("Técnica no encontrada");
+    }
+
+    // 2. Hacemos el switch/toggle: invertimos el valor actual del booleano
+    return await prisma.tecnica.update({
+      where: { idTecnica },
+      data: {
+        estado: !tecnica.estado, // Si está true pone false, si está false pone true ⚡
+      },
+      select: tecnicaSelect, // Mantenemos tu objeto de selección para el retorno
+    });
+  }
+
+  async eliminarTecnica(idTecnica: number) {
+    return await prisma.tecnica.delete({
+      where: { idTecnica },
+      select: tecnicaSelect,
+    });
+  }
+}

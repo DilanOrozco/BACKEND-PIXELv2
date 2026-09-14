@@ -1,0 +1,98 @@
+# ==========================================
+# PIXEL BACKEND - .gitignore
+# ==========================================
+
+# Dependencias
+node_modules/
+
+# Compilación
+dist/
+build/
+
+# Cobertura de pruebas
+coverage/
+.nyc_output/
+
+# ==========================================
+# VARIABLES DE ENTORNO / SECRETOS
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# ARCHIVOS SUBIDOS
+# ==========================================
+
+# Los archivos nuevos se almacenan en Cloudinary.
+# No versionar archivos cargados por usuarios.
+uploads/
+tmp/
+temp/
+
+# ==========================================
+# LOGS
+# ==========================================
+
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# IDE
+# ==========================================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==========================================
+# SISTEMA OPERATIVO
+# ==========================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==========================================
+# ARCHIVOS TEMPORALES
+# ==========================================
+
+*.tmp
+*.temp
+*.cache
+
+# ==========================================
+# TESTS / RESULTADOS GENERADOS
+# ==========================================
+
+test-results/
+playwright-report/
+
+# ==========================================
+# OCR LEGACY
+# ==========================================
+
+# Activar si se confirma que backend ya no usa
+# modelos locales de Tesseract.
+*.traineddata
+
+# ==========================================
+# PRISMA
+# ==========================================
+
+# NO ignorar:
+# prisma/schema.prisma
+# prisma/migrations/
+#
+# Las migraciones DEBEN permanecer versionadas.
+
+# Si existe un cliente Prisma generado dentro
+# del proyecto, ignorarlo solo si realmente
+# se genera automáticamente:
+generated/
