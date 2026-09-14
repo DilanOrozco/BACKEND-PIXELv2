@@ -23,6 +23,17 @@ const estadosCotizacion = [
   "CONVERTIDA_EN_PEDIDO",
 ] as const;
 
+const cotizacionConMetadataArchivoSelect = {
+  ...cotizacionSelect,
+  detalles: {
+    ...cotizacionSelect.detalles,
+    select: {
+      ...cotizacionSelect.detalles.select,
+      archivoDisenoInicialMetadata: true,
+    },
+  },
+} as const;
+
 export type CotizacionListadoFiltros = {
   idCliente?: number;
   estado?: EstadoCotizacion;
@@ -118,7 +129,7 @@ export class CotizacionRepository {
   async crearCotizacionConDetalles(data: any) {
     const { detalles, ...cotizacionData } = data;
 
-    const cotizacionCreada = await runPrismaTransaction(async (tx) => {
+    return await runPrismaTransaction(async (tx) => {
       return await tx.cotizacion.create({
         data: {
           ...cotizacionData,
@@ -134,17 +145,9 @@ export class CotizacionRepository {
             }),
           },
         },
-        select: { idCotizacion: true },
+        select: cotizacionSelect,
       });
     });
-
-    const cotizacion = await this.buscarPorId(cotizacionCreada.idCotizacion);
-
-    if (!cotizacion) {
-      throw new Error("No fue posible cargar la cotizacion creada.");
-    }
-
-    return cotizacion;
   }
 
   async buscarPorId(idCotizacion: number) {
@@ -174,6 +177,14 @@ export class CotizacionRepository {
       orderBy: {
         idCotizacion: "desc",
       },
+    });
+  }
+
+  async buscarPorIdConMetadataArchivo(idCotizacion: number) {
+    await this.marcarPropuestasVencidas();
+    return await prisma.cotizacion.findUnique({
+      where: { idCotizacion },
+      select: cotizacionConMetadataArchivoSelect,
     });
   }
 

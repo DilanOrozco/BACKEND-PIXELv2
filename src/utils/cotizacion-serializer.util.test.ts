@@ -165,3 +165,42 @@ test("cotizacion historica valorizada conserva propuesta compatible", () => {
     /historica anterior al versionado/i,
   );
 });
+
+test("conserva URL historica y nunca expone public_id de Cloudinary", () => {
+  const historica: any = serializarCotizacionCliente({
+    ...solicitud,
+    detalles: [
+      {
+        ...solicitud.detalles[0],
+        archivoDisenoInicialUrl: "https://historico.test/diseno.pdf",
+      },
+    ],
+  });
+  assert.equal(
+    historica.detalles[0].archivoDisenoInicial.secureUrl,
+    "https://historico.test/diseno.pdf",
+  );
+
+  const cloudinary: any = serializarCotizacionCliente({
+    ...solicitud,
+    detalles: [
+      {
+        ...solicitud.detalles[0],
+        archivoDisenoInicialUrl: "https://res.cloudinary.test/diseno.png",
+        archivoDisenoInicialMetadata: {
+          secureUrl: "https://res.cloudinary.test/diseno.png",
+          publicId: "pixel/cotizaciones/disenos/secreto-interno",
+          originalName: "logo.png",
+          mimeType: "image/png",
+          format: "png",
+          sizeBytes: 123,
+          resourceType: "image",
+        },
+      },
+    ],
+  });
+
+  assert.equal(cloudinary.detalles[0].archivoDisenoInicial.originalName, "logo.png");
+  assert.equal("archivoDisenoInicialMetadata" in cloudinary.detalles[0], false);
+  assert.doesNotMatch(JSON.stringify(cloudinary), /secreto-interno|publicId/);
+});

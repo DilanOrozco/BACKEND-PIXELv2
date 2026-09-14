@@ -7,6 +7,7 @@ import {
   autorizarPermiso,
 } from "../middlewares/permisos.middleware";
 import { crearControladorImpactoEliminacion } from "../controllers/deletion-impact.controller";
+import { uploadQuoteDesignFiles } from "../middlewares/upload.middleware";
 
 const router = Router();
 const cotizacionController = new CotizacionController();
@@ -18,6 +19,7 @@ router.post(
   "/cliente",
   autorizarRoles("Cliente"),
   autorizarPermiso("cotizaciones.crear_cliente"),
+  uploadQuoteDesignFiles,
   cotizacionController.crearSolicitudCliente,
 );
 
@@ -51,6 +53,7 @@ router.post(
 router.post(
   "/",
   autorizarPermiso("cotizaciones.crear_presencial"),
+  uploadQuoteDesignFiles,
   cotizacionController.crearCotizacionNormal,
 );
 

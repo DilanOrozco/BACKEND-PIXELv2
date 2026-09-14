@@ -80,6 +80,8 @@ export const normalizarItemsSolicitudCotizacion = (data: any) => {
       archivoDisenoInicialUrl: limpiarTextoOpcional(
         item.archivoDisenoInicialUrl,
       ),
+      archivoDisenoInicialMetadata:
+        item.archivoDisenoInicialMetadata ?? null,
       esDisenoGeneral: item.esDisenoGeneral === true,
       estampados: estampadosEntrada.map((estampado: any) => ({
         idTecnica:

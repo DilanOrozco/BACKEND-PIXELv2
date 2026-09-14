@@ -27,12 +27,14 @@ import {
   parsePaginationQuery,
   type PaginationQuery,
 } from "../../utils/pagination.util";
+import { CotizacionDesignFileService } from "./cotizacion-design-file.service";
 
 const cotizacionRepository = new CotizacionRepository();
 const clienteRepository = new ClienteRepository();
 const tecnicaRepository = new TecnicaRepository();
 const pedidoService = new PedidoService();
 const notificationService = new NotificationService();
+const cotizacionDesignFileService = new CotizacionDesignFileService();
 const productoService = new ProductoService();
 const clienteAccessService = new ClienteAccessService();
 const calculoInternoService = new CotizacionCalculoInternoService();
@@ -135,8 +137,25 @@ export class CotizacionService {
       detalle.subtotalConDescuento ??
       (subtotal !== null ? aNumero(subtotal) - aNumero(descuentoTotal) : null);
 
+    const {
+      archivoDisenoInicialMetadata: metadata,
+      ...detalleSeguro
+    } = detalle;
+
     return {
-      ...detalle,
+      ...detalleSeguro,
+      archivoDisenoInicial: metadata
+        ? {
+            secureUrl: metadata.secureUrl ?? detalle.archivoDisenoInicialUrl,
+            originalName: metadata.originalName ?? null,
+            mimeType: metadata.mimeType ?? null,
+            format: metadata.format ?? null,
+            sizeBytes: metadata.sizeBytes ?? null,
+            resourceType: metadata.resourceType ?? null,
+          }
+        : detalle.archivoDisenoInicialUrl
+          ? { secureUrl: detalle.archivoDisenoInicialUrl }
+          : null,
       idCategoriaProducto:
         detalle.idCategoriaProducto ??
         detalle.producto?.idCategoriaProducto ??
@@ -574,7 +593,11 @@ export class CotizacionService {
 
   // Cliente: crea una solicitud sin precios. El idCliente y creadoPorId salen
   // del token, por lo que el body no puede suplantar a otro cliente.
-  async crearSolicitudCliente(data: any, usuarioAuth: any) {
+  async crearSolicitudCliente(
+    data: any,
+    usuarioAuth: any,
+    files: Express.Multer.File[] = [],
+  ) {
     const items = data.items ?? data.detalles;
     const error = validarCalcularCotizacionPublica({ items });
     if (error) throw new Error(error);
@@ -582,26 +605,40 @@ export class CotizacionService {
     const cliente = await clienteAccessService.obtenerClienteDeUsuario(
       Number(usuarioAuth.idUsuario),
     );
-    const calculo = await calculoInternoService.calcular(
-      { items },
+    const adjuntos = await cotizacionDesignFileService.adjuntarArchivos(
+      data,
+      files,
     );
-    const detalles = detallesPersistenciaSolicitud(calculo);
+    data = adjuntos.data;
+    const itemsConArchivos = data.items ?? data.detalles;
 
-    const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente: cliente.idCliente,
-      creadoPorId: Number(usuarioAuth.idUsuario),
-      tipoCotizacion: TIPO_NORMAL,
-      estado: "EN_REVISION",
-      subtotal: 0,
-      descuentoTotal: 0,
-      costosAdicionales: 0,
-      total: 0,
-      precioSugeridoInterno: calculo.precioSugeridoInterno,
-      requiereRevisionPrecio: calculo.requiereRevisionPrecio,
-      advertenciasInternas: calculo.advertencias,
-      observaciones: limpiarTextoOpcional(data.observaciones),
-      detalles,
-    });
+    let cotizacion: any;
+    try {
+      const calculo = await calculoInternoService.calcular({
+        items: itemsConArchivos,
+      });
+      const detalles = detallesPersistenciaSolicitud(calculo);
+      cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
+        idCliente: cliente.idCliente,
+        creadoPorId: Number(usuarioAuth.idUsuario),
+        tipoCotizacion: TIPO_NORMAL,
+        estado: "EN_REVISION",
+        subtotal: 0,
+        descuentoTotal: 0,
+        costosAdicionales: 0,
+        total: 0,
+        precioSugeridoInterno: calculo.precioSugeridoInterno,
+        requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+        advertenciasInternas: calculo.advertencias,
+        observaciones: limpiarTextoOpcional(data.observaciones),
+        detalles,
+      });
+    } catch (error) {
+      await cotizacionDesignFileService.limpiarArchivos(
+        adjuntos.archivosSubidos,
+      );
+      throw error;
+    }
 
     await notificationService.solicitudCotizacionRecibida({
       ...serializarCotizacionCliente(cotizacion),
@@ -614,8 +651,12 @@ export class CotizacionService {
   // Empleado: crea una cotizacion presencial. Si todos los detalles incluyen
   // producto, se valoran con el catalogo; solicitudes antiguas sin producto
   // conservan el flujo pendiente de cotizar.
-  async crearCotizacionNormal(data: any, usuarioAuth: any) {
-    const items = (data.items ?? data.detalles ?? []).map((item: any) =>
+  async crearCotizacionNormal(
+    data: any,
+    usuarioAuth: any,
+    files: Express.Multer.File[] = [],
+  ) {
+    let items = (data.items ?? data.detalles ?? []).map((item: any) =>
       item.idProducto ||
       item.nombrePersonalizado ||
       item.nombreProducto ||
@@ -635,28 +676,40 @@ export class CotizacionService {
     this.validarDatosClientePresencial(data);
     const cliente = await this.resolverClientePresencial(data);
     this.validarTelefonoClientePresencial(cliente);
-    const validacionItems = validarCalcularCotizacionPublica({ items });
-    if (validacionItems) throw new Error(validacionItems);
-    const calculo = await calculoInternoService.calcular(
-      { items },
+    const adjuntos = await cotizacionDesignFileService.adjuntarArchivos(
+      { ...data, items },
+      files,
     );
-    const detalles = detallesPersistenciaSolicitud(calculo);
+    data = adjuntos.data;
+    items = data.items;
 
-    const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente: cliente.idCliente,
-      creadoPorId: Number(usuarioAuth.idUsuario),
-      tipoCotizacion: TIPO_NORMAL,
-      estado: "EN_REVISION",
-      subtotal: 0,
-      descuentoTotal: 0,
-      costosAdicionales: 0,
-      total: 0,
-      precioSugeridoInterno: calculo.precioSugeridoInterno,
-      requiereRevisionPrecio: calculo.requiereRevisionPrecio,
-      advertenciasInternas: calculo.advertencias,
-      observaciones: limpiarTextoOpcional(data.observaciones),
-      detalles,
-    });
+    let cotizacion: any;
+    try {
+      const validacionItems = validarCalcularCotizacionPublica({ items });
+      if (validacionItems) throw new Error(validacionItems);
+      const calculo = await calculoInternoService.calcular({ items });
+      const detalles = detallesPersistenciaSolicitud(calculo);
+      cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
+        idCliente: cliente.idCliente,
+        creadoPorId: Number(usuarioAuth.idUsuario),
+        tipoCotizacion: TIPO_NORMAL,
+        estado: "EN_REVISION",
+        subtotal: 0,
+        descuentoTotal: 0,
+        costosAdicionales: 0,
+        total: 0,
+        precioSugeridoInterno: calculo.precioSugeridoInterno,
+        requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+        advertenciasInternas: calculo.advertencias,
+        observaciones: limpiarTextoOpcional(data.observaciones),
+        detalles,
+      });
+    } catch (error) {
+      await cotizacionDesignFileService.limpiarArchivos(
+        adjuntos.archivosSubidos,
+      );
+      throw error;
+    }
 
     const cotizacionFormateada = this.formatearCotizacion(cotizacion);
     await notificationService.solicitudCotizacionRecibida({
@@ -1178,8 +1231,14 @@ export class CotizacionService {
       );
     }
 
+    const cotizacionPersistida =
+      await cotizacionRepository.buscarPorIdConMetadataArchivo(idCotizacion);
+    if (!cotizacionPersistida) {
+      throw new Error("No se encontraron resultados.");
+    }
+
     const pedidoData = pedidoService.prepararPedidoDesdeCotizacion(
-      cotizacion,
+      cotizacionPersistida,
       {
         observaciones: `Pedido creado automaticamente al aprobar la cotizacion #${idCotizacion}.`,
       },

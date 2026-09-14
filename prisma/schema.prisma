@@ -391,6 +391,7 @@ model DetalleCotizacion {
   requiereDiseno                  Boolean                 @default(true) @map("requiere_diseno")
   origenDiseno                    String                  @default("PIXEL") @map("origen_diseno") @db.VarChar(20)
   archivoDisenoInicialUrl         String?                 @map("archivo_diseno_inicial_url") @db.VarChar(500)
+  archivoDisenoInicialMetadata    Json?                   @map("archivo_diseno_inicial_metadata")
   esDisenoGeneral                 Boolean                 @default(false) @map("es_diseno_general")
   medioRecepcionDiseno            String?                 @map("medio_recepcion_diseno") @db.VarChar(30)
   observaciones                   String?                 @db.VarChar(255)
@@ -531,25 +532,26 @@ model Pedido {
 }
 
 model DetallePedido {
-  idDetallePedido         Int                     @id @default(autoincrement()) @map("id_detalle_pedido")
-  idPedido                Int                     @map("id_pedido")
-  idTecnica               Int?                    @map("id_tecnica")
-  idProducto              Int?                    @map("id_producto")
-  tipoProducto            TipoProductoCotizacion  @default(CATALOGO) @map("tipo_producto")
-  nombrePersonalizado     String?                 @map("nombre_personalizado") @db.VarChar(150)
-  materialReferencia      String?                 @map("material_referencia") @db.VarChar(255)
-  suministradoPor         SuministradoPorProducto @default(PIXEL) @map("suministrado_por")
-  descripcion             String
-  cantidad                Int
-  precioUnitario          Decimal                 @db.Decimal(10, 2)
-  subtotal                Decimal                 @db.Decimal(10, 2)
-  costoDiseno             Decimal?                @default(0) @map("costo_diseno") @db.Decimal(10, 2)
-  requiereDiseno          Boolean                 @default(true) @map("requiere_diseno")
-  origenDiseno            String                  @default("PIXEL") @map("origen_diseno") @db.VarChar(20)
-  archivoDisenoInicialUrl String?                 @map("archivo_diseno_inicial_url") @db.VarChar(500)
-  esDisenoGeneral         Boolean                 @default(false) @map("es_diseno_general")
-  medioRecepcionDiseno    String?                 @map("medio_recepcion_diseno") @db.VarChar(30)
-  observaciones           String?
+  idDetallePedido              Int                     @id @default(autoincrement()) @map("id_detalle_pedido")
+  idPedido                     Int                     @map("id_pedido")
+  idTecnica                    Int?                    @map("id_tecnica")
+  idProducto                   Int?                    @map("id_producto")
+  tipoProducto                 TipoProductoCotizacion  @default(CATALOGO) @map("tipo_producto")
+  nombrePersonalizado          String?                 @map("nombre_personalizado") @db.VarChar(150)
+  materialReferencia           String?                 @map("material_referencia") @db.VarChar(255)
+  suministradoPor              SuministradoPorProducto @default(PIXEL) @map("suministrado_por")
+  descripcion                  String
+  cantidad                     Int
+  precioUnitario               Decimal                 @db.Decimal(10, 2)
+  subtotal                     Decimal                 @db.Decimal(10, 2)
+  costoDiseno                  Decimal?                @default(0) @map("costo_diseno") @db.Decimal(10, 2)
+  requiereDiseno               Boolean                 @default(true) @map("requiere_diseno")
+  origenDiseno                 String                  @default("PIXEL") @map("origen_diseno") @db.VarChar(20)
+  archivoDisenoInicialUrl      String?                 @map("archivo_diseno_inicial_url") @db.VarChar(500)
+  archivoDisenoInicialMetadata Json?                   @map("archivo_diseno_inicial_metadata")
+  esDisenoGeneral              Boolean                 @default(false) @map("es_diseno_general")
+  medioRecepcionDiseno         String?                 @map("medio_recepcion_diseno") @db.VarChar(30)
+  observaciones                String?
 
   pedido     Pedido                   @relation(fields: [idPedido], references: [idPedido], onDelete: Cascade)
   tecnica    Tecnica?                 @relation(fields: [idTecnica], references: [idTecnica], onDelete: SetNull)

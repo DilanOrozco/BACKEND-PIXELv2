@@ -125,6 +125,7 @@ const cotizacionParaPedidoSelect = {
       requiereDiseno: true,
       origenDiseno: true,
       archivoDisenoInicialUrl: true,
+      archivoDisenoInicialMetadata: true,
       esDisenoGeneral: true,
       medioRecepcionDiseno: true,
       observaciones: true,

@@ -70,6 +70,11 @@ test("CotizacionService dispara PEDIDO_CREADO_DESDE_COTIZACION al aprobar", asyn
   t.mock.method(CotizacionRepository.prototype, "buscarPorId", async () => cotizacion);
   t.mock.method(
     CotizacionRepository.prototype,
+    "buscarPorIdConMetadataArchivo",
+    async () => cotizacion,
+  );
+  t.mock.method(
+    CotizacionRepository.prototype,
     "aprobarYCrearPedido",
     async () => ({ cotizacion: { ...cotizacion, estado: "APROBADA" }, pedido }),
   );

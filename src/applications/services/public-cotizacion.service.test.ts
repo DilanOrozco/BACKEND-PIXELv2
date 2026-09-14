@@ -9,6 +9,7 @@ import { ProductoRepository } from "../../infrastructure/repositories/producto.r
 import { TarifaTecnicaRepository } from "../../infrastructure/repositories/tarifa-tecnica.repository";
 import { UsuarioRepository } from "../../infrastructure/repositories/usuario.repository";
 import { TecnicaRepository } from "../../infrastructure/repositories/tecnica.repository";
+import { CloudinaryDesignStorageService } from "./cloudinary-design-storage.service";
 
 const cliente = {
   idCliente: 10,
@@ -308,6 +309,70 @@ test("cliente autenticado cotiza con su Cliente real", async (t) => {
   );
 
   assert.equal(crearMock.mock.calls[0]?.arguments[0].idCliente, 10);
+});
+
+test("si Cloudinary funciona y falla la BD limpia el archivo nuevo", async (t) => {
+  configurarCalculo(t);
+  t.mock.method(
+    ClienteAccessService.prototype,
+    "obtenerClienteDeUsuario",
+    async () => cliente,
+  );
+  t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "subirDisenoCotizacion",
+    async () => ({
+      secureUrl: "https://res.cloudinary.test/cotizacion.png",
+      publicId: "pixel/cotizaciones/disenos/cotizacion",
+      originalName: "cotizacion.png",
+      mimeType: "image/png",
+      format: "png",
+      sizeBytes: 8,
+      resourceType: "image",
+    }),
+  );
+  const cleanup = t.mock.method(
+    CloudinaryDesignStorageService.prototype,
+    "eliminarRecienSubido",
+    async () => true,
+  );
+  t.mock.method(
+    CotizacionRepository.prototype,
+    "crearCotizacionConDetalles",
+    async () => {
+      throw new Error("DB_FAIL");
+    },
+  );
+  const archivo = {
+    fieldname: "archivoDiseno",
+    originalname: "cotizacion.png",
+    encoding: "7bit",
+    mimetype: "image/png",
+    size: 8,
+    buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  } as Express.Multer.File;
+
+  await assert.rejects(
+    new PublicCotizacionService().crearCotizacion(
+      {
+        items: [
+          {
+            ...item,
+            origenDiseno: "CLIENTE",
+            archivoDisenoIndice: 0,
+            estampados: item.estampados.map((estampado) => ({
+              ...estampado,
+              origenDiseno: "CLIENTE",
+            })),
+          },
+        ],
+      },
+      { idUsuario: 77, rol: "Cliente" },
+      [archivo],
+    ),
+    /DB_FAIL/,
+  );
+  assert.equal(cleanup.mock.callCount(), 1);
 });
 
 test("producto OTRO y servicio sin tarifa quedan en revision sin ser rechazados", async (t) => {

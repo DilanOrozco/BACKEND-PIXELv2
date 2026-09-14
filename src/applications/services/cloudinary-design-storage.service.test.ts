@@ -21,6 +21,7 @@ const archivo = (
 test("CloudinaryDesignStorage valida JPG, PNG, WEBP y PDF por firma real", () => {
   const casos = [
     archivo("diseno.jpg", "image/jpeg", Buffer.from([0xff, 0xd8, 0xff, 0x00])),
+    archivo("diseno.jpeg", "image/jpeg", Buffer.from([0xff, 0xd8, 0xff, 0x00])),
     archivo(
       "diseno.png",
       "image/png",
@@ -36,7 +37,7 @@ test("CloudinaryDesignStorage valida JPG, PNG, WEBP y PDF por firma real", () =>
 
   assert.deepEqual(
     casos.map((item) => validarArchivoDiseno(item).mimeType),
-    ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+    ["image/jpeg", "image/jpeg", "image/png", "image/webp", "application/pdf"],
   );
 });
 

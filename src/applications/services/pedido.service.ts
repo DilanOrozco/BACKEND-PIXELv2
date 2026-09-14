@@ -184,6 +184,8 @@ const prepararDetallePedido = (detalle: any) => {
     archivoDisenoInicialUrl: limpiarTextoOpcional(
       detalle.archivoDisenoInicialUrl,
     ),
+    archivoDisenoInicialMetadata:
+      detalle.archivoDisenoInicialMetadata ?? null,
     esDisenoGeneral: detalle.esDisenoGeneral === true,
     medioRecepcionDiseno: limpiarTextoOpcional(
       detalle.medioRecepcionDiseno,

@@ -23,14 +23,29 @@ const CAMPOS_PRECIO_INTERNO_DETALLE = new Set([
 ]);
 
 const limpiarDetalleCliente = (detalle: any) => {
+  const metadata = detalle?.archivoDisenoInicialMetadata;
   const limpio = Object.fromEntries(
     Object.entries(detalle ?? {}).filter(
-      ([campo]) => !CAMPOS_PRECIO_INTERNO_DETALLE.has(campo),
+      ([campo]) =>
+        !CAMPOS_PRECIO_INTERNO_DETALLE.has(campo) &&
+        campo !== "archivoDisenoInicialMetadata",
     ),
   );
 
   return {
     ...limpio,
+    archivoDisenoInicial: metadata
+      ? {
+          secureUrl: metadata.secureUrl ?? detalle.archivoDisenoInicialUrl,
+          originalName: metadata.originalName ?? null,
+          mimeType: metadata.mimeType ?? null,
+          format: metadata.format ?? null,
+          sizeBytes: metadata.sizeBytes ?? null,
+          resourceType: metadata.resourceType ?? null,
+        }
+      : detalle?.archivoDisenoInicialUrl
+        ? { secureUrl: detalle.archivoDisenoInicialUrl }
+        : null,
     producto: detalle?.producto
       ? {
           idProducto: detalle.producto.idProducto,

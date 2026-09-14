@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { PublicController } from "../controllers/public.controller";
 import { verificarAuthOpcional } from "../middlewares/auth.middleware";
+import { uploadQuoteDesignFiles } from "../middlewares/upload.middleware";
 
 const router = Router();
 const publicController = new PublicController();
@@ -16,6 +17,7 @@ router.post("/cotizaciones/calcular", publicController.calcularCotizacion);
 router.post(
   "/cotizaciones",
   verificarAuthOpcional,
+  uploadQuoteDesignFiles,
   publicController.crearCotizacion,
 );
 

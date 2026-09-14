@@ -74,6 +74,7 @@ export class CotizacionController {
       const cotizacion = await cotizacionService.crearSolicitudCliente(
         req.body,
         req.user,
+        req.files as Express.Multer.File[] | undefined,
       );
 
       return res.status(201).json({
@@ -113,6 +114,7 @@ export class CotizacionController {
       const cotizacion = await cotizacionService.crearCotizacionNormal(
         req.body,
         req.user,
+        req.files as Express.Multer.File[] | undefined,
       );
 
       return res.status(201).json({

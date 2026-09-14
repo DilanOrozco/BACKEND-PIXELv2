@@ -124,13 +124,17 @@ export const validarArchivoDiseno = (file: DesignUploadFile) => {
 };
 
 export class CloudinaryDesignStorageService {
-  async subirDiseno(file: DesignUploadFile, idPedido: number): Promise<StoredDesignFile> {
+  private async subirArchivo(
+    file: DesignUploadFile,
+    folder: string,
+    publicIdPrefix: string,
+  ): Promise<StoredDesignFile> {
     const archivoValidado = validarArchivoDiseno(file);
 
     try {
       const resultado = await subirBufferCloudinary(file.buffer, {
-        folder: `pixel/disenos/pedido-${idPedido}`,
-        publicId: `diseno-${randomUUID()}`,
+        folder,
+        publicId: `${publicIdPrefix}-${randomUUID()}`,
         allowedFormats: ["jpg", "jpeg", "png", "webp", "pdf"],
       });
 
@@ -148,6 +152,22 @@ export class CloudinaryDesignStorageService {
         "No pudimos almacenar el archivo. Intenta nuevamente.",
       );
     }
+  }
+
+  async subirDiseno(file: DesignUploadFile, idPedido: number): Promise<StoredDesignFile> {
+    return await this.subirArchivo(
+      file,
+      `pixel/disenos/pedido-${idPedido}`,
+      "diseno",
+    );
+  }
+
+  async subirDisenoCotizacion(file: DesignUploadFile): Promise<StoredDesignFile> {
+    return await this.subirArchivo(
+      file,
+      "pixel/cotizaciones/disenos",
+      "diseno-cotizacion",
+    );
   }
 
   async eliminarRecienSubido(publicId: string, resourceType: string) {

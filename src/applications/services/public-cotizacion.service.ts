@@ -14,6 +14,7 @@ import {
 } from "../validators/public-cotizacion.validator";
 import { CotizacionCalculoInternoService } from "./cotizacion-calculo-interno.service";
 import { serializarCotizacionCliente } from "../../utils/cotizacion-serializer.util";
+import { CotizacionDesignFileService } from "./cotizacion-design-file.service";
 
 const clienteRepository = new ClienteRepository();
 const cotizacionRepository = new CotizacionRepository();
@@ -25,6 +26,7 @@ const notificationService = new NotificationService();
 const clienteAccessService = new ClienteAccessService();
 const usuarioRepository = new UsuarioRepository();
 const calculoInternoService = new CotizacionCalculoInternoService();
+const cotizacionDesignFileService = new CotizacionDesignFileService();
 
 const EMAIL_REQUIRES_LOGIN_MESSAGE =
   "Este correo ya est\u00e1 registrado. Inicia sesi\u00f3n para realizar una cotizaci\u00f3n con esta cuenta.";
@@ -227,6 +229,7 @@ export const detallesPersistenciaSolicitud = (calculo: any) =>
       requiereDiseno,
       origenDiseno: item.origenDiseno,
       archivoDisenoInicialUrl: item.archivoDisenoInicialUrl,
+      archivoDisenoInicialMetadata: item.archivoDisenoInicialMetadata,
       esDisenoGeneral: item.esDisenoGeneral,
       medioRecepcionDiseno:
         item.origenDiseno === "CLIENTE" && item.archivoDisenoInicialUrl
@@ -364,6 +367,7 @@ export class PublicCotizacionService {
   async crearCotizacion(
     data: Record<string, unknown>,
     usuarioAuth?: any,
+    files: Express.Multer.File[] = [],
   ) {
     const esClienteAutenticado =
       String(usuarioAuth?.rol ?? "").toLowerCase() === "cliente";
@@ -381,7 +385,6 @@ export class PublicCotizacionService {
       throw new Error(error);
     }
 
-    const calculo = await calculoInternoService.calcular(data);
     let cliente: any = clienteAutenticado;
     let accesoCliente: any = clienteAutenticado
       ? {
@@ -432,23 +435,38 @@ export class PublicCotizacionService {
       accesoCliente = await clienteAccessService.asegurarAccesoCliente(cliente);
     }
 
-    const detalles = detallesPersistenciaSolicitud(calculo);
+    const adjuntos = await cotizacionDesignFileService.adjuntarArchivos(
+      data,
+      files,
+    );
+    data = adjuntos.data;
 
-    const cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
-      idCliente: cliente.idCliente,
-      creadoPorId: null,
-      tipoCotizacion: "PUBLICA",
-      estado: "EN_REVISION",
-      subtotal: 0,
-      descuentoTotal: 0,
-      costosAdicionales: 0,
-      total: 0,
-      precioSugeridoInterno: calculo.precioSugeridoInterno,
-      requiereRevisionPrecio: calculo.requiereRevisionPrecio,
-      advertenciasInternas: calculo.advertencias,
-      observaciones: limpiarTextoOpcional(data.observaciones),
-      detalles,
-    });
+    let cotizacion: any;
+    let calculo: any;
+    try {
+      calculo = await calculoInternoService.calcular(data);
+      const detalles = detallesPersistenciaSolicitud(calculo);
+      cotizacion = await cotizacionRepository.crearCotizacionConDetalles({
+        idCliente: cliente.idCliente,
+        creadoPorId: null,
+        tipoCotizacion: "PUBLICA",
+        estado: "EN_REVISION",
+        subtotal: 0,
+        descuentoTotal: 0,
+        costosAdicionales: 0,
+        total: 0,
+        precioSugeridoInterno: calculo.precioSugeridoInterno,
+        requiereRevisionPrecio: calculo.requiereRevisionPrecio,
+        advertenciasInternas: calculo.advertencias,
+        observaciones: limpiarTextoOpcional(data.observaciones),
+        detalles,
+      });
+    } catch (error) {
+      await cotizacionDesignFileService.limpiarArchivos(
+        adjuntos.archivosSubidos,
+      );
+      throw error;
+    }
     const observaciones = limpiarTextoOpcional(data.observaciones);
     const email = await notificationService.solicitudCotizacionRecibida({
       ...serializarCotizacionCliente(cotizacion),

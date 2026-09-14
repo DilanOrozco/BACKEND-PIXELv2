@@ -87,6 +87,7 @@ export class PublicController {
       const cotizacion = await publicCotizacionService.crearCotizacion(
         req.body,
         req.user,
+        req.files as Express.Multer.File[] | undefined,
       );
 
       return res.status(201).json({
