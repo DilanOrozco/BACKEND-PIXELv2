@@ -252,11 +252,11 @@ test("autorizarPermiso bloquea rol sin permiso", async (t) => {
 });
 
 test("autorizarAlgunPermiso permite al Cliente consultar con su permiso especifico", async (t) => {
-  const rolTienePermisoMock = t.mock.method(
+  const rolTieneAlgunPermisoMock = t.mock.method(
     PermisoService.prototype,
-    "rolTienePermiso",
-    async (_idRol: number, codigo: string) =>
-      codigo === "cotizaciones.cliente.ver",
+    "rolTieneAlgunPermiso",
+    async (_idRol: number, codigos: string[]) =>
+      codigos.includes("cotizaciones.cliente.ver"),
   );
   const req: any = { user: { idRol: 5, rol: "Cliente" } };
   const res = crearRespuesta();
@@ -270,7 +270,11 @@ test("autorizarAlgunPermiso permite al Cliente consultar con su permiso especifi
   });
 
   assert.equal(llamado, true);
-  assert.equal(rolTienePermisoMock.mock.calls.length, 2);
+  assert.equal(rolTieneAlgunPermisoMock.mock.calls.length, 1);
+  assert.deepEqual(rolTieneAlgunPermisoMock.mock.calls[0]?.arguments, [
+    5,
+    ["cotizaciones.ver", "cotizaciones.cliente.ver"],
+  ]);
 });
 
 test("autorizarActualizacionUsuario permite Cliente editar su propio perfil con perfil.editar", async (t) => {

@@ -49,6 +49,7 @@ export class VentaRepository {
   async listarVentas(filtros: VentaFiltros = {}) {
     return await prisma.pedido.findMany({
       where: construirWhere(filtros),
+      relationLoadStrategy: "join",
       select: ventaSelect,
       orderBy: [
         {
@@ -101,6 +102,7 @@ export class VentaRepository {
           },
         ],
       } as any,
+      relationLoadStrategy: "join",
       select: ventaSelect,
       orderBy: [
         {

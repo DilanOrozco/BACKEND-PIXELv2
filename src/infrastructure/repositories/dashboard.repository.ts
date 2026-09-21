@@ -269,6 +269,21 @@ export interface VentaPorMesRaw {
   cantidadPedidos: number | bigint | string;
 }
 
+export interface ResumenAdminRaw {
+  totalPedidos: number | bigint | string;
+  pedidosPendientes: number | bigint | string;
+  pedidosEnProceso: number | bigint | string;
+  pedidosPendientesSaldoFinal: number | bigint | string;
+  pedidosFinalizados: number | bigint | string;
+  pedidosEntregados: number | bigint | string;
+  pedidosAnulados: number | bigint | string;
+  totalClientes: number | bigint | string;
+  totalCotizacionesPendientes: number | bigint | string;
+  ingresosDia: unknown;
+  ingresosMes: unknown;
+  ingresosAnio: unknown;
+}
+
 export type GranularidadTendencia = "DIA" | "SEMANA" | "MES" | "ANIO";
 
 export interface TendenciaAdminRaw {
@@ -369,6 +384,66 @@ export const construirConsultaTendenciasAdmin = (
 };
 
 export class DashboardRepository {
+  async obtenerResumenAdmin(
+    rangoDia: RangoFechas,
+    rangoMes: RangoFechas,
+    rangoAnio: RangoFechas,
+  ) {
+    const resultados = await prisma.$queryRaw<ResumenAdminRaw[]>`
+      WITH pedidos_resumen AS (
+        SELECT
+          COUNT(*)::bigint AS "totalPedidos",
+          COUNT(*) FILTER (WHERE "estadoPedido" = 'PENDIENTE')::bigint AS "pedidosPendientes",
+          COUNT(*) FILTER (WHERE "estadoPedido" = 'EN_PROCESO')::bigint AS "pedidosEnProceso",
+          COUNT(*) FILTER (WHERE "estadoPedido" = 'PENDIENTE_SALDO_FINAL')::bigint AS "pedidosPendientesSaldoFinal",
+          COUNT(*) FILTER (WHERE "estadoPedido" = 'FINALIZADO')::bigint AS "pedidosFinalizados",
+          COUNT(*) FILTER (WHERE "estadoPedido" = 'ENTREGADO')::bigint AS "pedidosEntregados",
+          COUNT(*) FILTER (WHERE "estadoPedido" = 'ANULADO')::bigint AS "pedidosAnulados"
+        FROM "pedidos"
+      ),
+      clientes_resumen AS (
+        SELECT COUNT(*) FILTER (WHERE "estado" = true)::bigint AS "totalClientes"
+        FROM "clientes"
+      ),
+      cotizaciones_resumen AS (
+        SELECT COUNT(*) FILTER (
+          WHERE "estado" IN (
+            'PENDIENTE',
+            'SOLICITUD_RECIBIDA',
+            'EN_REVISION',
+            'PENDIENTE_APROBACION_CLIENTE',
+            'AJUSTE_SOLICITADO'
+          )
+        )::bigint AS "totalCotizacionesPendientes"
+        FROM "cotizaciones"
+      ),
+      ingresos_resumen AS (
+        SELECT
+          COALESCE(SUM("monto") FILTER (
+            WHERE "fecha_confirmacion" >= ${rangoDia.fechaInicio}
+              AND "fecha_confirmacion" < ${rangoDia.fechaFin}
+          ), 0) AS "ingresosDia",
+          COALESCE(SUM("monto") FILTER (
+            WHERE "fecha_confirmacion" >= ${rangoMes.fechaInicio}
+              AND "fecha_confirmacion" < ${rangoMes.fechaFin}
+          ), 0) AS "ingresosMes",
+          COALESCE(SUM("monto") FILTER (
+            WHERE "fecha_confirmacion" >= ${rangoAnio.fechaInicio}
+              AND "fecha_confirmacion" < ${rangoAnio.fechaFin}
+          ), 0) AS "ingresosAnio"
+        FROM "abonos"
+        WHERE "estado" = 'CONFIRMADO'
+      )
+      SELECT *
+      FROM pedidos_resumen
+      CROSS JOIN clientes_resumen
+      CROSS JOIN cotizaciones_resumen
+      CROSS JOIN ingresos_resumen
+    `;
+
+    return resultados[0];
+  }
+
   async obtenerTendenciasPorRango(
     fechaInicio: string,
     fechaFinExclusiva: string,
@@ -463,6 +538,7 @@ export class DashboardRepository {
   async obtenerUltimosPedidos(limite: number) {
     return await prisma.pedido.findMany({
       take: limite,
+      relationLoadStrategy: "join",
       select: ultimoPedidoSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -484,6 +560,7 @@ export class DashboardRepository {
         },
       },
       take: limite,
+      relationLoadStrategy: "join",
       select: cotizacionPendienteAdminSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -574,6 +651,7 @@ export class DashboardRepository {
           in: ["PENDIENTE", "EN_PROCESO", "PENDIENTE_SALDO_FINAL"],
         },
       },
+      relationLoadStrategy: "join",
       select: pedidoActivoClienteSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -606,6 +684,7 @@ export class DashboardRepository {
           },
         ],
       },
+      relationLoadStrategy: "join",
       select: pedidoActivoClienteSelect,
       orderBy: [
         {
@@ -625,6 +704,7 @@ export class DashboardRepository {
         estadoPedido: { in: ["FINALIZADO", "ENTREGADO", "ANULADO"] },
       },
       take: limite,
+      relationLoadStrategy: "join",
       select: historialPedidoClienteSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -651,6 +731,7 @@ export class DashboardRepository {
         },
       },
       take: limite,
+      relationLoadStrategy: "join",
       select: cotizacionPendienteClienteSelect,
       orderBy: {
         fechaCreacion: "desc",

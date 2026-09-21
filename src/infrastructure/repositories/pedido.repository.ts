@@ -206,6 +206,7 @@ export class PedidoRepository {
   async buscarCotizacionParaPedido(idCotizacion: number) {
     return await prisma.cotizacion.findUnique({
       where: { idCotizacion },
+      relationLoadStrategy: "join",
       select: cotizacionParaPedidoSelect,
     });
   }
@@ -258,8 +259,8 @@ export class PedidoRepository {
         pedido.idPedido,
       );
 
-      for (const diseno of disenosIniciales) {
-        await tx.diseno.create({ data: diseno });
+      if (disenosIniciales.length > 0) {
+        await tx.diseno.createMany({ data: disenosIniciales });
       }
 
       return { idPedido: pedido.idPedido };
@@ -277,6 +278,7 @@ export class PedidoRepository {
   async listarPedidos(filtros: PedidoListadoFiltros = {}) {
     return await prisma.pedido.findMany({
       where: buildPedidoWhere(filtros),
+      relationLoadStrategy: "join",
       select: pedidoSelect,
       orderBy: {
         idPedido: "desc",
@@ -287,6 +289,7 @@ export class PedidoRepository {
   async listarPorCliente(idCliente: number) {
     return await prisma.pedido.findMany({
       where: { idCliente },
+      relationLoadStrategy: "join",
       select: pedidoSelect,
       orderBy: {
         idPedido: "desc",
@@ -303,6 +306,7 @@ export class PedidoRepository {
       prisma.pedido.count({ where }),
       prisma.pedido.findMany({
         where,
+        relationLoadStrategy: "join",
         select: pedidoSelect,
         orderBy: buildPedidoOrderBy(pagination),
         skip: pagination.skip,
@@ -316,6 +320,7 @@ export class PedidoRepository {
   async buscarPorId(idPedido: number, tx?: Prisma.TransactionClient) {
     return await db(tx).pedido.findUnique({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: pedidoSelect,
     });
   }
@@ -362,6 +367,7 @@ export class PedidoRepository {
           },
         ],
       } as any,
+      relationLoadStrategy: "join",
       select: pedidoSelect,
       orderBy: {
         idPedido: "desc",

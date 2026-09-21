@@ -40,11 +40,15 @@ export class PasswordResetTokenRepository {
           gt: new Date(),
         },
       },
-      include: {
+      relationLoadStrategy: "join",
+      select: {
+        idPasswordResetToken: true,
+        idUsuario: true,
         usuario: {
-          include: {
-            rol: true,
-            cliente: true,
+          select: {
+            estado: true,
+            rol: { select: { nombre: true } },
+            cliente: { select: { idCliente: true } },
           },
         },
       },

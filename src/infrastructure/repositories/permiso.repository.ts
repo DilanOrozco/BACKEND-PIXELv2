@@ -54,6 +54,7 @@ export class PermisoRepository {
 
     return await prisma.rol.findUnique({
       where: { idRol },
+      relationLoadStrategy: "join",
       include: {
         permisos: {
           include: {
@@ -132,6 +133,31 @@ export class PermisoRepository {
           estado: true,
         },
       },
+      select: {
+        idPermiso: true,
+      },
+    });
+
+    return Boolean(permiso);
+  }
+
+  async rolTieneAlgunPermiso(idRol: number, codigos: string[]) {
+    if (codigos.length === 0) {
+      return false;
+    }
+
+    const permiso = await prisma.rolPermiso.findFirst({
+      where: {
+        idRol,
+        permiso: {
+          codigo: { in: codigos },
+          estado: true,
+        },
+        rol: {
+          estado: true,
+        },
+      },
+      relationLoadStrategy: "join",
       select: {
         idPermiso: true,
       },

@@ -11,9 +11,13 @@ export const PRISMA_TRANSACTION_OPTIONS = {
 } satisfies NonNullable<Prisma.PrismaClientOptions["transactionOptions"]>;
 
 const adapter = new PrismaPg({ connectionString });
+const queryMetricsEnabled = process.env.PERF_QUERY_LOG === "1";
 const prisma = new PrismaClient({
   adapter,
   transactionOptions: PRISMA_TRANSACTION_OPTIONS,
+  ...(queryMetricsEnabled
+    ? { log: [{ emit: "event", level: "query" }] as const }
+    : {}),
 });
 
 const runPrismaTransaction = async <T>(

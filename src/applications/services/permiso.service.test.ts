@@ -104,6 +104,28 @@ test("PermisoService sincronizarPermisosSistema conserva sincronizacion admin", 
   assert.equal(asegurarRolMock.mock.calls.length, 1);
 });
 
+test("PermisoService valida varios permisos en una sola consulta", async (t) => {
+  const batchMock = t.mock.method(
+    PermisoRepository.prototype,
+    "rolTieneAlgunPermiso",
+    async (_idRol: number, codigos: string[]) =>
+      codigos.includes("cotizaciones.cliente.ver"),
+  );
+
+  const permitido = await new PermisoService().rolTieneAlgunPermiso(5, [
+    "cotizaciones.ver",
+    "cotizaciones.cliente.ver",
+    "cotizaciones.cliente.ver",
+    "codigo.inexistente",
+  ]);
+
+  assert.equal(permitido, true);
+  assert.deepEqual(batchMock.mock.calls[0]?.arguments, [
+    5,
+    ["cotizaciones.ver", "cotizaciones.cliente.ver"],
+  ]);
+});
+
 test("PermisoService asigna permisos a rol existente sin sincronizar catalogo", async (t) => {
   const syncMock = t.mock.method(
     PermisoRepository.prototype,

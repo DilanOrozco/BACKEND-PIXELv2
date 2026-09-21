@@ -57,6 +57,7 @@ export class ProductoRepository {
           ? { idCategoriaProducto: filtros.idCategoriaProducto }
           : {}),
       },
+      relationLoadStrategy: "join",
       select: productoPublicSelect,
       orderBy: { nombre: "asc" },
     });
@@ -71,6 +72,7 @@ export class ProductoRepository {
       prisma.productoCotizable.count({ where }),
       prisma.productoCotizable.findMany({
         where,
+        relationLoadStrategy: "join",
         select: productoSelect,
         orderBy: buildProductoOrderBy(pagination),
         skip: pagination.skip,
@@ -84,6 +86,7 @@ export class ProductoRepository {
   async buscarPorId(idProducto: number) {
     return await prisma.productoCotizable.findUnique({
       where: { idProducto },
+      relationLoadStrategy: "join",
       select: productoSelect,
     });
   }
@@ -91,6 +94,7 @@ export class ProductoRepository {
   async buscarActivoPorId(idProducto: number) {
     return await prisma.productoCotizable.findFirst({
       where: { idProducto, estado: true },
+      relationLoadStrategy: "join",
       select: productoSelect,
     });
   }
@@ -105,6 +109,7 @@ export class ProductoRepository {
         idProducto: { in: idsProductos },
         estado: true,
       },
+      relationLoadStrategy: "join",
       select: productoSelect,
     });
   }
@@ -112,6 +117,7 @@ export class ProductoRepository {
   async buscarPorNombreExacto(nombre: string) {
     return await prisma.productoCotizable.findUnique({
       where: { nombre },
+      relationLoadStrategy: "join",
       select: productoSelect,
     });
   }
@@ -179,6 +185,7 @@ export class ProductoRepository {
 
     return await prisma.productoCotizable.findUnique({
       where: { idProducto },
+      relationLoadStrategy: "join",
       select: productoSelect,
     });
   }
