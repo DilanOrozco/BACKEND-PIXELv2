@@ -1,4 +1,4 @@
-const correoRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { esCorreoValido } from "./email.validator";
 
 export const validarRegistroCliente = (data: any) => {
   if (!data.nombre || data.nombre.trim() === "") {
@@ -13,7 +13,7 @@ export const validarRegistroCliente = (data: any) => {
     return "El correo no puede estar vacío.";
   }
 
-  if (!correoRegex.test(data.correo)) {
+  if (!esCorreoValido(data.correo)) {
     return "El correo debe tener formato válido.";
   }
 
@@ -33,7 +33,7 @@ export const validarLogin = (data: any) => {
     return "El correo no puede estar vacío.";
   }
 
-  if (!correoRegex.test(data.correo)) {
+  if (!esCorreoValido(data.correo)) {
     return "El correo debe tener formato válido.";
   }
 
@@ -49,7 +49,7 @@ export const validarForgotPassword = (data: any) => {
     return "El correo no puede estar vacio.";
   }
 
-  if (!correoRegex.test(data.correo)) {
+  if (!esCorreoValido(data.correo)) {
     return "El correo debe tener formato valido.";
   }
 

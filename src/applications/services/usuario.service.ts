@@ -97,7 +97,7 @@ export class UsuarioService {
   }
 
   async buscarPorId(idUsuario: number) {
-    if (isNaN(idUsuario) || idUsuario <= 0) {
+    if (Number.isNaN(Number(idUsuario)) || idUsuario <= 0) {
       throw new Error("El id del usuario no es válido.");
     }
 
@@ -145,7 +145,7 @@ export class UsuarioService {
   }
 
   async actualizarUsuario(idUsuario: number, data: any) {
-    if (isNaN(idUsuario) || idUsuario <= 0) {
+    if (Number.isNaN(Number(idUsuario)) || idUsuario <= 0) {
       throw new Error("El id del usuario no es válido.");
     }
 
@@ -218,7 +218,7 @@ export class UsuarioService {
   }
 
   async actualizarPerfilPropio(idUsuario: number, data: any) {
-    if (isNaN(idUsuario) || idUsuario <= 0) {
+    if (Number.isNaN(Number(idUsuario)) || idUsuario <= 0) {
       throw new Error("El id del usuario no es vÃ¡lido.");
     }
 
@@ -285,7 +285,7 @@ export class UsuarioService {
   }
 
   async desactivarUsuario(idUsuario: number) {
-    if (isNaN(idUsuario) || idUsuario <= 0) {
+    if (Number.isNaN(Number(idUsuario)) || idUsuario <= 0) {
       throw new Error("El id del usuario no es válido.");
     }
 
@@ -298,7 +298,7 @@ export class UsuarioService {
   }
 
   async eliminarUsuario(idUsuario: number) {
-    if (isNaN(idUsuario) || idUsuario <= 0) {
+    if (Number.isNaN(Number(idUsuario)) || idUsuario <= 0) {
       throw new Error("El id del usuario no es valido.");
     }
 

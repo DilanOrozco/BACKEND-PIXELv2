@@ -71,7 +71,7 @@ export class RolService {
     idRol: number,
     data: { nombre?: string; descripcion?: string; estado?: boolean },
   ) {
-    if (isNaN(idRol) || idRol <= 0) {
+    if (Number.isNaN(Number(idRol)) || idRol <= 0) {
       throw new Error("El ID del rol no es válido.");
     }
 
@@ -121,7 +121,7 @@ export class RolService {
   }
 
   async eliminarRol(idRol: number) {
-    if (isNaN(idRol) || idRol <= 0) {
+    if (Number.isNaN(Number(idRol)) || idRol <= 0) {
       throw new Error("El ID del rol no es valido.");
     }
 
@@ -135,7 +135,7 @@ export class RolService {
   }
 
   async obtenerImpactoEliminacion(idRol: number) {
-    if (isNaN(idRol) || idRol <= 0) {
+    if (Number.isNaN(Number(idRol)) || idRol <= 0) {
       throw new Error("El ID del rol no es valido.");
     }
 

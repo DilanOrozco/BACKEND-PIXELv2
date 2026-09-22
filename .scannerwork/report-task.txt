@@ -1,0 +1,6 @@
+projectKey=pixel-backend
+serverUrl=http://127.0.0.1:9001
+serverVersion=26.9.0.129388
+dashboardUrl=http://127.0.0.1:9001/dashboard?id=pixel-backend
+ceTaskId=45ec8f7f-b7b1-42a7-b548-0f3d3f15bbb1
+ceTaskUrl=http://127.0.0.1:9001/api/ce/task?id=45ec8f7f-b7b1-42a7-b548-0f3d3f15bbb1

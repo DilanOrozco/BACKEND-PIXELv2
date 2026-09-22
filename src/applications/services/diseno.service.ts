@@ -591,9 +591,7 @@ export class DisenoService {
       idDetallePedido:
         tipo === "PEDIDO_GENERAL"
           ? null
-          : tipo === "GRUPO_COMPARTIDO"
-            ? detalle?.idDetallePedido ?? null
-            : detalle?.idDetallePedido ?? null,
+          : detalle?.idDetallePedido ?? null,
       idDetalleEstampadoPedido:
         tipo === "ESTAMPADO"
           ? estampado.idDetalleEstampadoPedido

@@ -37,6 +37,21 @@ const crearUsuarioAuth = async (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const withJwtSecret = async <T>(callback: () => Promise<T>) => {
+  const jwtSecretAnterior = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "auth-service-test-secret";
+
+  try {
+    return await callback();
+  } finally {
+    if (jwtSecretAnterior === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = jwtSecretAnterior;
+    }
+  }
+};
+
 test("AuthService login admin con correo existente funciona y no devuelve password", async (t) => {
   const usuarioAuth = await crearUsuarioAuth();
   const buscarMock = t.mock.method(
@@ -45,10 +60,13 @@ test("AuthService login admin con correo existente funciona y no devuelve passwo
     async () => usuarioAuth,
   );
 
-  const respuesta = await new AuthService().login({
-    correo: "ADMIN@PIXEL.TEST",
-    contrasena: "Password123",
-  });
+  const respuesta = await withJwtSecret(
+    async () =>
+      await new AuthService().login({
+        correo: "ADMIN@PIXEL.TEST",
+        contrasena: "Password123",
+      }),
+  );
 
   assert.equal(buscarMock.mock.calls[0]?.arguments[0], "admin@pixel.test");
   assert.equal(typeof respuesta.token, "string");
@@ -82,10 +100,13 @@ test("AuthService login cliente con correo existente conserva Cliente vinculado"
     async () => usuarioCliente,
   );
 
-  const respuesta = await new AuthService().login({
-    correo: "cliente@pixel.test",
-    contrasena: "Password123",
-  });
+  const respuesta = await withJwtSecret(
+    async () =>
+      await new AuthService().login({
+        correo: "cliente@pixel.test",
+        contrasena: "Password123",
+      }),
+  );
 
   assert.equal(respuesta.usuario.rol.nombre, "Cliente");
   assert.equal(respuesta.usuario.cliente?.idCliente, 20);

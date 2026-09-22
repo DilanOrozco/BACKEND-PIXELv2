@@ -71,3 +71,27 @@ test("select publico de tecnica no expone tarifas ni descuentos", () => {
   assert.equal("descuentos" in tecnicaPublicSelect, false);
   assert.equal(tecnicaSelect.requiereMedidas, true);
 });
+
+test("buscar tecnica conserva la validacion coercitiva de IDs", async (t) => {
+  const buscarPorId = t.mock.method(
+    TecnicaRepository.prototype,
+    "buscarPorId",
+    async (idTecnica: number) => ({ idTecnica }),
+  );
+  const service = new TecnicaService();
+
+  assert.deepEqual(await service.buscarPorId(7), { idTecnica: 7 });
+  assert.deepEqual(
+    await service.buscarPorId("8" as unknown as number),
+    { idTecnica: "8" },
+  );
+
+  for (const idInvalido of ["abc", null, undefined, Number.NaN]) {
+    await assert.rejects(
+      () => service.buscarPorId(idInvalido as unknown as number),
+      /ID de la técnica no es válido/,
+    );
+  }
+
+  assert.equal(buscarPorId.mock.callCount(), 2);
+});

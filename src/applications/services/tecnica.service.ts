@@ -74,7 +74,7 @@ export class TecnicaService {
   }
 
   async buscarPorId(idTecnica: number) {
-    if (isNaN(idTecnica) || idTecnica <= 0) {
+    if (Number.isNaN(Number(idTecnica)) || idTecnica <= 0) {
       throw new Error("El ID de la técnica no es válido.");
     }
 
@@ -102,7 +102,7 @@ export class TecnicaService {
   }
 
   async actualizarTecnica(idTecnica: number, data: any) {
-    if (isNaN(idTecnica) || idTecnica <= 0) {
+    if (Number.isNaN(Number(idTecnica)) || idTecnica <= 0) {
       throw new Error("El ID de la técnica no es válido.");
     }
 
@@ -155,7 +155,7 @@ export class TecnicaService {
   }
 
   async desactivarTecnica(idTecnica: number) {
-    if (isNaN(idTecnica) || idTecnica <= 0) {
+    if (Number.isNaN(Number(idTecnica)) || idTecnica <= 0) {
       throw new Error("El ID de la técnica no es válido.");
     }
 
@@ -169,7 +169,7 @@ export class TecnicaService {
   }
 
   async eliminarTecnica(idTecnica: number) {
-    if (isNaN(idTecnica) || idTecnica <= 0) {
+    if (Number.isNaN(Number(idTecnica)) || idTecnica <= 0) {
       throw new Error("El ID de la tecnica no es valido.");
     }
 

@@ -7,6 +7,8 @@
     "dev": "tsx src/app.ts",
     "build": "tsc",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "pretest:coverage": "node -e \"require('node:fs').mkdirSync('coverage', { recursive: true })\"",
+    "test:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \"src/**/*.test.ts\"",
     "test:watch": "tsx --test --watch \"src/**/*.test.ts\"",
     "sync:productos": "tsx scripts/sync-productos-cotizables.ts",
     "backfill:tarifas-tecnicas": "tsx scripts/backfill-tarifa-tecnica-nombres.ts",
@@ -22,7 +24,6 @@
     "@types/node": "^25.8.0",
     "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",
-    "prisma": "^7.8.0",
     "tsx": "^4.22.1",
     "typescript": "^6.0.3"
   },
@@ -40,6 +41,7 @@
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
     "pg": "^8.20.0",
+    "prisma": "^7.8.0",
     "tesseract.js": "^7.0.0",
     "tsx": "^4.22.1",
     "typescript": "^6.0.3"

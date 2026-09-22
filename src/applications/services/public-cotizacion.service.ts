@@ -61,8 +61,8 @@ const respuestaCalculoPublica = (
   tecnicasPorId: Map<number, any> = new Map(),
 ) => {
   const items = calculo.items.map((item: any, index: number) => {
-    const { snapshot, ...publico } = item;
-    void snapshot;
+    const publico = { ...item };
+    Reflect.deleteProperty(publico, "snapshot");
     const idTecnica = itemsEntrada[index]?.idTecnica
       ? Number(itemsEntrada[index].idTecnica)
       : undefined;

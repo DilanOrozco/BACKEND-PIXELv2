@@ -8,6 +8,26 @@ type UploadOptions = {
   allowedFormats: string[];
 };
 
+export const normalizarErrorCloudinary = (
+  error: unknown,
+  fallbackMessage: string,
+): Error => {
+  if (error instanceof Error) {
+    return error;
+  }
+
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return new Error(error.message);
+  }
+
+  return new Error(fallbackMessage);
+};
+
 const configurarCloudinary = () => {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
   const apiKey = process.env.CLOUDINARY_API_KEY?.trim();
@@ -43,7 +63,9 @@ export const subirBufferCloudinary = (
       },
       (error, resultado) => {
         if (error || !resultado) {
-          reject(error ?? new Error("CLOUDINARY_EMPTY_RESPONSE"));
+          reject(
+            normalizarErrorCloudinary(error, "CLOUDINARY_EMPTY_RESPONSE"),
+          );
           return;
         }
 

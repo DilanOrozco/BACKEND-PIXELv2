@@ -40,12 +40,17 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 
 # 2. Instalamos dependencias de producción y generamos el cliente
-RUN npm ci --omit=dev && npx prisma generate
+RUN npm ci --omit=dev && ./node_modules/.bin/prisma generate
 
 # 3. Copiamos la carpeta 'generated' autogenerada y el código compilado
-COPY --from=builder /app/generated ./generated
-COPY --from=builder /app/dist ./dist
+COPY --chown=node:node --from=builder /app/generated ./generated
+COPY --chown=node:node --from=builder /app/dist ./dist
+
+# El almacenamiento local legacy necesita escritura, aun cuando Cloudinary sea el principal.
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
+
+USER node
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && npm start"]

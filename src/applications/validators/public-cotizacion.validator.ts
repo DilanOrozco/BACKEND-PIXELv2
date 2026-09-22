@@ -1,6 +1,6 @@
-type DatosEntrada = Record<string, unknown> | undefined;
+import { esCorreoValido } from "./email.validator";
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+type DatosEntrada = Record<string, unknown> | undefined;
 
 const valor = (data: DatosEntrada, campo: string) => data?.[campo];
 
@@ -21,7 +21,7 @@ const esCorreoOpcional = (valorEntrada: unknown) =>
   valorEntrada === "" ||
   (typeof valorEntrada === "string" &&
     valorEntrada.length <= 100 &&
-    EMAIL_REGEX.test(valorEntrada.trim()));
+    esCorreoValido(valorEntrada.trim()));
 
 const esEnteroPositivo = (valorEntrada: unknown) => {
   const numero = Number(valorEntrada);
