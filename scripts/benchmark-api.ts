@@ -15,6 +15,7 @@ type Sample = {
   prismaDurationMs: number;
   responseBytes: number;
   records: number | null;
+  totalRecords: number | null;
   status: number;
   queries?: string[];
 };
@@ -32,6 +33,7 @@ type EndpointResult = {
     averagePrismaDurationMs: number;
     averageResponseBytes: number;
     records: number | null;
+    totalRecords: number | null;
   };
 };
 
@@ -51,9 +53,18 @@ const countRecords = (payload: unknown): number | null => {
     const nested = object.data as Record<string, unknown>;
     if (Array.isArray(nested.data)) return nested.data.length;
     if (Array.isArray(nested.items)) return nested.items.length;
+    if (Array.isArray(nested.registros)) return nested.registros.length;
   }
 
   return null;
+};
+
+const countTotalRecords = (payload: unknown): number | null => {
+  if (!payload || typeof payload !== "object") return null;
+  const object = payload as Record<string, unknown>;
+  if (!object.data || typeof object.data !== "object") return null;
+  const nested = object.data as Record<string, unknown>;
+  return typeof nested.totalRegistros === "number" ? nested.totalRegistros : null;
 };
 
 const main = async () => {
@@ -133,6 +144,14 @@ const main = async () => {
     "/api/compras",
     "/api/roles?page=1&limit=20",
     "/api/permisos",
+    "/api/reportes/ventas?page=1&limit=20",
+    "/api/reportes/ventas/pdf",
+    "/api/reportes/pedidos?page=1&limit=20",
+    "/api/reportes/pedidos/pdf",
+    "/api/reportes/cotizaciones?page=1&limit=20",
+    "/api/reportes/cotizaciones/pdf",
+    "/api/reportes/abonos?page=1&limit=20",
+    "/api/reportes/abonos/pdf",
     ...(pedido ? [`/api/pedidos/${pedido.idPedido}/expediente`] : []),
   ];
   const onlyArgument = process.argv.find((argument) => argument.startsWith("--only="));
@@ -153,7 +172,8 @@ const main = async () => {
     const response = await fetch(`${baseUrl}${endpoint}`, {
       headers: { authorization: `Bearer ${token}` },
     });
-    const body = await response.text();
+    const bodyBuffer = Buffer.from(await response.arrayBuffer());
+    const body = bodyBuffer.toString("utf8");
     const elapsedMs = performance.now() - started;
     let payload: unknown = null;
     try {
@@ -166,8 +186,9 @@ const main = async () => {
       elapsedMs: round(elapsedMs),
       prismaQueries: queryCount,
       prismaDurationMs: round(queryDurationMs),
-      responseBytes: Buffer.byteLength(body),
+      responseBytes: bodyBuffer.byteLength,
       records: countRecords(payload),
+      totalRecords: countTotalRecords(payload),
       status: response.status,
       ...(traceQueries ? { queries: [...queryStatements] } : {}),
     };
@@ -202,6 +223,7 @@ const main = async () => {
             average(warm.map((sample) => sample.responseBytes)),
           ),
           records: warm.at(-1)?.records ?? null,
+          totalRecords: warm.at(-1)?.totalRecords ?? null,
         },
       });
     }
