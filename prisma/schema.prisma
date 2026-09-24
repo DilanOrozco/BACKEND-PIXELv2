@@ -4,8 +4,9 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -185,6 +186,7 @@ model Usuario {
   respuestasCotizacionRegistradas CotizacionRespuesta[] @relation("CotizacionRespuestaRegistradaPor")
   cliente                         Cliente?
 
+  @@index([idRol])
   @@map("usuarios")
 }
 
@@ -358,6 +360,7 @@ model Cotizacion {
   respuestas CotizacionRespuesta[]
 
   @@index([idCliente, fechaCreacion])
+  @@index([estado, fechaCreacion])
   @@map("cotizaciones")
 }
 
@@ -474,6 +477,7 @@ model CotizacionVersion {
 
   @@unique([idCotizacion, numeroVersion])
   @@index([idCotizacion, esVigente, estado])
+  @@index([esVigente, estado, validaHasta])
   @@map("cotizaciones_versiones")
 }
 
@@ -528,6 +532,7 @@ model Pedido {
 
   @@index([idCliente, fechaCreacion])
   @@index([idCotizacion])
+  @@index([estadoPedido, fechaCreacion])
   @@map("pedidos")
 }
 
@@ -559,6 +564,7 @@ model DetallePedido {
   disenos    Diseno[]
   estampados DetalleEstampadoPedido[]
 
+  @@index([idPedido])
   @@map("detalle_pedido")
 }
 
@@ -632,6 +638,7 @@ model Abonos {
 
   @@index([idPedido, comprobanteHash])
   @@index([estado, fechaCreacion])
+  @@index([estado, fechaConfirmacion])
   @@map("abonos")
 }
 
@@ -695,6 +702,8 @@ model Diseno {
 
   @@index([idDetallePedido])
   @@index([idDetalleEstampadoPedido])
+  @@index([idPedido, fechaCreacion])
+  @@index([estado, fechaAprobacion])
   @@map("disenos")
 }
 
@@ -728,6 +737,8 @@ model Compra {
   compradoPor Usuario?        @relation(fields: [compradoPorId], references: [idUsuario], onDelete: SetNull)
   detalles    DetalleCompra[]
 
+  @@index([idPedido])
+  @@index([idProveedor, fechaCompra])
   @@map("compras")
 }
 
@@ -741,5 +752,6 @@ model DetalleCompra {
 
   compra Compra @relation(fields: [idCompra], references: [idCompra], onDelete: Cascade)
 
+  @@index([idCompra])
   @@map("detalle_compra")
 }

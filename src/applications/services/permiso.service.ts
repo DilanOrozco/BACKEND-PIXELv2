@@ -111,6 +111,18 @@ export class PermisoService {
     return await permisoRepository.rolTienePermiso(idRol, codigo);
   }
 
+  async rolTieneAlgunPermiso(idRol: number, codigos: string[]) {
+    validarIdRol(idRol);
+    const codigosValidos = [
+      ...new Set(codigos.filter((codigo) => PERMISOS_VALIDOS.has(codigo))),
+    ];
+
+    return await permisoRepository.rolTieneAlgunPermiso(
+      idRol,
+      codigosValidos,
+    );
+  }
+
   async asignarPermisosARol(idRol: number, codigosEntrada: unknown) {
     validarIdRol(idRol);
 

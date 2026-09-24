@@ -53,14 +53,12 @@ export const autorizarAlgunPermiso = (
         return next();
       }
 
-      for (const codigoPermiso of codigosPermiso) {
-        const tienePermiso = await permisoService.rolTienePermiso(
-          Number(req.user.idRol),
-          codigoPermiso,
-        );
-        if (tienePermiso) {
-          return next();
-        }
+      const tienePermiso = await permisoService.rolTieneAlgunPermiso(
+        Number(req.user.idRol),
+        codigosPermiso,
+      );
+      if (tienePermiso) {
+        return next();
       }
 
       return res.status(403).json({

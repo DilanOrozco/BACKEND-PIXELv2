@@ -109,6 +109,7 @@ export class AbonoRepository {
   async buscarPedidoPorId(idPedido: number, tx?: Prisma.TransactionClient) {
     return await db(tx).pedido.findUnique({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: pedidoResumenSelect,
     });
   }
@@ -116,6 +117,7 @@ export class AbonoRepository {
   async buscarPedidoCompleto(idPedido: number, tx?: Prisma.TransactionClient) {
     return await db(tx).pedido.findUnique({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: pedidoSelect,
     });
   }
@@ -140,6 +142,7 @@ export class AbonoRepository {
   async buscarPorId(idAbono: number, tx?: Prisma.TransactionClient) {
     return await db(tx).abonos.findUnique({
       where: { idAbono },
+      relationLoadStrategy: "join",
       select: abonoSelect,
     });
   }
@@ -159,6 +162,7 @@ export class AbonoRepository {
 
     return await prisma.abonos.findMany({
       where,
+      relationLoadStrategy: "join",
       select: abonoSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -225,6 +229,7 @@ export class AbonoRepository {
       prisma.abonos.count({ where }),
       prisma.abonos.findMany({
         where,
+        relationLoadStrategy: "join",
         select: abonoSelect,
         orderBy,
         skip: pagination.skip,
@@ -238,6 +243,7 @@ export class AbonoRepository {
   async listarPorPedido(idPedido: number) {
     return await prisma.abonos.findMany({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: abonoSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -297,6 +303,7 @@ export class AbonoRepository {
   async buscarPorHash(idPedido: number, comprobanteHash: string) {
     return await prisma.abonos.findFirst({
       where: { idPedido, comprobanteHash },
+      relationLoadStrategy: "join",
       select: abonoSelect,
     });
   }
@@ -304,6 +311,7 @@ export class AbonoRepository {
   async buscarComprobanteMetadata(idAbono: number) {
     return await prisma.abonos.findUnique({
       where: { idAbono },
+      relationLoadStrategy: "join",
       select: {
         idAbono: true,
         comprobanteUrl: true,

@@ -101,27 +101,29 @@ const buildCotizacionOrderBy = (pagination: ParsedPagination) => ({
 export class CotizacionRepository {
   private async marcarPropuestasVencidas() {
     const ahora = new Date();
-    await prisma.cotizacion.updateMany({
-      where: {
-        estado: "PENDIENTE_APROBACION_CLIENTE",
-        versiones: {
-          some: {
-            esVigente: true,
-            estado: "ENVIADA",
-            validaHasta: { lte: ahora },
-          },
-        },
-      },
-      data: { estado: "VENCIDA" },
-    });
-    await prisma.cotizacionVersion.updateMany({
-      where: {
-        esVigente: true,
-        estado: "ENVIADA",
-        validaHasta: { lte: ahora },
-      },
-      data: { estado: "VENCIDA", esVigente: false },
-    });
+    await prisma.$executeRaw`
+      WITH versiones_vencidas AS (
+        UPDATE "cotizaciones_versiones"
+        SET
+          "estado" = 'VENCIDA',
+          "es_vigente" = false,
+          "fecha_actualizacion" = ${ahora}
+        WHERE "es_vigente" = true
+          AND "estado" = 'ENVIADA'
+          AND "valida_hasta" <= ${ahora}
+        RETURNING "id_cotizacion"
+      )
+      UPDATE "cotizaciones" AS cotizacion
+      SET
+        "estado" = 'VENCIDA',
+        "fecha_actualizacion" = ${ahora}
+      WHERE cotizacion."estado" = 'PENDIENTE_APROBACION_CLIENTE'
+        AND EXISTS (
+          SELECT 1
+          FROM versiones_vencidas AS version
+          WHERE version."id_cotizacion" = cotizacion."id_cotizacion"
+        )
+    `;
   }
 
   // Crea la cotizacion y sus detalles en una sola transaccion para evitar
@@ -154,6 +156,7 @@ export class CotizacionRepository {
     await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findUnique({
       where: { idCotizacion },
+      relationLoadStrategy: "join",
       select: cotizacionSelect,
     });
   }
@@ -162,6 +165,7 @@ export class CotizacionRepository {
     await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findMany({
       where: buildCotizacionWhere(filtros),
+      relationLoadStrategy: "join",
       select: cotizacionListadoSelect,
       orderBy: {
         idCotizacion: "desc",
@@ -173,6 +177,7 @@ export class CotizacionRepository {
     await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findMany({
       where: { idCliente },
+      relationLoadStrategy: "join",
       select: cotizacionListadoSelect,
       orderBy: {
         idCotizacion: "desc",
@@ -184,6 +189,7 @@ export class CotizacionRepository {
     await this.marcarPropuestasVencidas();
     return await prisma.cotizacion.findUnique({
       where: { idCotizacion },
+      relationLoadStrategy: "join",
       select: cotizacionConMetadataArchivoSelect,
     });
   }
@@ -232,6 +238,7 @@ export class CotizacionRepository {
       prisma.cotizacion.count({ where }),
       prisma.cotizacion.findMany({
         where,
+        relationLoadStrategy: "join",
         select: cotizacionListadoSelect,
         orderBy: buildCotizacionOrderBy(pagination),
         skip: pagination.skip,
@@ -274,6 +281,7 @@ export class CotizacionRepository {
           },
         ],
       } as any,
+      relationLoadStrategy: "join",
       select: cotizacionListadoSelect,
       orderBy: {
         idCotizacion: "desc",

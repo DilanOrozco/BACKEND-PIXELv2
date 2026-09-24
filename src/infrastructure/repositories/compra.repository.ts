@@ -122,6 +122,7 @@ export class CompraRepository {
   async listarCompras(filtros: CompraFiltros) {
     return await prisma.compra.findMany({
       where: construirWhere(filtros),
+      relationLoadStrategy: "join",
       select: compraSelect,
       orderBy: {
         fechaCompra: "desc",
@@ -132,6 +133,7 @@ export class CompraRepository {
   async listarPorPedido(idPedido: number) {
     return await prisma.compra.findMany({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: compraSelect,
       orderBy: {
         fechaCompra: "desc",
@@ -142,6 +144,7 @@ export class CompraRepository {
   async buscarPorId(idCompra: number, tx?: Prisma.TransactionClient) {
     return await db(tx).compra.findUnique({
       where: { idCompra },
+      relationLoadStrategy: "join",
       select: compraSelect,
     });
   }

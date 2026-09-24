@@ -177,10 +177,12 @@ export const resolverRequerimientosDiseno = (
       unicoDetalleLegacy,
     );
     if (!clave) continue;
-    versionesPorClave.set(clave, [
-      ...(versionesPorClave.get(clave) ?? []),
-      diseno,
-    ]);
+    const versiones = versionesPorClave.get(clave);
+    if (versiones) {
+      versiones.push(diseno);
+    } else {
+      versionesPorClave.set(clave, [diseno]);
+    }
   }
 
   const grupos = new Map<string, any[]>();
@@ -191,10 +193,12 @@ export const resolverRequerimientosDiseno = (
     ) {
       continue;
     }
-    grupos.set(estampado.grupoDisenoCompartido, [
-      ...(grupos.get(estampado.grupoDisenoCompartido) ?? []),
-      estampado,
-    ]);
+    const estampadosGrupo = grupos.get(estampado.grupoDisenoCompartido);
+    if (estampadosGrupo) {
+      estampadosGrupo.push(estampado);
+    } else {
+      grupos.set(estampado.grupoDisenoCompartido, [estampado]);
+    }
   }
 
   const bases: any[] = [];
@@ -402,6 +406,30 @@ export const agregarCoberturaDisenoADetalles = (
     detalles,
     disenos,
   );
+  const requerimientosPorDetalle = new Map<number, any[]>();
+  const requerimientoPorEstampado = new Map<number, any>();
+
+  for (const requerimiento of resolucion.requerimientos) {
+    const idsDetalle = new Set<number>();
+    if (requerimiento.idDetallePedido != null) {
+      idsDetalle.add(Number(requerimiento.idDetallePedido));
+    }
+    for (const estampado of requerimiento.estampadosCubiertos) {
+      idsDetalle.add(Number(estampado.idDetallePedido));
+      const idEstampado = Number(estampado.idEstampadoPedido);
+      if (!requerimientoPorEstampado.has(idEstampado)) {
+        requerimientoPorEstampado.set(idEstampado, requerimiento);
+      }
+    }
+    for (const idDetalle of idsDetalle) {
+      const requerimientos = requerimientosPorDetalle.get(idDetalle);
+      if (requerimientos) {
+        requerimientos.push(requerimiento);
+      } else {
+        requerimientosPorDetalle.set(idDetalle, [requerimiento]);
+      }
+    }
+  }
 
   return detalles.map((detalle) => {
     if (detalle.requiereDiseno === false) {
@@ -414,14 +442,8 @@ export const agregarCoberturaDisenoADetalles = (
         cubiertoPorDiseno: true,
       };
     }
-    const requerimientos = resolucion.requerimientos.filter(
-      (requerimiento) =>
-        requerimiento.idDetallePedido === detalle.idDetallePedido ||
-        requerimiento.estampadosCubiertos.some(
-          (estampado: any) =>
-            estampado.idDetallePedido === detalle.idDetallePedido,
-        ),
-    );
+    const requerimientos =
+      requerimientosPorDetalle.get(Number(detalle.idDetallePedido)) ?? [];
     const estampados = (detalle.estampados ?? []).map((estampado: any) => {
       if (origenRequerimiento(estampado.origenDiseno) === "NO_REQUIERE") {
         return {
@@ -432,12 +454,8 @@ export const agregarCoberturaDisenoADetalles = (
           puedeCrearDiseno: false,
         };
       }
-      const requerimiento = requerimientos.find((item) =>
-        item.estampadosCubiertos.some(
-          (cubierto: any) =>
-            Number(cubierto.idEstampadoPedido) ===
-            Number(estampado.idDetalleEstampadoPedido),
-        ),
+      const requerimiento = requerimientoPorEstampado.get(
+        Number(estampado.idDetalleEstampadoPedido),
       );
       return {
         ...estampado,
@@ -457,10 +475,14 @@ export const agregarCoberturaDisenoADetalles = (
     const cubierto =
       requerimientos.length === 0 ||
       requerimientos.every((item) => item.cubiertoPorDiseno);
-    const diseno =
-      requerimientos.find((item) => item.disenoCobertura)?.disenoCobertura ??
-      requerimientos.find((item) => item.disenoVigente)?.disenoVigente ??
-      null;
+    let disenoCobertura = null;
+    let disenoVigente = null;
+    for (const requerimiento of requerimientos) {
+      disenoCobertura ??= requerimiento.disenoCobertura;
+      disenoVigente ??= requerimiento.disenoVigente;
+      if (disenoCobertura && disenoVigente) break;
+    }
+    const diseno = disenoCobertura ?? disenoVigente ?? null;
 
     const estadoPendienteLegacy = (() => {
       const estado = requerimientos[0]?.estadoCoberturaDiseno;

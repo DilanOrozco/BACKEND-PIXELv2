@@ -201,6 +201,7 @@ export class DisenoRepository {
   async buscarPedidoPorId(idPedido: number, tx?: Prisma.TransactionClient) {
     return await db(tx).pedido.findUnique({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: pedidoResumenSelect,
     });
   }
@@ -236,6 +237,7 @@ export class DisenoRepository {
 
     return await prisma.diseno.findMany({
       where,
+      relationLoadStrategy: "join",
       select: disenoSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -255,6 +257,7 @@ export class DisenoRepository {
 
     return await prisma.diseno.findMany({
       where,
+      relationLoadStrategy: "join",
       select: disenoSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -272,6 +275,7 @@ export class DisenoRepository {
           },
         },
       },
+      relationLoadStrategy: "join",
       select: pedidoPendienteRegistroDisenoSelect,
       orderBy: {
         idPedido: "desc",
@@ -335,6 +339,7 @@ export class DisenoRepository {
           idCliente,
         },
       },
+      relationLoadStrategy: "join",
       select: disenoSelect,
       orderBy: {
         fechaCreacion: "desc",
@@ -353,6 +358,7 @@ export class DisenoRepository {
           in: idsPedido,
         },
       },
+      relationLoadStrategy: "join",
       select: pedidoResumenSelect,
     });
   }
@@ -387,6 +393,7 @@ export class DisenoRepository {
   async buscarPorId(idDiseno: number, tx?: Prisma.TransactionClient) {
     return await db(tx).diseno.findUnique({
       where: { idDiseno },
+      relationLoadStrategy: "join",
       select: disenoSelect,
     });
   }
@@ -397,6 +404,7 @@ export class DisenoRepository {
   ) {
     return await db(tx).diseno.findUnique({
       where: { idDiseno },
+      relationLoadStrategy: "join",
       select: disenoOperacionSelect,
     });
   }
@@ -465,6 +473,7 @@ export class DisenoRepository {
   ) {
     const pedido = await db(tx).pedido.findUnique({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: {
         detalles: {
           where: { requiereDiseno: true },
@@ -534,6 +543,7 @@ export class DisenoRepository {
   async buscarPedidoCompleto(idPedido: number, tx?: Prisma.TransactionClient) {
     return await db(tx).pedido.findUnique({
       where: { idPedido },
+      relationLoadStrategy: "join",
       select: pedidoSelect,
     });
   }
@@ -574,6 +584,7 @@ export class DisenoRepository {
 
     return await prisma.diseno.findMany({
       where,
+      relationLoadStrategy: "join",
       select: disenoSelect,
       orderBy: {
         fechaAprobacion: "asc",

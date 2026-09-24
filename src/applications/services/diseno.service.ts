@@ -618,30 +618,48 @@ export class DisenoService {
     ];
     const pedidos =
       await disenoRepository.buscarPedidosParaRequerimientos(idsPedido);
-    const pedidoPorId = new Map(
-      pedidos.map((pedido) => [Number(pedido.idPedido), pedido]),
-    );
+    const contextoPorPedido = new Map<number, {
+      resolucion: ReturnType<typeof resolverRequerimientosDiseno>;
+      requerimientoPorDiseno: Map<number, any>;
+    }>();
 
-    return disenos.map((diseno) => {
-      const disenoSeguro = serializarArchivoDiseno(diseno);
-      const pedido = pedidoPorId.get(Number(diseno.idPedido));
-      if (!pedido) {
-        return disenoSeguro;
-      }
-
+    for (const pedido of pedidos) {
       const resolucion = resolverRequerimientosDiseno(
         pedido.idPedido,
         pedido.detalles,
         pedido.disenos,
       );
-      const requerimiento = resolucion.requerimientos.find(
-        (item) =>
-          item.versiones.some(
-            (version: any) =>
-              Number(version.idDiseno) === Number(diseno.idDiseno),
-          ) ||
-          Number(item.disenoCobertura?.idDiseno) ===
-            Number(diseno.idDiseno),
+      const requerimientoPorDiseno = new Map<number, any>();
+      for (const requerimiento of resolucion.requerimientos) {
+        for (const version of requerimiento.versiones) {
+          const idDiseno = Number(version.idDiseno);
+          if (!requerimientoPorDiseno.has(idDiseno)) {
+            requerimientoPorDiseno.set(idDiseno, requerimiento);
+          }
+        }
+        const idCobertura = Number(requerimiento.disenoCobertura?.idDiseno);
+        if (
+          Number.isInteger(idCobertura) &&
+          !requerimientoPorDiseno.has(idCobertura)
+        ) {
+          requerimientoPorDiseno.set(idCobertura, requerimiento);
+        }
+      }
+      contextoPorPedido.set(Number(pedido.idPedido), {
+        resolucion,
+        requerimientoPorDiseno,
+      });
+    }
+
+    return disenos.map((diseno) => {
+      const disenoSeguro = serializarArchivoDiseno(diseno);
+      const contexto = contextoPorPedido.get(Number(diseno.idPedido));
+      if (!contexto) {
+        return disenoSeguro;
+      }
+
+      const requerimiento = contexto.requerimientoPorDiseno.get(
+        Number(diseno.idDiseno),
       );
       const tipoObjetivo: TipoObjetivoDiseno =
         diseno.esDisenoGeneral && diseno.idDetallePedido == null
@@ -671,7 +689,7 @@ export class DisenoService {
           ) + 1,
         estampadosCubiertos:
           requerimiento?.estampadosCubiertos ??
-          resolucion.requerimientos.flatMap((item) =>
+          contexto.resolucion.requerimientos.flatMap((item) =>
             Number(item.disenoCobertura?.idDiseno) ===
             Number(diseno.idDiseno)
               ? item.estampadosCubiertos

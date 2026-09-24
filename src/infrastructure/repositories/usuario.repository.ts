@@ -99,6 +99,7 @@ export class UsuarioRepository {
 
     return await prisma.usuario.findMany({
       where,
+      relationLoadStrategy: "join",
       select: usuarioSelect,
       orderBy: {
         idUsuario: "asc",
@@ -115,6 +116,7 @@ export class UsuarioRepository {
       prisma.usuario.count({ where }),
       prisma.usuario.findMany({
         where,
+        relationLoadStrategy: "join",
         select: usuarioSelect,
         orderBy: buildUsuarioOrderBy(pagination),
         skip: pagination.skip,
@@ -128,6 +130,7 @@ export class UsuarioRepository {
   async buscarPorId(idUsuario: number) {
     return await prisma.usuario.findUnique({
       where: { idUsuario },
+      relationLoadStrategy: "join",
       select: usuarioSelect,
     });
   }
@@ -135,6 +138,7 @@ export class UsuarioRepository {
   async buscarUsuarioAuthPorId(idUsuario: number) {
     return await prisma.usuario.findUnique({
       where: { idUsuario },
+      relationLoadStrategy: "join",
       select: {
         idUsuario: true,
         correo: true,
@@ -166,6 +170,7 @@ export class UsuarioRepository {
   async buscarPorCorreoConRol(correo: string) {
     return await prisma.usuario.findFirst({
       where: { correo },
+      relationLoadStrategy: "join",
       select: usuarioAuthSelect,
       orderBy: { idUsuario: "asc" },
     });
@@ -174,6 +179,7 @@ export class UsuarioRepository {
   async buscarPorCorreoConRolYCliente(correo: string) {
     return await prisma.usuario.findFirst({
       where: { correo },
+      relationLoadStrategy: "join",
       select: {
         ...usuarioAuthSelect,
         cliente: {
@@ -201,6 +207,7 @@ export class UsuarioRepository {
 
     return await prisma.usuario.findMany({
       where,
+      relationLoadStrategy: "join",
       select: usuarioSelect,
       orderBy: {
         idUsuario: "asc",

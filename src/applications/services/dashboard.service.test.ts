@@ -16,6 +16,62 @@ const cliente = {
   estado: true,
 };
 
+test("DashboardService admin usa un resumen agregado y conserva el contrato", async (t) => {
+  const resumenMock = t.mock.method(
+    DashboardRepository.prototype,
+    "obtenerResumenAdmin",
+    async () => ({
+      totalPedidos: 12n,
+      pedidosPendientes: 2n,
+      pedidosEnProceso: 3n,
+      pedidosPendientesSaldoFinal: 1n,
+      pedidosFinalizados: 2n,
+      pedidosEntregados: 3n,
+      pedidosAnulados: 1n,
+      totalClientes: 9n,
+      totalCotizacionesPendientes: 4n,
+      ingresosDia: "1000.25",
+      ingresosMes: "2000.50",
+      ingresosAnio: "3000.75",
+    }),
+  );
+  t.mock.method(DashboardRepository.prototype, "ventasPorMes", async () => []);
+  t.mock.method(
+    DashboardRepository.prototype,
+    "obtenerUltimosPedidos",
+    async () => [{ idPedido: 12 }],
+  );
+  t.mock.method(
+    DashboardRepository.prototype,
+    "obtenerCotizacionesPendientes",
+    async () => [{ idCotizacion: 4 }],
+  );
+
+  const dashboard = await new DashboardService().obtenerDashboardAdmin({
+    anio: "2026",
+    ultimos: "5",
+  });
+
+  assert.equal(resumenMock.mock.callCount(), 1);
+  assert.equal(dashboard.kpis.totalPedidos, 12);
+  assert.equal(dashboard.kpis.pedidosFinalizados, 5);
+  assert.equal(dashboard.kpis.totalClientes, 9);
+  assert.equal(dashboard.kpis.cotizacionesPendientes, 4);
+  assert.equal(dashboard.ingresos.diario, 1000.25);
+  assert.equal(dashboard.ingresos.mensual, 2000.5);
+  assert.equal(dashboard.ingresos.anual, 3000.75);
+  assert.deepEqual(dashboard.distribucionPedidos, {
+    PENDIENTE: 2,
+    EN_PROCESO: 3,
+    PENDIENTE_SALDO_FINAL: 1,
+    FINALIZADO: 2,
+    ENTREGADO: 3,
+    ANULADO: 1,
+  });
+  assert.deepEqual(dashboard.ultimosPedidos, [{ idPedido: 12 }]);
+  assert.deepEqual(dashboard.cotizacionesPendientes, [{ idCotizacion: 4 }]);
+});
+
 test("DashboardService cliente usa Cliente vinculado al Usuario autenticado", async (t) => {
   t.mock.method(
     ClienteAccessService.prototype,

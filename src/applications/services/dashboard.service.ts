@@ -531,53 +531,44 @@ export class DashboardService {
     const rangoAnio = crearRangoAnio(anio);
 
     const [
-      totalPedidos,
-      conteosPedidos,
-      totalClientes,
-      totalCotizacionesPendientes,
-      ingresosDia,
-      ingresosMes,
-      ingresosAnio,
+      resumen,
       ventas,
       ultimosPedidos,
       cotizacionesPendientes,
     ] = await Promise.all([
-      dashboardRepository.contarPedidos(),
-      dashboardRepository.contarPedidosPorEstado(),
-      dashboardRepository.contarClientesActivos(),
-      dashboardRepository.contarCotizacionesPendientes(),
-      dashboardRepository.sumarIngresosPorRango(
-        rangoDia.fechaInicio,
-        rangoDia.fechaFin,
-      ),
-      dashboardRepository.sumarIngresosPorRango(
-        rangoMes.fechaInicio,
-        rangoMes.fechaFin,
-      ),
-      dashboardRepository.sumarIngresosPorRango(
-        rangoAnio.fechaInicio,
-        rangoAnio.fechaFin,
-      ),
+      dashboardRepository.obtenerResumenAdmin(rangoDia, rangoMes, rangoAnio),
       dashboardRepository.ventasPorMes(anio),
       dashboardRepository.obtenerUltimosPedidos(limite),
       dashboardRepository.obtenerCotizacionesPendientes(limite),
     ]);
 
-    const distribucionPedidos =
-      normalizarConteosPorEstado(conteosPedidos as any[]);
-    const ingresosDiaNormalizado = redondearMoneda(ingresosDia);
-    const ingresosMesNormalizado = redondearMoneda(ingresosMes);
-    const ingresosAnioNormalizado = redondearMoneda(ingresosAnio);
+    if (!resumen) {
+      throw new Error("No fue posible calcular el resumen del dashboard.");
+    }
+
+    const distribucionPedidos: ConteosPorEstado = {
+      PENDIENTE: aNumero(resumen.pedidosPendientes),
+      EN_PROCESO: aNumero(resumen.pedidosEnProceso),
+      PENDIENTE_SALDO_FINAL: aNumero(resumen.pedidosPendientesSaldoFinal),
+      FINALIZADO: aNumero(resumen.pedidosFinalizados),
+      ENTREGADO: aNumero(resumen.pedidosEntregados),
+      ANULADO: aNumero(resumen.pedidosAnulados),
+    };
+    const ingresosDiaNormalizado = redondearMoneda(aNumero(resumen.ingresosDia));
+    const ingresosMesNormalizado = redondearMoneda(aNumero(resumen.ingresosMes));
+    const ingresosAnioNormalizado = redondearMoneda(aNumero(resumen.ingresosAnio));
 
     return {
       kpis: {
-        totalPedidos,
+        totalPedidos: aNumero(resumen.totalPedidos),
         pedidosPendientes: distribucionPedidos.PENDIENTE,
         pedidosEnProceso: distribucionPedidos.EN_PROCESO,
         pedidosFinalizados:
           distribucionPedidos.FINALIZADO + distribucionPedidos.ENTREGADO,
-        totalClientes,
-        cotizacionesPendientes: totalCotizacionesPendientes,
+        totalClientes: aNumero(resumen.totalClientes),
+        cotizacionesPendientes: aNumero(
+          resumen.totalCotizacionesPendientes,
+        ),
         ingresosDia: ingresosDiaNormalizado,
         ingresosMes: ingresosMesNormalizado,
         ingresosAnio: ingresosAnioNormalizado,
